@@ -1,0 +1,5 @@
+__pycache__/
+carrot_patch/patch_state.json
+carrot_patch/patch_state.tmp
+node_modules/
+.venv/

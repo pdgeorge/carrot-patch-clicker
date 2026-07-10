@@ -1,0 +1,308 @@
+{
+ "buildings": [
+  {
+   "name": "Window Box",
+   "cost": 15,
+   "cps": 0.1,
+   "flavor": "Three carrots in a trough. Humble. Ambitious.",
+   "upName": "Southern Exposure",
+   "upFlavor": "The sun finds them every morning. They lean into it."
+  },
+  {
+   "name": "Garden Plot",
+   "cost": 100,
+   "cps": 1,
+   "flavor": "A proper row of your own. The neighbors are watching.",
+   "upName": "Double Digging",
+   "upFlavor": "Two spades deep. The taproots sing."
+  },
+  {
+   "name": "Allotment",
+   "cost": 1100,
+   "cps": 8,
+   "flavor": "Committee-approved carrot production. The bees came free.",
+   "upName": "Committee Approval",
+   "upFlavor": "Your motion passes 7–2. The parsnip man abstains, furiously."
+  },
+  {
+   "name": "Market Stall",
+   "cost": 12000,
+   "cps": 47,
+   "flavor": "Sells out by nine. The parsnip man is livid.",
+   "upName": "Heritage Certification",
+   "upFlavor": "A laminated sign that says HEIRLOOM. Sales triple. Nothing else changed."
+  },
+  {
+   "name": "Greenhouse",
+   "cost": 130000,
+   "cps": 260,
+   "flavor": "Climate-controlled. The carrots believe it is always June.",
+   "upName": "Automatic Misters",
+   "upFlavor": "A fine rain, always at the perfect moment. The carrots applaud quietly."
+  },
+  {
+   "name": "Rabbit Union",
+   "cost": 1400000,
+   "cps": 1400,
+   "flavor": "They stopped eating the crop once you offered dental.",
+   "upName": "Collective Bargaining",
+   "upFlavor": "The rabbits now guard the rows they once raided. Solidarity forever."
+  },
+  {
+   "name": "Carrot Combine",
+   "cost": 20000000,
+   "cps": 7800,
+   "flavor": "Harvests a field a minute. Slightly haunted.",
+   "upName": "Gentler Tines",
+   "upFlavor": "Each carrot is held, briefly, on its way up. Reviews are positive."
+  },
+  {
+   "name": "Mycorrhizal Exchange",
+   "cost": 330000000,
+   "cps": 44000,
+   "flavor": "The fungal stock market. The Tomato rings the opening bell.",
+   "upName": "Insider Rooting",
+   "upFlavor": "The Parsnip knew about the drought before the clouds did. No charges filed."
+  },
+  {
+   "name": "Orbital Polytunnel",
+   "cost": 5100000000,
+   "cps": 260000,
+   "flavor": "In space, every direction is down. Taproots love it.",
+   "upName": "Aeroponic Chorus",
+   "upFlavor": "Roots humming in the mist. Ground control weeps gently."
+  },
+  {
+   "name": "Carrot Singularity",
+   "cost": 75000000000,
+   "cps": 1600000,
+   "flavor": "All carrots, everywhere, all at once.",
+   "upName": "The Long Flowering",
+   "upFlavor": "It blooms. Continents pollinate. Somewhere, a fair judge faints."
+  }
+ ],
+ "tiers": [
+  {
+   "need": 10,
+   "costMult": 10,
+   "prefix": null
+  },
+  {
+   "need": 25,
+   "costMult": 75,
+   "prefix": "Deeper"
+  },
+  {
+   "need": 50,
+   "costMult": 600,
+   "prefix": "Ancestral"
+  },
+  {
+   "need": 100,
+   "costMult": 5000,
+   "prefix": "Mythic"
+  }
+ ],
+ "clickUpgrades": [
+  {
+   "id": "c0",
+   "name": "Calloused Thumb",
+   "cost": 100,
+   "mult": 2,
+   "flavor": "The blister becomes a callus. The callus becomes technique."
+  },
+  {
+   "id": "c1",
+   "name": "Two-Handed Pull",
+   "cost": 2500,
+   "mult": 2,
+   "flavor": "One hand pulls, the other steadies the earth. Teamwork."
+  },
+  {
+   "id": "c2",
+   "name": "Grandma’s Trowel",
+   "cost": 50000,
+   "cpsPct": 0.01,
+   "flavor": "It remembers every harvest it has ever made. Clicks gain +1% of your CpS."
+  },
+  {
+   "id": "c3",
+   "name": "Proper Technique",
+   "cost": 5000000,
+   "mult": 3,
+   "flavor": "Grip the shoulders, never the greens. Everyone knows this. Nobody does it."
+  },
+  {
+   "id": "c4",
+   "name": "Green Thumbs (Both)",
+   "cost": 500000000,
+   "cpsPct": 0.02,
+   "flavor": "Medically inexplicable. Horticulturally undeniable. Clicks gain +2% of your CpS."
+  }
+ ],
+ "globalUpgrades": [
+  {
+   "id": "g0",
+   "name": "Companion Planting",
+   "cost": 75000,
+   "mult": 1.1,
+   "flavor": "Marigolds at the borders. Everyone grows braver together. +10% everything."
+  },
+  {
+   "id": "g1",
+   "name": "Heirloom Genes",
+   "cost": 10000000,
+   "mult": 1.15,
+   "flavor": "Purple Dragon. Parisian Round. The old names still carry weight. +15% everything."
+  },
+  {
+   "id": "g2",
+   "name": "Free-Range Carrots",
+   "cost": 2000000000,
+   "mult": 1.2,
+   "flavor": "They roam. They return. Don’t ask how. +20% everything."
+  },
+  {
+   "id": "g3",
+   "name": "Second Spring",
+   "cost": 300000000000,
+   "mult": 1.25,
+   "flavor": "Winter files a formal complaint. It is not upheld. +25% everything."
+  }
+ ],
+ "synergyUpgrades": [
+  {
+   "id": "s0",
+   "name": "Sill-to-Stall Pipeline",
+   "cost": 500000,
+   "target": 0,
+   "per": 3,
+   "pct": 0.05,
+   "needTarget": 25,
+   "needPer": 10,
+   "flavor": "Every sill in town feeds your stalls. Window Boxes gain +5% per Market Stall."
+  },
+  {
+   "id": "s1",
+   "name": "Crop Rotation",
+   "cost": 2000000,
+   "target": 1,
+   "per": 4,
+   "pct": 0.05,
+   "needTarget": 25,
+   "needPer": 10,
+   "flavor": "The plots rest; the greenhouse doesn’t. Garden Plots gain +5% per Greenhouse."
+  },
+  {
+   "id": "s2",
+   "name": "Union Allotments",
+   "cost": 20000000,
+   "target": 2,
+   "per": 5,
+   "pct": 0.05,
+   "needTarget": 25,
+   "needPer": 10,
+   "flavor": "The rabbits dig. The committee approves. Allotments gain +5% per Rabbit Union."
+  },
+  {
+   "id": "s3",
+   "name": "Combine Cooperative",
+   "cost": 200000000,
+   "target": 3,
+   "per": 6,
+   "pct": 0.05,
+   "needTarget": 25,
+   "needPer": 10,
+   "flavor": "Stalls sell what the combine pulls. Market Stalls gain +5% per Carrot Combine."
+  },
+  {
+   "id": "s4",
+   "name": "Greenhouse Futures",
+   "cost": 2000000000,
+   "target": 4,
+   "per": 7,
+   "pct": 0.05,
+   "needTarget": 25,
+   "needPer": 10,
+   "flavor": "June, traded openly on the exchange. Greenhouses gain +5% per Mycorrhizal Exchange."
+  },
+  {
+   "id": "s5",
+   "name": "Windowsill Wide Web",
+   "cost": 50000000000,
+   "target": 0,
+   "per": 7,
+   "pct": 0.2,
+   "needTarget": 100,
+   "needPer": 15,
+   "flavor": "Every window box, networked. Window Boxes gain +20% per Mycorrhizal Exchange."
+  },
+  {
+   "id": "s6",
+   "name": "Orbital Union Charter",
+   "cost": 500000000000,
+   "target": 5,
+   "per": 8,
+   "pct": 0.1,
+   "needTarget": 50,
+   "needPer": 10,
+   "flavor": "Space rabbits. Unionized. Rabbit Unions gain +10% per Orbital Polytunnel."
+  }
+ ],
+ "milestones": [
+  10,
+  25,
+  50,
+  100,
+  150,
+  200,
+  300,
+  400,
+  500
+ ],
+ "milestoneMult": 1.01,
+ "ribbons": [
+  {
+   "at": 1000,
+   "name": "White Ribbon",
+   "color": "#e5e7eb",
+   "mult": 1.02,
+   "flavor": "Third place at the village fête. It’s a start."
+  },
+  {
+   "at": 100000,
+   "name": "Red Ribbon",
+   "color": "#dc2626",
+   "mult": 1.03,
+   "flavor": "Second place. The judge lingered."
+  },
+  {
+   "at": 10000000,
+   "name": "Blue Ribbon",
+   "color": "#3b82f6",
+   "mult": 1.05,
+   "flavor": "First place. Somewhere, a gardener nods."
+  },
+  {
+   "at": 1000000000,
+   "name": "Best in Show",
+   "color": "#8b5cf6",
+   "mult": 1.08,
+   "flavor": "“In forty years of judging…” — you know the rest."
+  },
+  {
+   "at": 100000000000,
+   "name": "Purple Rosette",
+   "color": "#c026d3",
+   "mult": 1.12,
+   "flavor": "Awarded once a century, to a garden rather than a carrot."
+  },
+  {
+   "at": 10000000000000,
+   "name": "The Judge’s Tears",
+   "color": "#67e8f9",
+   "mult": 1.15,
+   "flavor": "There is no category for what you have grown. They give you the tears directly."
+  }
+ ]
+}

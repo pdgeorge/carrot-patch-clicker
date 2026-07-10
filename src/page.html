@@ -1,0 +1,52 @@
+<div id="cc-root">
+  <div id="ticker"><span id="ticker-text"></span></div>
+
+  <div id="columns">
+    <section id="col-left">
+      <h1 class="wordmark">CARROT <span>CLICKER</span></h1>
+      <div id="bank">0</div>
+      <div id="bank-label">carrots</div>
+      <div id="cps">0 per second</div>
+      <div id="patch-line" class="hidden"></div>
+      <div id="buff-line"></div>
+      <canvas id="hero" width="320" height="360"></canvas>
+      <div id="seed-line"></div>
+      <button id="prestige-btn" class="hidden">🌸 Go to Seed</button>
+      <div class="small-controls">
+        <button id="mute-btn" title="toggle sound">🔊</button>
+        <button id="wipe-btn" title="wipe save (hold to confirm)">🗑</button>
+      </div>
+    </section>
+
+    <section id="col-mid">
+      <div class="panel-title">UPGRADES</div>
+      <div id="upgrades"></div>
+      <div class="panel-title">TROPHY SHELF</div>
+      <div id="ribbons"></div>
+      <div class="panel-title">STATS</div>
+      <div id="stats"></div>
+      <div id="tooltip" class="hidden"></div>
+    </section>
+
+    <section id="col-right">
+      <div class="panel-title shop-head">
+        <span>THE GARDEN</span>
+        <span id="buy-amount"><button data-n="1" class="on">×1</button><button data-n="10">×10</button></span>
+      </div>
+      <div id="shop"></div>
+    </section>
+  </div>
+
+  <div id="toasts"></div>
+
+  <div id="modal" class="hidden">
+    <div id="modal-box">
+      <h2 id="modal-title"></h2>
+      <p id="modal-body"></p>
+      <div id="modal-buttons">
+        <button id="modal-yes"></button>
+        <button id="modal-no">Not yet</button>
+      </div>
+    </div>
+  </div>
+</div>
