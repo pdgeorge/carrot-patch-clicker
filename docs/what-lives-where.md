@@ -8,7 +8,8 @@ re-audit it when a layer shifts, and correct it in the same PR that moves
 something.
 
 *Audited at build `df51b75` (2026-07-11), by reading every file in `src/`
-and `carrot_patch/`.*
+and `carrot_patch/`. Updated in the same PR as R9 (solo demoted to dev
+tool), which resolved the player-facing half of F2.*
 
 ## The target (where things SHOULD live)
 
@@ -38,11 +39,11 @@ the engine's is a place the shadow can drift.
 | Upgrade unlock gates | `data.js` (`unlock:` vocabulary, R8); interpreter in engine pair | ✅ |
 | Upgrade **effects** (what an upgrade does) | Hardcoded shapes in `clickPower()` / `globalMult()` / `buildingMult()`, both engines | ❌ should be data (see F4) |
 | Click batching, rate limits, staleness watchdog | `net.js` ↔ `main.py` | ✅ |
-| World save / solo save | `main.py` (`patch_state.json`) / `ui.js` (localStorage) | ✅ documented in DESIGN |
+| World save / dev-garden save | `main.py` (`patch_state.json`) / `ui.js` (localStorage, `file://` only since R9) | ✅ documented in DESIGN |
 | Toast/event **composition** | ❌ split: solo = structured events from `core.js` rendered by `ui.js`; patch = **English prose baked server-side** (`main.py announce()`, `economy.py tick()`) | ❌ see F1 |
 | Sound-effect selection (patch mode) | `net.js` **sniffs emoji prefixes off toast prose** (`startsWith('🌸')` → seed fanfare) | ❌ see F1 |
 | Golden rabbit: catch reward | `core.rabbitReward()` ↔ `economy.rabbit_reward()` | ✅ |
-| Golden rabbit: spawn scheduling | ❌ **two brains**: server (`main.py`: first 60–150 s, then 90–240 s) and a separate solo scheduler **in `ui.js`** (first 40–100 s, then 75–180 s) | ❌ see F2 |
+| Golden rabbit: spawn scheduling | ⚠ **two brains**: server (`main.py`: first 60–150 s, then 90–240 s) and a separate dev-garden scheduler **in `ui.js`** (first 40–100 s, then 75–180 s) — since R9 the second brain only runs on `file://`, so no player comparison is affected | ⚠ see F2 |
 | Golden rabbit: movement, sprite, glow | `ui.js` render/update | ✅ that part is skin |
 | Building shop visibility ("???" mystery reveal) | ❌ a game rule (`owned > 0` or lifetime ≥ cost/5) **inside `ui.js updateDOM()`** — not in the engines, not in data, not in DESIGN's tables | ❌ see F3 |
 | Upgrade list display (top 12, sort by cost) | `ui.js` | ✅ skin decision |
@@ -69,15 +70,16 @@ becomes the single place events become words/sounds/pixels. This also
 unblocks the event log and "while you were away" (DESIGN R5) — you can't
 summarize prose, you can summarize events.
 
-### F2 — The rabbit has two brains, and they disagree
-Server rabbits: first spawn 60–150 s, then 90–240 s (`main.py`). Solo
+### F2 — The rabbit has two brains (stakes lowered by R9)
+Server rabbits: first spawn 60–150 s, then 90–240 s (`main.py`). Dev-garden
 rabbits: first 40–100 s, then 75–180 s — scheduled by **the skin**
-(`ui.js update()`/`catchRabbit()`), not even by `core.js`. Two undocumented
-consequences: solo players get measurably more rabbits than the shared
-world (a P3 violation — DESIGN's tunables table documents only the server's
-numbers), and any rabbit rework must be done in two places, one of which is
-the wrong file. **Move:** rabbit lifecycle into the engine pair (numbers
-into `data.js` eventually); the skin keeps only hop, sprite, and glow.
+(`ui.js update()`/`catchRabbit()`), not even by `core.js`. Since R9 the
+second brain runs only on `file://`, so the original P3 sting — solo
+players getting measurably more rabbits than the world they compare seeds
+with — is gone. What remains is a layering debt: any rabbit rework must be
+done in two places, one of which is the wrong file. **Move (someday):**
+rabbit lifecycle into the engine pair (numbers into `data.js` eventually);
+the skin keeps only hop, sprite, and glow.
 
 ### F3 — A progression rule is hiding in `updateDOM()`
 Which buildings show as "???" vs hidden is decided by

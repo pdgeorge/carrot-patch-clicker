@@ -1,7 +1,9 @@
 /* Carrot Patch client — connects the clicker to a shared world server.
-   Only activates when the page is served over http(s) and a same-origin
-   /ws endpoint answers; on file://, artifacts, or plain static hosting the
-   game silently stays single-player.
+
+   A served page (http/https) is ALWAYS the world game (DESIGN P6): if the
+   server can't be reached the client shows a waiting state and redials
+   forever — it never falls back to a private solo garden. The private solo
+   game exists only on file:// (a dev tool; this class deactivates there).
 
    Clicks are batched: they apply locally instantly for feel, accumulate in
    a counter, and flush as ONE message per second — an auto-clicker costs
@@ -23,6 +25,7 @@ CC.Patch = class {
     this._tried = false;
     this._lastMsg = 0;
     this._retryTimer = null;
+    this.everSynced = false; /* first snapshot received — the world is loaded */
     if (!location.protocol.startsWith('http')) return;
     this.connect();
     setInterval(() => this.flush(), 1000);
@@ -67,18 +70,9 @@ CC.Patch = class {
         this.ui.setPatchResync();
         this.ui.toast('🌍 Lost the patch — re-syncing…');
       }
-      if (this._tried) {
-        /* we had a server once: keep trying, it may just be restarting */
-        this._retryTimer = setTimeout(() => { this._retryTimer = null; this.connect(); }, 4000);
-      } else {
-        /* never connected: probably plain static hosting — try thrice, then stay solo */
-        this._attempts = (this._attempts || 0) + 1;
-        if (this._attempts < 3) {
-          this._retryTimer = setTimeout(() => { this._retryTimer = null; this.connect(); }, 5000);
-        } else {
-          this.ui.toast('🌱 No patch server found — tending your own private garden (solo mode).');
-        }
-      }
+      /* a served page never falls back to solo (P6): redial forever —
+         the server may just be restarting, or the proxy may come good */
+      this._retryTimer = setTimeout(() => { this._retryTimer = null; this.connect(); }, 4000);
     };
     ws.onerror = () => { try { ws.close(); } catch (e) { /* already closed */ } };
   }
@@ -91,7 +85,7 @@ CC.Patch = class {
         this.ui.toast('🌍 Patch gone quiet — re-syncing…');
         this.redial();
       }
-    } else if (this._tried && !this._retryTimer && (!this.ws || this.ws.readyState === 3)) {
+    } else if (!this._retryTimer && (!this.ws || this.ws.readyState === 3)) {
       /* tab woke up after a scheduled retry already came and went */
       this.redial();
     }
@@ -113,6 +107,7 @@ CC.Patch = class {
   handle(msg) {
     const c = this.core, ui = this.ui;
     if (msg.type === 'snapshot') {
+      this.everSynced = true;
       const s = msg.state;
       c.bank = s.bank;
       c.totalAllTime = s.totalAllTime;
