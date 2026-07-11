@@ -213,7 +213,9 @@ CC.Core = class {
     for (const b of expired) events.push({ type: 'buffEnd', name: b.name });
     const rc = this.ribbons().length;
     if (rc > this._ribbonCount) {
-      for (let k = this._ribbonCount; k < rc; k++) events.push({ type: 'ribbon', ribbon: CC.RIBBONS[k] });
+      /* index, not object — same event shape as economy.py, so one UI
+         renderer serves both solo events and server events (F1) */
+      for (let k = this._ribbonCount; k < rc; k++) events.push({ type: 'ribbon', i: k });
       this._ribbonCount = rc;
     }
     for (let i = 0; i < CC.BUILDINGS.length; i++) {

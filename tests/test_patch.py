@@ -148,21 +148,22 @@ with TestClient(app) as client:
         check(snap["type"] == "snapshot", "greeted with a snapshot")
         check(snap["online"] == 1, "presence counts one gardener")
 
-        # click batching: absurd auto-clicker batch is clamped server-side
+        # click batching: an absurd batch is clamped to the anti-flood
+        # ceiling (250 — anti-flood only, never game balance; DESIGN R2)
         ws.send_json({"type": "clicks", "n": 999999})
         time.sleep(0.05)
-        check(abs(patch.eco.bank - 40) < 1e-9, f"999999 clicks clamped to 40 (bank {patch.eco.bank})")
+        check(abs(patch.eco.bank - 250) < 1e-9, f"999999 clicks clamped to 250 (bank {patch.eco.bank})")
 
         # rate limit: a second batch inside 0.75s is dropped
         ws.send_json({"type": "clicks", "n": 40})
         time.sleep(0.05)
-        check(abs(patch.eco.bank - 40) < 1e-9, "second batch within window is ignored")
+        check(abs(patch.eco.bank - 250) < 1e-9, "second batch within window is ignored")
 
         # buy with the global bank
         ws.send_json({"type": "buy", "b": 0, "n": 1})
         time.sleep(0.05)
         check(patch.eco.owned[0] == 1, "bought a Window Box with global carrots")
-        check(patch.eco.bank < 40, "the world's bank paid for it")
+        check(patch.eco.bank < 250, "the world's bank paid for it")
 
         # invalid / unaffordable requests are safely ignored
         ws.send_json({"type": "buy", "b": 9, "n": 10})
@@ -188,13 +189,23 @@ with TestClient(app) as client:
         caught = patch.rabbit is None and (patch.eco.bank > before or patch.eco.buff_mult() > 1)
         check(caught, "rabbit catch pays out (frenzy or bundle)")
 
-        # broadcast loop actually pushes snapshots
-        got = ws.receive_json()
-        for _ in range(30):
-            if got["type"] == "snapshot":
+        # broadcast loop pushes snapshots, and the rabbit catch goes out
+        # both as a structured event (F1) and as legacy prose (for pre-F1
+        # clients, until R12 drops it)
+        seen = {"snapshot": False, "event": False, "toast": False}
+        for _ in range(40):
+            m = ws.receive_json()
+            if m["type"] == "snapshot":
+                seen["snapshot"] = True
+            elif m["type"] == "event" and m.get("ev", {}).get("type") == "rabbitCaught":
+                seen["event"] = True
+            elif m["type"] == "toast" and m["text"].startswith("🐇"):
+                seen["toast"] = True
+            if all(seen.values()):
                 break
-            got = ws.receive_json()
-        check(got["type"] == "snapshot", "server broadcasts periodic snapshots")
+        check(seen["snapshot"], "server broadcasts periodic snapshots")
+        check(seen["event"], "rabbit catch broadcast as structured event")
+        check(seen["toast"], "…and as legacy prose for pre-F1 clients")
 
     # persistence round-trip
     patch.eco.earn(12345)

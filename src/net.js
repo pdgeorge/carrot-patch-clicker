@@ -128,10 +128,12 @@ CC.Patch = class {
         ui.rabbit = null;
       }
       ui.updatePatchLine();
+    } else if (msg.type === 'event') {
+      /* structured world event (F1): ui decides words, sound, pixels */
+      ui.patchEvent(msg.ev || {});
     } else if (msg.type === 'toast') {
-      ui.toast(msg.text);
-      if (msg.text.startsWith('🌸')) CC.audio.seed();
-      else if (msg.text.startsWith('🐇')) CC.audio.rabbit();
+      /* legacy prose for pre-F1 clients — this client renders 'event'
+         instead; ignoring avoids double toasts during the transition */
     } else if (msg.type === 'rabbit') {
       ui.rabbit = { x: -30, y: ui.soilY - 14, dir: 1, born: ui.t, patchTtl: msg.ttl };
       ui.toast('🐇 A golden rabbit is loose in the patch — first click catches it!');

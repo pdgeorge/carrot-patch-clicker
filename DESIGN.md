@@ -118,7 +118,11 @@ between layers, and update it in the same PR when you do.
   Both read the same `patch-data.json`; `tests/test_patch.py` asserts the
   two implementations stay numerically identical.
 - Protocol: client → server `{type: clicks|buy|upgrade|catch|prestige, …}`;
-  server → client `snapshot` (full state, 1/s), `toast`, `rabbit`.
+  server → client `snapshot` (full state, 1/s), `event` (structured game
+  events — ribbon, bumper, upgrade, rabbitCaught, prestige; the client
+  turns them into words and sound), `rabbit`. A legacy `toast` (prose)
+  accompanies every event for stale pre-F1 tabs until R12 drops it; current
+  clients ignore it.
 - Clicks apply locally the instant you click (feel), accumulate in a
   counter, and flush as **one message per second**. The next snapshot
   overwrites the local prediction.
@@ -157,7 +161,7 @@ restatement of the value.
 | Name | Value | Where | Why |
 | --- | --- | --- | --- |
 | Click batch flush | 1 msg/s | `src/net.js` | An auto-clicker costs the same bandwidth as a patient human; the server never sees individual clicks. |
-| Max clicks per batch | **40** ⚠ | `carrot_patch/main.py` `MAX_CLICKS_PER_MSG` | **Deprecated by P4** — this is a gameplay cap masquerading as flood protection, and it silently ate fast clickers' clicks. Slated to become a pure anti-flood ceiling of **250 clicks/batch** (~250 cps — far above any human, high enough that auto-clickers work as intended; see R2). |
+| Max clicks per batch | 250 | `carrot_patch/main.py` `MAX_CLICKS_PER_MSG` | Anti-flood only, never game balance (P4/R2): ~250 cps is far above any human and high enough that auto-clickers work as intended — the economy, not a cap, makes clicking fade. |
 | Min interval between click batches | 0.75 s | `carrot_patch/main.py` `MIN_MSG_INTERVAL` | Tolerates client timer jitter on the 1 s flush without allowing double-rate senders. |
 | Max messages/sec per connection | 10 | `carrot_patch/main.py` `MAX_MSGS_PER_SEC` | Pure flood guard across all message types; normal play sends ~1–3/s. |
 | Max message size | 512 bytes | `carrot_patch/main.py` | No legitimate intent is bigger; drops garbage cheaply. |
@@ -217,9 +221,9 @@ Numbered for reference. R2 and R7 are the active priorities.
   while disconnected instead of pretending to be solo. (R1 originally also
   added a solo-fallback toast for never-connected clients; R9 removed the
   fallback itself.)
-- **R2 — Retire the 40-click cap.** Replace `MAX_CLICKS_PER_MSG = 40` with
-  an anti-flood-only ceiling of 250, per P4. Mirror the new number in this
-  table and in the in-game help (R4).
+- **R2 — Retire the 40-click cap. ✅ Shipped.** `MAX_CLICKS_PER_MSG` is now
+  250 — an anti-flood ceiling, not game balance, per P4. Fast clickers'
+  clicks land; the economy is what makes them fade.
 - **R3 — Unmissable connection indicator.** The wordmark + status line
   exist but are subtle. Make connection state (connected / re-syncing /
   reaching) explicit in the UI. (R9 removed the worst case — a served page
@@ -299,6 +303,13 @@ Numbered for reference. R2 and R7 are the active priorities.
   - **Vocabulary migration:** the UI currently calls players "gardeners"
     ("N gardeners tending", rabbit toasts). Adopting Tenders/Gardeners
     means renaming that copy in the same PR.
+- **R12 — Drop the legacy toast prose.** F1 made the server broadcast
+  structured `event` messages; a prose `toast` twin still accompanies each
+  one so stale pre-F1 browser tabs (which reconnect via the R1 watchdog
+  without reloading the page) keep seeing announcements. Once a post-F1
+  build has been deployed for a week or two, delete `legacy_text()` and the
+  `announce()` twin in `carrot_patch/main.py` — the server stops composing
+  English forever.
 
 ## Process for changing the game
 

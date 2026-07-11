@@ -221,19 +221,19 @@ class Economy:
             b["left"] -= dt
         self.buffs = [b for b in self.buffs if b["left"] > 0]
 
+        # structured events, same shapes as core.js tick() — presentation
+        # happens client-side (F1); main.py composes legacy prose for
+        # pre-F1 clients during the transition
         rc = len(self.ribbons())
         if rc > self._ribbon_seen:
             for k in range(self._ribbon_seen, rc):
-                r = self.d["ribbons"][k]
-                events.append({"type": "toast", "text":
-                               f"🎀 {r['name']}! {r['flavor']} (+{round((r['mult'] - 1) * 100)}% production)"})
+                events.append({"type": "ribbon", "i": k})
             self._ribbon_seen = rc
         for i in range(len(self.owned)):
             n = self.bumper_count(i)
             if n > self._bumper_seen[i]:
-                at = self.d["milestones"][n - 1]
-                events.append({"type": "toast", "text":
-                               f"🌾 Bumper crop! {at}× {self.d['buildings'][i]['name']} — +1% to everything."})
+                events.append({"type": "bumper", "b": i, "owned": self.owned[i],
+                               "at": self.d["milestones"][n - 1]})
                 self._bumper_seen[i] = n
         return events
 

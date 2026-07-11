@@ -322,6 +322,37 @@ CC.UI = class {
   }
 
   /* ---------------- feedback ---------------- */
+  /* F1: the single place structured game events (from the local engine in
+     the dev garden, from the server in world mode) become words + sound.
+     Unknown event types are ignored — a newer server won't break us. */
+  patchEvent(ev) {
+    if (ev.type === 'ribbon') {
+      const r = CC.RIBBONS[ev.i];
+      if (!r) return;
+      CC.audio.fanfare();
+      this.toast(`🎀 ${r.name}! ${r.flavor} (+${Math.round((r.mult - 1) * 100)}% production)`);
+    } else if (ev.type === 'bumper') {
+      const b = CC.BUILDINGS[ev.b];
+      if (!b) return;
+      CC.audio.upgrade();
+      this.toast(`🌾 Bumper crop! ${ev.at}× ${b.name} — +1% to everything.`);
+    } else if (ev.type === 'upgrade') {
+      const u = this.core.allUpgrades().find(u => u.id === ev.id);
+      CC.audio.upgrade();
+      this.toast(`🛠 Someone bought ${u ? u.name : 'an upgrade'}!`);
+    } else if (ev.type === 'rabbitCaught') {
+      CC.audio.rabbit();
+      const what = ev.kind === 'frenzy'
+        ? 'RABBIT FRENZY! Production ×7 for 30 seconds!'
+        : `Lucky bundle! +${CC.fmt(ev.gain || 0)} carrots!`;
+      this.toast(`🐇 Caught by a gardener somewhere on Earth — ${what}`);
+    } else if (ev.type === 'prestige') {
+      CC.audio.seed();
+      this.toast(`🌸 SOMEONE SENT THE WHOLE GARDEN TO SEED. +${CC.fmt(ev.gained)} seeds ` +
+        `(+${ev.gained * 8}% forever) for everyone. A new spring begins.`);
+    }
+  }
+
   toast(text) {
     const el = document.createElement('div');
     el.className = 'toast';
@@ -374,18 +405,11 @@ CC.UI = class {
   /* ---------------- per-frame ---------------- */
   update(dt) {
     const events = this.core.tick(dt);
-    /* in world mode the server announces ribbons/bumpers to everyone;
-       local events are dev-garden-only (never fired off predicted state) */
+    /* in world mode the server announces events to everyone; local engine
+       events render only in the dev garden (never off predicted state) —
+       and through the same renderer the server path uses (F1) */
     if (!this.worldMode) {
-      for (const e of events) {
-        if (e.type === 'ribbon') {
-          CC.audio.fanfare();
-          this.toast(`🎀 ${e.ribbon.name}! ${e.ribbon.flavor} (+${Math.round((e.ribbon.mult - 1) * 100)}% production)`);
-        } else if (e.type === 'bumper') {
-          CC.audio.upgrade();
-          this.toast(`🌾 Bumper crop! ${e.at}× ${CC.BUILDINGS[e.b].name} — +1% to everything.`);
-        }
-      }
+      for (const e of events) this.patchEvent(e);
     }
 
     /* golden rabbit lifecycle (locally scheduled only in the dev garden) */
