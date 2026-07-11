@@ -29,6 +29,10 @@ uvicorn carrot_patch.main:app --port 8420  # world server at http://localhost:84
 Opening `carrot_patch/dist/clicker.html` as a plain file also works — the
 game detects there's no server and runs single-player (localStorage saves).
 
+`node build.js` prints a 7-char **build id** (a content hash of all game
+sources) and the page shows the same id bottom-right. To confirm a deploy
+landed: merge, `git pull` + restart on the host, refresh — the tag changes.
+
 ## Embedding in a host FastAPI site
 
 ```python

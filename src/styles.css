@@ -284,4 +284,17 @@
 #modal-yes { background: linear-gradient(180deg, #f5c8ec, #d98cc9); color: #2a0e1a; }
 #modal-no { background: #3a2f24; color: var(--text); }
 
+/* build id, bottom-right: the "did the deploy land?" glance */
+#build-tag {
+  position: fixed;
+  right: 8px;
+  bottom: 6px;
+  font-size: 11px;
+  color: var(--text);
+  opacity: 0.45;
+  z-index: 20;
+  cursor: default;
+  user-select: all; /* one click selects the whole id for copy/compare */
+}
+
 .hidden { display: none !important; }

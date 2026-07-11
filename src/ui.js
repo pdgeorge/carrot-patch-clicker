@@ -54,6 +54,7 @@ CC.UI = class {
     })();
 
     this.buildStatic();
+    this.$('build-tag').textContent = `build ${CC.BUILD || 'dev'}`;
     this.load();
     this.bind();
     this.setTicker();
