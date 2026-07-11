@@ -292,6 +292,19 @@ html, body { margin: 0; padding: 0; }
 #modal-yes { background: linear-gradient(180deg, #f5c8ec, #d98cc9); color: #2a0e1a; }
 #modal-no { background: #3a2f24; color: var(--text); }
 
+/* build id, bottom-right: the "did the deploy land?" glance */
+#build-tag {
+  position: fixed;
+  right: 8px;
+  bottom: 6px;
+  font-size: 11px;
+  color: var(--text);
+  opacity: 0.45;
+  z-index: 20;
+  cursor: default;
+  user-select: all; /* one click selects the whole id for copy/compare */
+}
+
 .hidden { display: none !important; }
 
 </style>
@@ -338,6 +351,8 @@ html, body { margin: 0; padding: 0; }
 
   <div id="toasts"></div>
 
+  <div id="build-tag" title="build id — changes whenever any game source changes"></div>
+
   <div id="modal" class="hidden">
     <div id="modal-box">
       <h2 id="modal-title"></h2>
@@ -351,6 +366,7 @@ html, body { margin: 0; padding: 0; }
 </div>
 
 <script>
+globalThis.CC = globalThis.CC || {}; CC.BUILD = '7d7fe64';
 /* ==== data.js ==== */
 /* Carrot Clicker — content: buildings, upgrades, ribbons, news. */
 globalThis.CC = globalThis.CC || {};
@@ -957,6 +973,7 @@ CC.UI = class {
     })();
 
     this.buildStatic();
+    this.$('build-tag').textContent = `build ${CC.BUILD || 'dev'}`;
     this.load();
     this.bind();
     this.setTicker();

@@ -196,3 +196,14 @@ Numbered for reference. R2 and R7 are the active priorities.
 5. Run both suites: `node tests/sim.js` (pacing: asserts the unlock/prestige
    curve over simulated 4-hour sessions) and `python tests/test_patch.py`
    (parity + live websocket protocol).
+
+### The build id
+
+Every build embeds a 7-character content hash of all deployable sources
+(`src/*`, `carrot_patch/*.py`, `build.js`). `node build.js` prints it, and
+the page shows it bottom-right — its whole job is answering "did the
+deploy land?" at a glance: after the host pulls and restarts, refresh and
+see the tag change. Determinism constraint: **nothing time- or
+git-dependent may ever go into `dist/`** — CI rebuilds dist and requires a
+byte-identical match with the commit, so the id must be a pure function of
+the sources.
