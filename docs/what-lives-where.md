@@ -9,7 +9,8 @@ something.
 
 *Audited at build `df51b75` (2026-07-11), by reading every file in `src/`
 and `carrot_patch/`. Updated in the same PR as R9 (solo demoted to dev
-tool), which resolved the player-facing half of F2.*
+tool), which resolved the player-facing half of F2; updated again in the
+R2+F1 PR, which resolved F1 (structured events).*
 
 ## The target (where things SHOULD live)
 
@@ -40,8 +41,8 @@ the engine's is a place the shadow can drift.
 | Upgrade **effects** (what an upgrade does) | Hardcoded shapes in `clickPower()` / `globalMult()` / `buildingMult()`, both engines | ❌ should be data (see F4) |
 | Click batching, rate limits, staleness watchdog | `net.js` ↔ `main.py` | ✅ |
 | World save / dev-garden save | `main.py` (`patch_state.json`) / `ui.js` (localStorage, `file://` only since R9) | ✅ documented in DESIGN |
-| Toast/event **composition** | ❌ split: solo = structured events from `core.js` rendered by `ui.js`; patch = **English prose baked server-side** (`main.py announce()`, `economy.py tick()`) | ❌ see F1 |
-| Sound-effect selection (patch mode) | `net.js` **sniffs emoji prefixes off toast prose** (`startsWith('🌸')` → seed fanfare) | ❌ see F1 |
+| Toast/event **composition** | ✅ resolved by F1: both engines emit identical structured events; `ui.patchEvent()` is the single place they become words + sound (a legacy prose twin ships until R12) | ✅ |
+| Sound-effect selection | chosen by `ui.patchEvent()` from the event kind — the emoji sniffing is gone | ✅ |
 | Golden rabbit: catch reward | `core.rabbitReward()` ↔ `economy.rabbit_reward()` | ✅ |
 | Golden rabbit: spawn scheduling | ⚠ **two brains**: server (`main.py`: first 60–150 s, then 90–240 s) and a separate dev-garden scheduler **in `ui.js`** (first 40–100 s, then 75–180 s) — since R9 the second brain only runs on `file://`, so no player comparison is affected | ⚠ see F2 |
 | Golden rabbit: movement, sprite, glow | `ui.js` render/update | ✅ that part is skin |
@@ -57,18 +58,17 @@ the engine's is a place the shadow can drift.
 
 ## Findings, ranked
 
-### F1 — The server does the *talking*, not just the thinking
-In patch mode, `main.py`/`economy.py` compose finished English sentences
-("🎀 Blue Ribbon! … (+5% production)") and broadcast them; `net.js` then
-chooses sound effects by checking which emoji the sentence starts with.
-Meanwhile solo mode does it correctly: `core.js` emits structured events
-(`{type:'ribbon', …}`) and `ui.js` turns them into words and sound. So the
-same feature has two pipelines, presentation lives partly in Python, and
-changing a toast's wording is a server deploy. **Move:** the wire should
-carry the same structured events the solo engine already emits; `ui.js`
-becomes the single place events become words/sounds/pixels. This also
-unblocks the event log and "while you were away" (DESIGN R5) — you can't
-summarize prose, you can summarize events.
+### F1 — The server does the *talking*, not just the thinking ✅ RESOLVED
+The server used to compose finished English sentences and broadcast them,
+and `net.js` chose sound effects by checking which emoji a sentence started
+with. Now both engines emit identical structured events (`{type:'ribbon',
+i}`, `{type:'bumper', b, at}`, plus server-side `upgrade`, `rabbitCaught`,
+`prestige`), the wire carries `{type:'event', ev}`, and `ui.patchEvent()`
+is the single place — for the dev garden and the world alike — where events
+become words, sound, and pixels. Toast wording is now a UX-space edit.
+Residue: a legacy prose `toast` twin accompanies each event for stale
+pre-F1 tabs; deleting it is R12. The event log and "while you were away"
+(R5) are now buildable — events can be summarized, prose can't.
 
 ### F2 — The rabbit has two brains (stakes lowered by R9)
 Server rabbits: first spawn 60–150 s, then 90–240 s (`main.py`). Dev-garden
@@ -116,10 +116,11 @@ production builds.
 
 ## Reading this report
 
-The pattern across F1–F3 is the same: **solo mode grew its own brain in
+The pattern across F1–F3 was the same: **solo mode grew its own brain in
 the skin.** Solo needs local thinking, but it should be *the engine's*
 thinking (`core.js`), fed through the same structured-event shape the
 server uses — then the skin genuinely is just a skin, and the Potato Test
 (could you reskin this to Potato Patch Clicker touching only `data.js` +
-`styles.css` + art?) starts passing. F1 is the enabling fix; F2 and F3 are
-its first beneficiaries.
+`styles.css` + art?) starts passing. F1 (the enabling fix) is now done;
+F3 has a natural home waiting in the engine pair, and F2's remaining half
+is a same-shaped move.

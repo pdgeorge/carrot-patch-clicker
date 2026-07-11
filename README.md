@@ -81,9 +81,8 @@ Env vars: `CARROT_PATCH_STATE` (world save file), `CARROT_PATCH_DIST`
 - **Auto-clickers are welcome** (DESIGN principle P4). Clients batch clicks
   into one message per second, so fast clicking costs no extra bandwidth.
   The economy — not a cap — is what makes raw clicking fade in the mid game
-  (and come back via the CpS-click-upgrade + frenzy combo). ⚠ The server
-  currently still clamps at 40 clicks/connection/sec; that cap is deprecated
-  and slated to become a 250/s anti-flood ceiling (DESIGN R2).
+  (and come back via the CpS-click-upgrade + frenzy combo). The only server
+  limit is a 250 clicks/sec anti-flood ceiling, far above any human.
 - **The golden rabbit is global** — first gardener on Earth to click it wins
   the frenzy for everyone.
 - **Go to Seed prestiges the entire planet.** The confirmation dialog is

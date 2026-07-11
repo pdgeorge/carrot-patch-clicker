@@ -26,7 +26,9 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from .economy import Economy, dist_dir, fmt, load_data
 
-MAX_CLICKS_PER_MSG = 40      # per connection per flush (~40 cps ceiling)
+MAX_CLICKS_PER_MSG = 250     # anti-flood only, never game balance (DESIGN P4/R2):
+                             # far above any human, high enough that auto-clickers
+                             # work as intended — the economy makes clicks fade
 MIN_MSG_INTERVAL = 0.75      # seconds between click batches per connection
 MAX_MSGS_PER_SEC = 10        # any message type, per connection
 SNAPSHOT_INTERVAL = 1.0
@@ -76,6 +78,34 @@ class Patch:
     def announce(self, text: str) -> None:
         self._pending.append({"type": "toast", "text": text})
 
+    def emit(self, ev: dict) -> None:
+        """Broadcast a structured event (F1) plus legacy prose for pre-F1
+        clients — stale tabs reconnect with old JS and only understand
+        `toast`. Drop the prose once a post-F1 build has been live (R12)."""
+        self._pending.append({"type": "event", "ev": ev})
+        text = self.legacy_text(ev)
+        if text:
+            self.announce(text)
+
+    def legacy_text(self, ev: dict) -> str | None:
+        d = self.eco.d
+        if ev["type"] == "ribbon":
+            r = d["ribbons"][ev["i"]]
+            return f"🎀 {r['name']}! {r['flavor']} (+{round((r['mult'] - 1) * 100)}% production)"
+        if ev["type"] == "bumper":
+            return f"🌾 Bumper crop! {ev['at']}× {d['buildings'][ev['b']]['name']} — +1% to everything."
+        if ev["type"] == "upgrade":
+            u = next((u for u in self.eco.all_upgrades() if u["id"] == ev["id"]), None)
+            return f"🛠 Someone bought {u['name']}!" if u else None
+        if ev["type"] == "rabbitCaught":
+            what = ("RABBIT FRENZY! Production ×7 for 30 seconds!" if ev["kind"] == "frenzy"
+                    else f"Lucky bundle! +{fmt(ev['gain'])} carrots!")
+            return f"🐇 Caught by a gardener somewhere on Earth — {what}"
+        if ev["type"] == "prestige":
+            return (f"🌸 SOMEONE SENT THE WHOLE GARDEN TO SEED. +{fmt(ev['gained'])} seeds "
+                    f"(+{ev['gained'] * 8}% forever) for everyone. A new spring begins.")
+        return None
+
     # ---------- main loop ----------
     async def run(self) -> None:
         last = time.monotonic()
@@ -86,8 +116,8 @@ class Patch:
             dt = now - last
             last = now
 
-            events = self.eco.tick(dt)
-            self._pending.extend(events)
+            for ev in self.eco.tick(dt):
+                self.emit(ev)
 
             # golden rabbit lifecycle (global!)
             if self.rabbit and now > self.rabbit["until"]:
@@ -140,22 +170,19 @@ class Patch:
         elif kind == "upgrade":
             uid = str(msg.get("id", ""))[:16]
             if eco.buy_upgrade(uid):
-                u = next(u for u in eco.all_upgrades() if u["id"] == uid)
-                self.announce(f"🛠 Someone bought {u['name']}!")
+                self.emit({"type": "upgrade", "id": uid})
 
         elif kind == "catch":
             if self.rabbit and now <= self.rabbit["until"]:
                 self.rabbit = None
                 self.next_rabbit = now + random.uniform(90, 240)
                 r = eco.rabbit_reward()
-                self.announce(f"🐇 Caught by a gardener somewhere on Earth — {r['text']}")
+                self.emit({"type": "rabbitCaught", "kind": r["kind"], "gain": r.get("gain", 0)})
 
         elif kind == "prestige":
             gained = eco.prestige()
             if gained:
-                self.announce(
-                    f"🌸 SOMEONE SENT THE WHOLE GARDEN TO SEED. +{fmt(gained)} seeds "
-                    f"(+{gained * 8}% forever) for everyone. A new spring begins.")
+                self.emit({"type": "prestige", "gained": gained})
                 self.save()
 
 
