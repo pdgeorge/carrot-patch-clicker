@@ -2,6 +2,8 @@
   <div id="ticker"><span id="ticker-text"></span></div>
 
   <div id="columns">
+    <div id="col-main">
+    <div id="cols-top">
     <section id="col-left">
       <h1 class="wordmark">CARROT <span>CLICKER</span></h1>
       <div id="bank">0</div>
@@ -27,6 +29,23 @@
       <div id="stats"></div>
       <div id="tooltip" class="hidden"></div>
     </section>
+    </div><!-- /cols-top -->
+
+    <section id="noticeboard">
+      <div class="board-half" id="board-tenders">
+        <div class="board-title">🪧 TENDERS</div>
+        <div id="tender-list"></div>
+        <div id="tender-sign">
+          <input id="tender-name" maxlength="20" placeholder="your name" autocomplete="off">
+          <button id="tender-btn">Sign the board</button>
+        </div>
+      </div>
+      <div class="board-half" id="board-gardeners">
+        <div class="board-title">🌱 GARDENERS</div>
+        <div id="gardener-list"></div>
+      </div>
+    </section>
+    </div><!-- /col-main -->
 
     <section id="col-right">
       <div class="panel-title shop-head">

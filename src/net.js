@@ -56,6 +56,9 @@ CC.Patch = class {
       this.ui.setPatchMode(true);
       if (first) this.ui.toast('🌍 Connected to the CARROT PATCH — one garden, whole world.');
       else this.ui.toast('🌍 Reconnected to the patch.');
+      /* re-sign the noticeboard silently so tallies keep landing (R11) */
+      const nm = this.ui.pref('carrot-tender-name');
+      if (nm) this.send({ type: 'name', name: nm });
     };
     ws.onmessage = e => {
       this._lastMsg = performance.now();
@@ -131,6 +134,8 @@ CC.Patch = class {
     } else if (msg.type === 'event') {
       /* structured world event (F1): ui decides words, sound, pixels */
       ui.patchEvent(msg.ev || {});
+    } else if (msg.type === 'name') {
+      ui.nameResult(msg);
     } else if (msg.type === 'toast') {
       /* legacy prose for pre-F1 clients — this client renders 'event'
          instead; ignoring avoids double toasts during the transition */

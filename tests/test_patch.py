@@ -131,10 +131,11 @@ import os  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from carrot_patch import main as patch_main  # noqa: E402
 
-# don't load any existing world state for the test
+# don't load any existing world state (or tender registry) for the test
 state_path = Path("/tmp/carrot_patch_test_state.json")
 os.environ["CARROT_PATCH_STATE"] = str(state_path)
 state_path.unlink(missing_ok=True)
+Path("/tmp/carrot_patch_test_state_tenders.db").unlink(missing_ok=True)
 
 app = patch_main.create_app()
 patch = app.state.patch
@@ -207,6 +208,31 @@ with TestClient(app) as client:
         check(seen["event"], "rabbit catch broadcast as structured event")
         check(seen["toast"], "…and as legacy prose for pre-F1 clients")
 
+        # noticeboard (R11): sign, tally, top-10 endpoint
+        def name_reply():
+            m = ws.receive_json()
+            for _ in range(40):
+                if m["type"] == "name":
+                    return m
+                m = ws.receive_json()
+            return m
+
+        ws.send_json({"type": "name", "name": "  Carrot   Fan  "})
+        r = name_reply()
+        check(r.get("ok") and r.get("name") == "Carrot Fan",
+              "name accepted and whitespace-normalised")
+        ws.send_json({"type": "name", "name": "shithead supreme"})
+        check(not name_reply().get("ok"), "blocklisted name rejected")
+
+        time.sleep(0.8)  # clear MIN_MSG_INTERVAL from earlier click batches
+        ws.send_json({"type": "clicks", "n": 7})
+        ws.send_json({"type": "buy", "b": 0, "n": 1})
+        time.sleep(0.05)
+        board = client.get("/api/board").json()
+        me = next((t for t in board["tenders"] if t["name"] == "Carrot Fan"), None)
+        check(me is not None and me["clicks"] >= 7 and me["buildings"] >= 1,
+              f"board tallies clicks and buildings under the good name ({me})")
+
     # persistence round-trip
     patch.eco.earn(12345)
     patch.save()
@@ -221,6 +247,7 @@ from fastapi import FastAPI  # noqa: E402
 mount_state = Path("/tmp/carrot_patch_mount_test.json")
 os.environ["CARROT_PATCH_STATE"] = str(mount_state)
 mount_state.unlink(missing_ok=True)
+Path("/tmp/carrot_patch_mount_test_tenders.db").unlink(missing_ok=True)
 
 site = FastAPI()
 sub = patch_main.create_app()

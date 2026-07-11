@@ -1,0 +1,21 @@
+# Noticeboard name blocklist — basic contains-check, one word per line
+# (DESIGN R11: crude by design; false positives on innocents are accepted).
+# Extend freely; comparisons are casefolded.
+fuck
+shit
+cunt
+bitch
+asshole
+wanker
+nigger
+nigga
+faggot
+retard
+hitler
+nazi
+rape
+cock
+dick
+pussy
+whore
+slut

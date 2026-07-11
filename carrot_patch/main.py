@@ -25,6 +25,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 
 from .economy import Economy, dist_dir, fmt, load_data
+from .tenders import TenderBook
 
 MAX_CLICKS_PER_MSG = 250     # anti-flood only, never game balance (DESIGN P4/R2):
                              # far above any human, high enough that auto-clickers
@@ -41,6 +42,11 @@ def state_file() -> Path:
                           Path(__file__).resolve().parent / "patch_state.json"))
 
 
+def tenders_file() -> Path:
+    """Tender registry (SQLite), kept beside the world save."""
+    return state_file().with_name(state_file().stem + "_tenders.db")
+
+
 class Patch:
     def __init__(self) -> None:
         self.eco = Economy(load_data())
@@ -49,6 +55,8 @@ class Patch:
                 self.eco.deserialize(json.loads(state_file().read_text()))
             except (json.JSONDecodeError, OSError):
                 pass  # corrupt or unreadable save: start a fresh garden
+        self.tenders = TenderBook(tenders_file(),
+                                  Path(__file__).resolve().parent / "blocklist.txt")
         self.clients: set[WebSocket] = set()
         self.click_window = 0          # clicks landed in the current snapshot window
         self.click_rate = 0            # last window's global clicks/sec, for display
@@ -100,7 +108,7 @@ class Patch:
         if ev["type"] == "rabbitCaught":
             what = ("RABBIT FRENZY! Production ×7 for 30 seconds!" if ev["kind"] == "frenzy"
                     else f"Lucky bundle! +{fmt(ev['gain'])} carrots!")
-            return f"🐇 Caught by a gardener somewhere on Earth — {what}"
+            return f"🐇 Caught by a tender somewhere on Earth — {what}"
         if ev["type"] == "prestige":
             return (f"🌸 SOMEONE SENT THE WHOLE GARDEN TO SEED. +{fmt(ev['gained'])} seeds "
                     f"(+{ev['gained'] * 8}% forever) for everyone. A new spring begins.")
@@ -147,25 +155,38 @@ class Patch:
                 self.save()
 
     # ---------- per-client messages ----------
-    def handle(self, msg: dict, conn: dict) -> None:
+    def handle(self, msg: dict, conn: dict) -> dict | None:
+        """Apply one intent. May return a reply to send only to this client."""
         kind = msg.get("type")
         eco = self.eco
         now = time.monotonic()
 
         if kind == "clicks":
             if now - conn["last_click_msg"] < MIN_MSG_INTERVAL:
-                return  # too chatty; batch harder
+                return None  # too chatty; batch harder
             conn["last_click_msg"] = now
             n = max(0, min(int(msg.get("n", 0)), MAX_CLICKS_PER_MSG))
             if n:
                 eco.do_clicks(n)
                 self.click_window += n
+                if conn.get("name"):
+                    self.tenders.bump(conn["name"], clicks=n)
 
         elif kind == "buy":
             b = msg.get("b")
             n = 10 if msg.get("n") == 10 else 1
             if isinstance(b, int) and 0 <= b < len(eco.owned):
-                eco.buy(b, n)
+                bought = eco.buy(b, n)
+                if bought and conn.get("name"):
+                    self.tenders.bump(conn["name"], buildings=bought)
+
+        elif kind == "name":
+            # sign the noticeboard (R11): recognition, never resources
+            name = self.tenders.clean(msg.get("name", ""))
+            if name:
+                conn["name"] = name
+                self.tenders.bump(name)  # appear on the board immediately
+            return {"type": "name", "ok": name is not None, "name": name or ""}
 
         elif kind == "upgrade":
             uid = str(msg.get("id", ""))[:16]
@@ -224,6 +245,12 @@ def create_app() -> FastAPI:
             "cps": patch.eco.cps(),
         })
 
+    @app.get("/api/board")
+    async def board() -> JSONResponse:
+        """Noticeboard tenders, top 10 by clicks (R11). Clients poll ~1/min."""
+        ensure_loop()
+        return JSONResponse({"tenders": patch.tenders.top(10)})
+
     @app.websocket("/ws")
     async def ws_endpoint(ws: WebSocket) -> None:
         ensure_loop()
@@ -251,7 +278,9 @@ def create_app() -> FastAPI:
                 except json.JSONDecodeError:
                     continue
                 if isinstance(msg, dict):
-                    patch.handle(msg, conn)
+                    reply = patch.handle(msg, conn)
+                    if reply:
+                        await ws.send_text(json.dumps(reply))
         except WebSocketDisconnect:
             pass
         finally:

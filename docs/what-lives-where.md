@@ -10,7 +10,8 @@ something.
 *Audited at build `df51b75` (2026-07-11), by reading every file in `src/`
 and `carrot_patch/`. Updated in the same PR as R9 (solo demoted to dev
 tool), which resolved the player-facing half of F2; updated again in the
-R2+F1 PR, which resolved F1 (structured events).*
+R2+F1 PR, which resolved F1 (structured events), and in the R11 PR
+(noticeboard).*
 
 ## The target (where things SHOULD live)
 
@@ -54,6 +55,9 @@ the engine's is a place the shadow can drift.
 | Solo offline earnings (50%, 8 h) / server catch-up (100%, 24 h) | `core.js` / `economy.py` | ✅ deliberate asymmetry, documented |
 | Canvas art, particles, squash, audio synth | `ui.js` (`CC.audio`) | ✅ skin |
 | Build id | `build.js` → `CC.BUILD` → corner tag | ✅ |
+| Noticeboard: registry + name rules | `carrot_patch/tenders.py` (SQLite) + `main.py` — the server thinks | ✅ |
+| Noticeboard: gardeners list | `contributors.txt` → embedded by `build.js` — content | ✅ |
+| Noticeboard: rendering, polling, sign UI | `ui.js` / `page.html` / `styles.css` + board art — skin | ✅ |
 | `?grant=N` URL parameter (free carrots) | `ui.js` bootstrap | ⚠ see F6 |
 
 ## Findings, ranked

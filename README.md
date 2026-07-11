@@ -87,6 +87,12 @@ Env vars: `CARROT_PATCH_STATE` (world save file), `CARROT_PATCH_DIST`
   the frenzy for everyone.
 - **Go to Seed prestiges the entire planet.** The confirmation dialog is
   appropriately dramatic. Seeds and ribbons persist forever.
+- **The community noticeboard** (under the carrot): sign it with a name and
+  your clicks + buildings join the world's top-10 **Tenders**; the
+  **Gardeners** half lists the people who built the game — add yourself to
+  `contributors.txt` in your PR. Names are optional, filtered by a basic
+  blocklist, and grant nothing but glory (seeds are never shown: going to
+  seed stays anonymous).
 
 All rate limits and game numbers are documented in the
 [Tunables table in DESIGN.md](DESIGN.md#tunables--limits).
@@ -97,6 +103,10 @@ All rate limits and game numbers are documented in the
   (override with `CARROT_PATCH_STATE`, e.g. a Docker volume). Autosaves
   every 30 s (atomic write), plus on prestige and shutdown. If the server
   is down a while, the garden catches up on restart (capped at 24 h).
+- **The tender registry** (noticeboard names → click/building tallies)
+  lives in SQLite at `<state>_tenders.db`, beside the world save. Your
+  chosen name is the one thing a served page keeps in localStorage — a
+  display preference, not game state.
 - **The dev garden** (`file://` only) saves to browser localStorage
   (`carrot-clicker-save`) every 15 s and on tab close/hide, with offline
   earnings at half rate capped at 8 h. Served pages never read or write

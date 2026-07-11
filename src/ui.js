@@ -68,6 +68,26 @@ CC.UI = class {
       this.$('wipe-btn').classList.add('hidden'); /* nothing local to wipe */
     }
 
+    /* community noticeboard (R11) */
+    const glist = this.$('gardener-list');
+    for (const n of (CC.GARDENERS || [])) {
+      const d = document.createElement('div');
+      d.textContent = n;
+      glist.appendChild(d);
+    }
+    if (this.worldMode) {
+      const saved = this.pref('carrot-tender-name');
+      if (saved) this.$('tender-name').value = saved;
+      this.$('tender-btn').addEventListener('click', () => this.signBoard());
+      this.$('tender-name').addEventListener('keydown', e => { if (e.key === 'Enter') this.signBoard(); });
+      this.fetchBoard();
+      setInterval(() => this.fetchBoard(), 60000);
+    } else {
+      this.$('tender-sign').classList.add('hidden');
+      this.$('tender-list').innerHTML =
+        '<div class="board-empty">The world signs here — this is the dev garden.</div>';
+    }
+
     let last = performance.now();
     const frame = now => {
       const dt = Math.min(0.1, (now - last) / 1000);
@@ -102,7 +122,7 @@ CC.UI = class {
   updatePatchLine() {
     if (this.patchOn()) {
       this.$('patch-line').textContent =
-        `🌍 ${this.patch.online} gardener${this.patch.online === 1 ? '' : 's'} tending · ${CC.fmt(this.patch.clickRate)} clicks/s worldwide`;
+        `🌍 ${this.patch.online} tender${this.patch.online === 1 ? '' : 's'} tending · ${CC.fmt(this.patch.clickRate)} clicks/s worldwide`;
     }
   }
 
@@ -111,6 +131,64 @@ CC.UI = class {
   setPatchResync() {
     this.$('patch-line').classList.remove('hidden');
     this.$('patch-line').textContent = '🌍 Re-syncing with the patch…';
+  }
+
+  /* ---------------- noticeboard (R11) ---------------- */
+  /* localStorage preference — NOT game state, so allowed in world mode:
+     it's your signature, and it must survive a page refresh */
+  pref(k) { try { return this.store && this.store.getItem(k); } catch (e) { return null; } }
+  setPref(k, v) { try { if (this.store) this.store.setItem(k, v); } catch (e) { /* private mode */ } }
+
+  signBoard() {
+    const name = this.$('tender-name').value.trim();
+    if (!name) return;
+    if (!this.patch.on) { this.toast('🪧 Still reaching the patch — try again in a moment.'); return; }
+    this._signing = true;
+    this.patch.send({ type: 'name', name });
+  }
+
+  nameResult(msg) {
+    const loud = this._signing;
+    this._signing = false;
+    if (msg.ok) {
+      this.setPref('carrot-tender-name', msg.name);
+      this.$('tender-name').value = msg.name;
+      if (loud) this.toast(`🪧 Signed the noticeboard as ${msg.name}.`);
+      this.fetchBoard();
+    } else if (loud) {
+      this.toast('🪧 That name won’t fit on the noticeboard.');
+    }
+  }
+
+  fetchBoard() {
+    if (!this.worldMode) return;
+    const dir = location.pathname.replace(/[^/]*$/, '');
+    fetch(dir + 'api/board').then(r => r.json())
+      .then(j => this.renderTenders(j.tenders || []))
+      .catch(() => { /* decorative; the minute poll will retry */ });
+  }
+
+  renderTenders(list) {
+    const box = this.$('tender-list');
+    box.innerHTML = '';
+    if (!list.length) {
+      const d = document.createElement('div');
+      d.className = 'board-empty';
+      d.textContent = 'Nobody has signed yet — be the first.';
+      box.appendChild(d);
+      return;
+    }
+    for (const t of list) {
+      /* textContent, never innerHTML: names are player input */
+      const row = document.createElement('div');
+      row.className = 't-row';
+      const who = document.createElement('span');
+      who.textContent = t.name;
+      const tally = document.createElement('span');
+      tally.textContent = `${CC.fmt(t.clicks)} clicks · ${CC.fmt(t.buildings)} built`;
+      row.append(who, tally);
+      box.appendChild(row);
+    }
   }
 
   /* ---------------- persistence (dev garden only) ---------------- */
@@ -345,7 +423,7 @@ CC.UI = class {
       const what = ev.kind === 'frenzy'
         ? 'RABBIT FRENZY! Production ×7 for 30 seconds!'
         : `Lucky bundle! +${CC.fmt(ev.gain || 0)} carrots!`;
-      this.toast(`🐇 Caught by a gardener somewhere on Earth — ${what}`);
+      this.toast(`🐇 Caught by a tender somewhere on Earth — ${what}`);
     } else if (ev.type === 'prestige') {
       CC.audio.seed();
       this.toast(`🌸 SOMEONE SENT THE WHOLE GARDEN TO SEED. +${CC.fmt(ev.gained)} seeds ` +
