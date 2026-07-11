@@ -26,8 +26,12 @@ pip install -r requirements.txt
 uvicorn carrot_patch.main:app --port 8420  # world server at http://localhost:8420
 ```
 
-Opening `carrot_patch/dist/clicker.html` as a plain file also works — the
-game detects there's no server and runs single-player (localStorage saves).
+Opening `carrot_patch/dist/clicker.html` as a plain `file://` page runs the
+**dev garden** — a private single-player game (localStorage saves) for
+working on UX without the server. It is a development tool, not a mode
+players can reach: a served page is always the shared world, and shows
+"reaching the carrot patch…" rather than going solo if the server is
+unreachable (DESIGN P6).
 
 `node build.js` prints a 7-char **build id** (a content hash of all game
 sources) and the page shows the same id bottom-right. To confirm a deploy
@@ -64,7 +68,8 @@ Env vars: `CARROT_PATCH_STATE` (world save file), `CARROT_PATCH_DIST`
 > land on different workers and see different worlds while all believing
 > they're "connected". Also make sure your reverse proxy forwards WebSocket
 > upgrades (nginx: `proxy_set_header Upgrade/Connection`), or every player
-> silently ends up in single-player. See [DESIGN R7](DESIGN.md#known-gaps--roadmap).
+> will be stuck at "reaching the carrot patch…" forever.
+> See [DESIGN R7](DESIGN.md#known-gaps--roadmap).
 
 ## How the multiplayer works
 
@@ -93,16 +98,17 @@ All rate limits and game numbers are documented in the
   (override with `CARROT_PATCH_STATE`, e.g. a Docker volume). Autosaves
   every 30 s (atomic write), plus on prestige and shutdown. If the server
   is down a while, the garden catches up on restart (capped at 24 h).
-- **Solo mode** (no server reachable) saves to browser localStorage
+- **The dev garden** (`file://` only) saves to browser localStorage
   (`carrot-clicker-save`) every 15 s and on tab close/hide, with offline
-  earnings at half rate capped at 8 h. Once you've connected to the patch,
-  the client stops touching localStorage so your solo garden is preserved —
-  the two gardens never merge.
+  earnings at half rate capped at 8 h. Served pages never read or write
+  localStorage — world state lives on the server, and the two gardens
+  never merge.
 - **Silent disconnects self-heal** (DESIGN R1): the server heartbeats a
   snapshot every second, so if nothing arrives for 5 s — or the tab wakes
   from sleep — the client redials and re-syncs automatically, showing
-  "re-syncing…" in the patch line meanwhile. A client that never finds a
-  server says so with a toast before settling into solo mode.
+  "re-syncing…" in the patch line meanwhile. A served page that has never
+  reached the server shows "reaching the carrot patch…" and retries forever
+  — it never falls back to a private game (DESIGN R9).
 
 ## Tests — run both before PRing
 
@@ -131,6 +137,8 @@ change **formulas** in `src/core.js`, you must mirror the change in
 - `carrot_patch/dist/` — built client + game data (committed, so hosts
   don't need node)
 - `tests/` — pacing sim (node) and parity/protocol suite (python)
+- `docs/` — reports and audits, e.g. [what-lives-where.md](docs/what-lives-where.md)
+  (where each subsystem *actually* lives vs. where DESIGN.md says it should)
 
 Extracted from the [Carrot-simulator](../Carrot-simulator) project's
 `carrot-clicker-simulator` branch, where this game was first grown.

@@ -45,11 +45,16 @@ Numbered so they can be cited in reviews (EG: "this violates P4").
   browser displaying stale state while believing it's connected is a bug,
   full stop. Staleness must be detected and resolved by re-syncing, and the
   connection status must always be visible to the player.
-- **P6 — Solo mode is a fallback, never a surprise.** Opening the page
-  without a reachable server runs a private single-player garden
-  (localStorage). The UI must make unmissable which mode you're in — two
-  players comparing numbers should immediately see if one of them is
-  actually alone.
+- **P6 — Solo is a dev tool, never a player state.** A served page
+  (http/https) is *always* the world game: connected, re-syncing, or
+  visibly reaching for the server — it never falls back to a private
+  garden, no matter how long the server is unreachable. The private
+  single-player garden (localStorage) exists only on `file://`, for
+  development and for trying the repo without running the server. There is
+  no legitimate scenario where a player *falls into* solo play; the
+  one imaginable want — "keep playing my own branch while offline" — is a
+  deliberate one-way fork a player would have to choose (R10, unscheduled),
+  never a state they land in by accident.
 - **P7 — Content is data; the engine is stable.** Moving the game forward
   (new upgrades, gates, buildings, flavor) happens in `src/data.js` alone;
   look-and-feel happens in `src/page.html` / `src/styles.css` / `src/ui.js`.
@@ -103,6 +108,12 @@ The layers, and when each is allowed to change (P7):
 | **Engine** (paired) | `src/core.js` ↔ `carrot_patch/economy.py` | Rarely: a new mechanic or condition primitive. Every change is mirrored; the parity suite fails until both sides agree. |
 | **Protocol** (paired) | `src/net.js` ↔ `carrot_patch/main.py` | Rarely: wire format, sync, limits. |
 
+This table is the law; reality doesn't fully comply yet.
+[docs/what-lives-where.md](docs/what-lives-where.md) is the standing
+audit — a **report, not a law** — of where every subsystem actually lives
+today, with the known violations ranked. Consult it before moving code
+between layers, and update it in the same PR when you do.
+
 - The economy exists twice (JS for solo/prediction, Python for the world).
   Both read the same `patch-data.json`; `tests/test_patch.py` asserts the
   two implementations stay numerically identical.
@@ -117,7 +128,7 @@ The layers, and when each is allowed to change (P7):
 | What | Where | When | Format |
 | --- | --- | --- | --- |
 | **World state** (the real game) | `carrot_patch/patch_state.json`, or the `CARROT_PATCH_STATE` env var (point it at a persistent volume in Docker) | Every 30 s, plus on prestige and on server shutdown; written atomically (tmp file + rename) | JSON via `economy.serialize()` |
-| **Solo save** (fallback mode only) | Browser `localStorage`, key `carrot-clicker-save` | Every 15 s, on tab hide, on page close | JSON via `core.serialize()` |
+| **Dev-garden save** (`file://` only) | Browser `localStorage`, key `carrot-clicker-save` | Every 15 s, on tab hide, on page close | JSON via `core.serialize()` |
 
 - **Connecting to the patch = loading.** The server sends a full snapshot
   the moment you connect and every second after; your display is always at
@@ -125,15 +136,18 @@ The layers, and when each is allowed to change (P7):
   dropped Wi-Fi), the client watchdog notices the missing heartbeat within
   ~5 s — or the instant the tab becomes visible again — and redials, which
   re-syncs by design (R1).
-- Once a client has connected to the patch, it **stops writing localStorage**
-  so world state never overwrites your private solo save. The two gardens
-  are separate; there is deliberately no merging of solo progress into the
-  world.
+- On a served page, **localStorage is never read or written** — world state
+  lives on the server, full stop. Before the first-ever snapshot the page
+  shows "🌍 Reaching the carrot patch…" and ignores input (there is nothing
+  real to act on yet); after that, disconnections keep the garden ticking
+  as a labeled prediction until re-sync. The dev garden's localStorage save
+  is untouched by world play, and there is deliberately no merging of dev
+  progress into the world (P2 — it would be a cheat vector).
 - **Server downtime ≠ lost growth:** on restart the server simulates the
   time it was down at full CpS, capped at 24 h.
-- **Solo offline earnings:** solo mode earns at half CpS while closed,
-  capped at 8 h. (Patch mode needs no offline earnings — the world keeps
-  running on the server whether you're there or not.)
+- **Dev-garden offline earnings:** the `file://` garden earns at half CpS
+  while closed, capped at 8 h. (The world needs no offline earnings — it
+  keeps running on the server whether anyone's there or not.)
 
 ## Tunables & limits
 
@@ -150,15 +164,15 @@ restatement of the value.
 | Snapshot broadcast | 1/s | `carrot_patch/main.py` `SNAPSHOT_INTERVAL` | Fast enough to feel live, cheap enough for many clients; also the world tick rate. |
 | World autosave | 30 s | `carrot_patch/main.py` `SAVE_INTERVAL` | Bounds loss on a crash to 30 s of a garden that regrows it in 30 s anyway. |
 | Server-down catch-up | full CpS, cap 24 h | `carrot_patch/economy.py` | Downtime shouldn't punish the world; the cap stops a year-old save from minting absurdity. |
-| Solo autosave | 15 s + on hide/close | `src/ui.js` | localStorage is cheap; losing more than 15 s feels bad. |
-| Solo offline earnings | 50% CpS, cap 8 h | `src/core.js` | Rewards returning without making leaving optimal. Solo only. |
+| Dev-garden autosave | 15 s + on hide/close (`file://` only) | `src/ui.js` | localStorage is cheap; losing more than 15 s feels bad. Never runs on a served page. |
+| Dev-garden offline earnings | 50% CpS, cap 8 h (`file://` only) | `src/core.js` | Rewards returning without making leaving optimal. |
 | Building cost curve | ×1.15 per owned | `src/core.js` / `economy.py` | Genre-standard geometric ramp (same as Cookie Clicker). |
 | Seed formula | ⌊√(lifetime/1e6)⌋ | `src/core.js` / `economy.py` | First seed at 1M lifetime carrots; square root keeps late seeds meaningful but not runaway. |
 | Seed bonus | +8%/seed, forever | `src/core.js` / `economy.py` | Big enough that a world prestige feels worth the reset. |
 | Rabbit spawn gap | 60–150 s first, then 90–240 s | `carrot_patch/main.py` | One shared rabbit; scarce enough to be an event, common enough to matter. |
 | Rabbit lifetime | 12 s | `carrot_patch/main.py` | First-click-on-Earth race needs a real window across time zones and reflexes. |
 | Frenzy | ×7 for 30 s | `src/core.js` / `economy.py` | The click-renaissance enabler (P4/arc §3). |
-| Reconnect retry | every 4 s (forever, once ever connected); 3 tries then solo toast (never connected) | `src/net.js` | A restarting server should reclaim its players; plain static hosting shouldn't poll forever — and going solo is announced, never silent (P6). |
+| Reconnect retry | every 4 s, forever — served pages never give up and never fall back to solo | `src/net.js` | P6: a served page is always the world game. A restarting server, or a proxy that comes good, reclaims its players; until then the page visibly waits ("reaching the carrot patch…") rather than becoming a different game. |
 | Staleness threshold | 5 s without any server message | `src/net.js` `CC.PATCH_STALE_MS` | The server heartbeats a snapshot every 1 s, so 5 s of silence means the socket is dead even if the browser doesn't know it (half-open TCP). Redialing re-syncs (P5). |
 | Watchdog cadence | every 2 s, plus on tab-becomes-visible | `src/net.js` | Frequent enough to catch staleness fast while foregrounded; the visibility hook covers waking from sleep, when background timers were throttled. |
 
@@ -199,16 +213,18 @@ Numbered for reference. R2 and R7 are the active priorities.
   never fires), the client used to believe it was connected and display
   frozen state indefinitely, violating P5. Now a watchdog redials whenever
   no server message arrives for 5 s (checked every 2 s and on
-  `visibilitychange → visible`), the patch line shows "re-syncing…" while
-  disconnected instead of pretending to be solo, and a client that never
-  finds a server announces solo mode with a toast (P6).
+  `visibilitychange → visible`), and the patch line shows "re-syncing…"
+  while disconnected instead of pretending to be solo. (R1 originally also
+  added a solo-fallback toast for never-connected clients; R9 removed the
+  fallback itself.)
 - **R2 — Retire the 40-click cap.** Replace `MAX_CLICKS_PER_MSG = 40` with
   an anti-flood-only ceiling of 250, per P4. Mirror the new number in this
   table and in the in-game help (R4).
-- **R3 — Unmissable mode indicator.** PATCH vs CLICKER wordmark + a status
-  line exist but are subtle. Make connection state (connected / re-syncing /
-  solo) explicit in the UI, so nobody plays solo for a week thinking
-  they're behind the world.
+- **R3 — Unmissable connection indicator.** The wordmark + status line
+  exist but are subtle. Make connection state (connected / re-syncing /
+  reaching) explicit in the UI. (R9 removed the worst case — a served page
+  can no longer *be* solo — but "how live is what I'm seeing" should still
+  be one glance.)
 - **R4 — Rules visible in-game.** A "how the patch works" panel (batching,
   what's shared, where saves live, the click curve) so players don't need
   the repo to understand the game. This document is the source; the panel
@@ -236,6 +252,20 @@ Numbered for reference. R2 and R7 are the active priorities.
   conditions](#unlock-conditions). This is the enabling change for P7:
   content PRs combine primitives; nobody touches the engines. No existing
   upgrade's gate changed.
+- **R9 — Solo demoted to dev tool. ✅ Shipped.** Served pages no longer
+  fall back to a private garden under any circumstances: they redial
+  forever, show "reaching the carrot patch…" (and ignore input) until the
+  first snapshot, and never touch localStorage. The solo game survives only
+  on `file://` as the dev garden. This rewrote P6 and made the
+  which-game-am-I-playing class of incidents structurally impossible; it
+  also defused the player-facing half of the census's F2 (the dev garden's
+  divergent rabbit timing no longer affects anyone's comparison with the
+  world).
+- **R10 — Fork the garden (unscheduled, maybe never).** The one legitimate
+  "solo" want: deliberately branching the world into a private offline
+  sandbox. If ever built it must be an explicit choice with an explicit
+  warning that the fork is **one-way** — private progress can never merge
+  back into the world (P2: that's a cheat vector, not a feature).
 
 ## Process for changing the game
 

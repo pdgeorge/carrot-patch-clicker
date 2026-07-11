@@ -53,14 +53,20 @@ CC.UI = class {
       } catch (e) { return null; }
     })();
 
+    /* served page = the world game, always; file:// = private dev garden (P6) */
+    this.worldMode = location.protocol.startsWith('http');
+
     this.buildStatic();
     this.$('build-tag').textContent = `build ${CC.BUILD || 'dev'}`;
     this.load();
     this.bind();
     this.setTicker();
     this.tooltip(null);
-    this._patchedOnce = false;
     this.patch = new CC.Patch(this);
+    if (this.worldMode) {
+      this.setPatchWaiting();
+      this.$('wipe-btn').classList.add('hidden'); /* nothing local to wipe */
+    }
 
     let last = performance.now();
     const frame = now => {
@@ -77,11 +83,20 @@ CC.UI = class {
   /* ---------------- patch (global) mode ---------------- */
   patchOn() { return !!(this.patch && this.patch.on); }
 
+  /* world mode before the first-ever snapshot: nothing real to act on yet */
+  awaitingWorld() { return this.worldMode && !(this.patch && this.patch.everSynced); }
+
   setPatchMode(on) {
-    if (on) this._patchedOnce = true; /* never overwrite the solo save with world state */
     document.querySelector('.wordmark span').textContent = on ? 'PATCH' : 'CLICKER';
     this.$('patch-line').classList.toggle('hidden', !on);
     this.updatePatchLine();
+  }
+
+  /* served page, no snapshot yet: branded as the world, visibly not there */
+  setPatchWaiting() {
+    document.querySelector('.wordmark span').textContent = 'PATCH';
+    this.$('patch-line').classList.remove('hidden');
+    this.$('patch-line').textContent = '🌍 Reaching the carrot patch…';
   }
 
   updatePatchLine() {
@@ -98,13 +113,13 @@ CC.UI = class {
     this.$('patch-line').textContent = '🌍 Re-syncing with the patch…';
   }
 
-  /* ---------------- persistence ---------------- */
+  /* ---------------- persistence (dev garden only) ---------------- */
   save() {
-    if (this._patchedOnce) return; /* world state lives on the server */
+    if (this.worldMode) return; /* world state lives on the server */
     if (this.store) this.store.setItem('carrot-clicker-save', JSON.stringify(this.core.serialize()));
   }
   load() {
-    if (!this.store) return;
+    if (this.worldMode || !this.store) return;
     try {
       const raw = this.store.getItem('carrot-clicker-save');
       if (!raw) return;
@@ -217,6 +232,7 @@ CC.UI = class {
 
   /* ---------------- actions ---------------- */
   doClick(mx, my) {
+    if (this.awaitingWorld()) return;
     const g = this.core.click();
     if (this.patchOn()) this.patch.pending++;
     this.squash = 1;
@@ -233,8 +249,9 @@ CC.UI = class {
   }
 
   buyBuilding(i, n) {
+    if (this.awaitingWorld()) return;
     CC.audio.ensure();
-    if (this.patchOn()) {
+    if (this.worldMode) {
       /* intent only — the next snapshot carries the world's answer */
       if (this.core.bank >= this.core.costOf(i, 1)) CC.audio.thunk();
       this.patch.send({ type: 'buy', b: i, n });
@@ -246,8 +263,9 @@ CC.UI = class {
   }
 
   buyUpgrade(id) {
+    if (this.awaitingWorld()) return;
     CC.audio.ensure();
-    if (this.patchOn()) {
+    if (this.worldMode) {
       this.patch.send({ type: 'upgrade', id });
       this.tooltip(null);
       return;
@@ -259,7 +277,9 @@ CC.UI = class {
   }
 
   catchRabbit() {
-    if (this.patchOn()) {
+    if (this.worldMode) {
+      /* worldMode, not patchOn: during a re-sync gap the solo reward path
+         must never run against predicted world state */
       this.patch.send({ type: 'catch' });
       this.rabbit = null; /* server will announce who-caught-what */
       return;
@@ -274,9 +294,10 @@ CC.UI = class {
   }
 
   askPrestige() {
+    if (this.awaitingWorld()) return;
     const n = this.core.pendingSeeds();
     if (n < 1) return;
-    const patch = this.patchOn();
+    const patch = this.worldMode;
     this.$('modal-title').textContent = patch ? '🌸 Send the WORLD to Seed?' : '🌸 Go to Seed?';
     this.$('modal-body').innerHTML = (patch
       ? `This is the <b>shared garden</b>. Going to seed resets it for <b>every gardener on Earth</b> —`
@@ -353,8 +374,9 @@ CC.UI = class {
   /* ---------------- per-frame ---------------- */
   update(dt) {
     const events = this.core.tick(dt);
-    /* in patch mode the server announces ribbons/bumpers to everyone */
-    if (!this.patchOn()) {
+    /* in world mode the server announces ribbons/bumpers to everyone;
+       local events are dev-garden-only (never fired off predicted state) */
+    if (!this.worldMode) {
       for (const e of events) {
         if (e.type === 'ribbon') {
           CC.audio.fanfare();
@@ -366,8 +388,8 @@ CC.UI = class {
       }
     }
 
-    /* golden rabbit lifecycle (locally scheduled only in solo mode) */
-    if (!this.patchOn() && !this.rabbit && this.t >= this.nextRabbit) {
+    /* golden rabbit lifecycle (locally scheduled only in the dev garden) */
+    if (!this.worldMode && !this.rabbit && this.t >= this.nextRabbit) {
       this.rabbit = { x: -30, y: this.soilY - 14, dir: 1, born: this.t };
     }
     if (this.rabbit) {
