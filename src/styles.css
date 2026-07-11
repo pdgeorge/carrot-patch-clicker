@@ -62,7 +62,7 @@
   display: flex;
   margin-top: 16px;
   min-height: 250px;
-  padding: 34px 38px;
+  padding: 34px 8px; /* the png's frame is thin at stretched widths; 8px sits names snug to it (pd, eyeballed live) */
   box-sizing: border-box;
   background: linear-gradient(160deg, #6b4a26, #4a3218);
   background-size: 100% 100%;
