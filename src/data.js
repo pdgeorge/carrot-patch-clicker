@@ -42,6 +42,19 @@ CC.TIERS = [
   { need: 100, costMult: 5000, prefix: 'Mythic' },
 ];
 
+/* Any upgrade below (click / global / synergy) may carry an optional
+   `unlock: [ ... ]` list that REPLACES its type's default visibility rule;
+   every condition must hold. Conditions (see DESIGN.md "Unlock conditions"):
+     { owned: i, n: N }   own ≥ N of building index i (0 = Window Box, …)
+     { lifetime: N }      lifetime harvest ≥ N carrots
+     { seeds: N }         seeds ≥ N
+     { clicks: N }        lifetime clicks ≥ N
+     { bought: 'id' }     another upgrade already bought
+   Example — a click upgrade that appears only after 50 Garden Plots and
+   another purchase:  unlock: [{ owned: 1, n: 50 }, { bought: 'c0' }]
+   Without `unlock`, defaults apply: click/global show at lifetime ≥ cost/4;
+   synergy at needTarget/needPer. Combining primitives here never requires
+   touching core.js or economy.py (DESIGN P7). */
 CC.CLICK_UPGRADES = [
   { id: 'c0', name: 'Calloused Thumb', cost: 100, mult: 2,
     flavor: 'The blister becomes a callus. The callus becomes technique.' },

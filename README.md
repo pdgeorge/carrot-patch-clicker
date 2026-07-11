@@ -115,7 +115,11 @@ python tests/test_patch.py   # JS<->Python economy parity + live websocket
 
 The parity suite is what lets the economy live in two languages: if you
 change game numbers in `src/data.js`, run `node build.js` (regenerates
-`patch-data.json`) and both sides stay identical by construction. If you
+`patch-data.json`) and both sides stay identical by construction. That
+includes gating: upgrades take a declarative `unlock: [...]` list (own N
+of a building, lifetime harvest, seeds, clicks, other upgrades — see
+[Unlock conditions in DESIGN.md](DESIGN.md#unlock-conditions)), so new
+content — however it's gated — is a `data.js`-only change. If you
 change **formulas** in `src/core.js`, you must mirror the change in
 `carrot_patch/economy.py` — the parity test will fail until you do.
 

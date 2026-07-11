@@ -17,7 +17,7 @@ strangers, and doing your part.
 
 ## Principles
 
-Numbered so they can be cited in reviews ("this violates P4").
+Numbered so they can be cited in reviews (EG: "this violates P4").
 
 - **P1 — One world.** All game state is global and shared. No per-player
   banks, buildings, or seeds. A feature that gives one player something the
@@ -50,6 +50,17 @@ Numbered so they can be cited in reviews ("this violates P4").
   (localStorage). The UI must make unmissable which mode you're in — two
   players comparing numbers should immediately see if one of them is
   actually alone.
+- **P7 — Content is data; the engine is stable.** Moving the game forward
+  (new upgrades, gates, buildings, flavor) happens in `src/data.js` alone;
+  look-and-feel happens in `src/page.html` / `src/styles.css` / `src/ui.js`.
+  The paired engines change rarely, and only to add *primitives* that
+  content then combines declaratively (see [Unlock
+  conditions](#unlock-conditions)). If adding one piece of content requires
+  an engine edit, the engine is missing a primitive — add the primitive
+  (mirrored in both languages, parity-tested), never a special case. And a
+  boundary on P3: its transparency duty covers *system* rules (caps, rates,
+  sync); content unlocks are allowed to be mysterious in-game — discovery
+  is the fun, and `data.js` is public anyway.
 
 ## How the game plays (intended arc)
 
@@ -82,6 +93,15 @@ src/ (vanilla JS, no deps)          carrot_patch/ (FastAPI)
         build.js bundles src/ → carrot_patch/dist/  ▼
         (data.js → patch-data.json, shared by both) patch_state.json
 ```
+
+The layers, and when each is allowed to change (P7):
+
+| Layer | Files | Changes when |
+| --- | --- | --- |
+| **Content** | `src/data.js` | Any game-design change: buildings, upgrades, unlock gates, ribbons, news. Most PRs should live here. |
+| **UX** | `src/page.html`, `src/styles.css`, `src/ui.js` | Look, feel, layout, juice. Never game rules. |
+| **Engine** (paired) | `src/core.js` ↔ `carrot_patch/economy.py` | Rarely: a new mechanic or condition primitive. Every change is mirrored; the parity suite fails until both sides agree. |
+| **Protocol** (paired) | `src/net.js` ↔ `carrot_patch/main.py` | Rarely: wire format, sync, limits. |
 
 - The economy exists twice (JS for solo/prediction, Python for the world).
   Both read the same `patch-data.json`; `tests/test_patch.py` asserts the
@@ -142,6 +162,34 @@ restatement of the value.
 | Staleness threshold | 5 s without any server message | `src/net.js` `CC.PATCH_STALE_MS` | The server heartbeats a snapshot every 1 s, so 5 s of silence means the socket is dead even if the browser doesn't know it (half-open TCP). Redialing re-syncs (P5). |
 | Watchdog cadence | every 2 s, plus on tab-becomes-visible | `src/net.js` | Frequent enough to catch staleness fast while foregrounded; the visibility hook covers waking from sleep, when background timers were throttled. |
 
+## Unlock conditions
+
+The content-author's gating vocabulary (R8). Any data-defined upgrade
+(click / global / synergy) may carry `unlock: [ ... ]` — a list of
+conditions that **replaces** the type's default visibility rule; the
+upgrade appears only when *every* condition holds:
+
+| Condition | Meaning |
+| --- | --- |
+| `{ owned: i, n: N }` | own ≥ N of building index `i` (0 = Window Box, 1 = Garden Plot, …) |
+| `{ lifetime: N }` | lifetime harvest ≥ N carrots |
+| `{ seeds: N }` | seeds ≥ N |
+| `{ clicks: N }` | lifetime clicks ≥ N (clicks survive prestige) |
+| `{ bought: 'id' }` | another upgrade already bought |
+
+Without `unlock`, defaults apply: click/global upgrades show at lifetime ≥
+cost ÷ 4; synergy at `needTarget`/`needPer`; generated building tiers at
+their owned-count. Unknown condition types **fail closed** (the upgrade
+stays hidden), so a typo can't accidentally open a gate — and old servers
+meeting future conditions hide rather than misbehave.
+
+Keep this vocabulary small and boring: every primitive is implemented
+twice (`condMet` in `core.js`, `cond_met` in `economy.py`) and
+parity-tested. A handful of primitives combined in data covers enormous
+design space; a bespoke primitive per upgrade would recreate hardcoding
+with extra steps. New primitives are engine changes — mirror them, extend
+the parity test, and add a row here in the same commit.
+
 ## Known gaps & roadmap
 
 Numbered for reference. R2 and R7 are the active priorities.
@@ -182,6 +230,12 @@ Numbered for reference. R2 and R7 are the active priorities.
   writes a random world-instance id into the save and refuses to start (or
   loudly warns) when it detects another live process owning the same state
   file, plus the instance id in `/api/state` so a mismatch is diagnosable.
+- **R8 — Declarative unlock conditions. ✅ Shipped.** Upgrades can be gated
+  on anything (building counts, lifetime harvest, seeds, clicks, other
+  upgrades) straight from `data.js` — see [Unlock
+  conditions](#unlock-conditions). This is the enabling change for P7:
+  content PRs combine primitives; nobody touches the engines. No existing
+  upgrade's gate changed.
 
 ## Process for changing the game
 

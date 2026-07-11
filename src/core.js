@@ -50,8 +50,27 @@ CC.Core = class {
     return this._upgrades;
   }
 
+  /* Declarative unlock conditions (DESIGN R8/P7): `unlock: [...]` on any
+     data-defined upgrade replaces its type's default visibility rule; all
+     conditions must hold. Vocabulary (mirrored in carrot_patch/economy.py):
+       { owned: i, n: N }   own ≥ N of building index i
+       { lifetime: N }      lifetime harvest ≥ N
+       { seeds: N }         seeds ≥ N
+       { clicks: N }        lifetime clicks ≥ N (clicks survive prestige)
+       { bought: 'id' }     another upgrade already bought
+     Unknown conditions fail closed: the upgrade stays hidden. */
+  condMet(c) {
+    if (c.owned !== undefined) return this.owned[c.owned] >= c.n;
+    if (c.lifetime !== undefined) return this.totalAllTime >= c.lifetime;
+    if (c.seeds !== undefined) return this.seeds >= c.seeds;
+    if (c.clicks !== undefined) return this.clicks >= c.clicks;
+    if (c.bought !== undefined) return !!this.bought[c.bought];
+    return false;
+  }
+
   upgradeVisible(u) {
     if (this.bought[u.id]) return false;
+    if (u.unlock) return u.unlock.every(c => this.condMet(c));
     if (u.type === 'building') return this.owned[u.b] >= u.need;
     if (u.type === 'synergy') return this.owned[u.target] >= u.needTarget && this.owned[u.per] >= u.needPer;
     return this.totalAllTime >= u.cost / 4;

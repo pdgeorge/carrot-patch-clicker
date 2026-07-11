@@ -65,6 +65,65 @@ for name, pv in pairs:
     ok = abs(pv - jv) <= 1e-6 * max(1.0, abs(jv))
     check(ok, f"{name}: py {pv:.6g} == js {jv:.6g}")
 
+# ---------- 1b. unlock vocabulary parity (DESIGN R8) ----------
+print("\n=== unlock vocabulary parity ===")
+UNLOCK = [{"owned": 1, "n": 50}, {"lifetime": 1000}, {"seeds": 2},
+          {"clicks": 10}, {"bought": "c0"}]
+JS_UNLOCK = r"""
+const fs = require('fs'), path = require('path'), vm = require('vm');
+for (const f of ['data.js', 'core.js']) {
+  vm.runInThisContext(fs.readFileSync(path.join(process.argv[1], 'src', f), 'utf8'));
+}
+CC.CLICK_UPGRADES.push({ id: 'tu', name: 'Test Unlock', cost: 10,
+  unlock: JSON.parse(process.argv[2]) });
+const c = new CC.Core();
+const vis = () => c.visibleUpgrades().map(u => u.id).sort();
+const out = [vis()];
+c.earn(1e6); c.owned[1] = 50; c.seeds = 2;
+for (let i = 0; i < 10; i++) c.click();
+out.push(vis());
+c.buyUpgrade('c0');
+out.push(vis());
+console.log(JSON.stringify(out));
+"""
+js_states = json.loads(subprocess.run(
+    ["node", "-e", JS_UNLOCK, str(ROOT), json.dumps(UNLOCK)],
+    capture_output=True, text=True, check=True).stdout)
+
+udata = load_data()
+udata["clickUpgrades"] = udata["clickUpgrades"] + [
+    {"id": "tu", "name": "Test Unlock", "cost": 10, "unlock": UNLOCK}]
+pu = Economy(udata)
+
+
+def visible_ids(e: Economy) -> list[str]:
+    return sorted(u["id"] for u in e.all_upgrades() if e.upgrade_visible(u))
+
+
+py_states = [visible_ids(pu)]
+pu.earn(1e6); pu.owned[1] = 50; pu.seeds = 2; pu.do_clicks(10)
+py_states.append(visible_ids(pu))
+pu.buy_upgrade("c0")
+py_states.append(visible_ids(pu))
+
+for i, (jv, pv) in enumerate(zip(js_states, py_states)):
+    check(jv == pv, f"visible-upgrade sets identical at state {i} ({len(pv)} upgrades)")
+check("tu" not in py_states[1], "gated upgrade hidden while one condition unmet")
+check("tu" in py_states[2], "gated upgrade appears once every condition holds")
+
+# unknown condition types must fail closed in both engines
+udata2 = load_data()
+udata2["clickUpgrades"] = udata2["clickUpgrades"] + [
+    {"id": "tx", "name": "Future Condition", "cost": 10,
+     "unlock": [{"someFutureThing": 5}]}]
+px = Economy(udata2)
+px.earn(1e9)
+check("tx" not in visible_ids(px), "unknown unlock condition fails closed (py)")
+js_closed = json.loads(subprocess.run(
+    ["node", "-e", JS_UNLOCK, str(ROOT), json.dumps([{"someFutureThing": 5}])],
+    capture_output=True, text=True, check=True).stdout)
+check(all("tu" not in s for s in js_closed), "unknown unlock condition fails closed (js)")
+
 # ---------- 2. live protocol over a real websocket ----------
 print("\n=== protocol (in-process server) ===")
 import os  # noqa: E402
