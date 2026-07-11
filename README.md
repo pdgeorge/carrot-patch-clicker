@@ -131,6 +131,8 @@ change **formulas** in `src/core.js`, you must mirror the change in
 - `carrot_patch/dist/` — built client + game data (committed, so hosts
   don't need node)
 - `tests/` — pacing sim (node) and parity/protocol suite (python)
+- `docs/` — reports and audits, e.g. [what-lives-where.md](docs/what-lives-where.md)
+  (where each subsystem *actually* lives vs. where DESIGN.md says it should)
 
 Extracted from the [Carrot-simulator](../Carrot-simulator) project's
 `carrot-clicker-simulator` branch, where this game was first grown.

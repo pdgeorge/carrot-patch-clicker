@@ -103,6 +103,12 @@ The layers, and when each is allowed to change (P7):
 | **Engine** (paired) | `src/core.js` ↔ `carrot_patch/economy.py` | Rarely: a new mechanic or condition primitive. Every change is mirrored; the parity suite fails until both sides agree. |
 | **Protocol** (paired) | `src/net.js` ↔ `carrot_patch/main.py` | Rarely: wire format, sync, limits. |
 
+This table is the law; reality doesn't fully comply yet.
+[docs/what-lives-where.md](docs/what-lives-where.md) is the standing
+audit — a **report, not a law** — of where every subsystem actually lives
+today, with the known violations ranked. Consult it before moving code
+between layers, and update it in the same PR when you do.
+
 - The economy exists twice (JS for solo/prediction, Python for the world).
   Both read the same `patch-data.json`; `tests/test_patch.py` asserts the
   two implementations stay numerically identical.
