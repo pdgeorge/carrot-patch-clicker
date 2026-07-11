@@ -8,6 +8,10 @@
    the same bandwidth as a patient human. The server clamps rates anyway. */
 globalThis.CC = globalThis.CC || {};
 
+/* Staleness threshold (DESIGN R1): the server heartbeats a snapshot every
+   second, so a healthy socket is never quiet this long. */
+CC.PATCH_STALE_MS = 5000;
+
 CC.Patch = class {
   constructor(ui) {
     this.ui = ui;
@@ -17,9 +21,18 @@ CC.Patch = class {
     this.online = 0;
     this.clickRate = 0;
     this._tried = false;
+    this._lastMsg = 0;
+    this._retryTimer = null;
     if (!location.protocol.startsWith('http')) return;
     this.connect();
     setInterval(() => this.flush(), 1000);
+    /* Silent socket death (laptop sleep, dropped Wi-Fi) never fires
+       onclose — the watchdog notices the missing heartbeat and redials.
+       Also runs the instant the tab becomes visible again. */
+    setInterval(() => this.watchdog(), 2000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) this.watchdog();
+    });
   }
 
   wsUrl() {
@@ -36,11 +49,13 @@ CC.Patch = class {
       const first = !this._tried;
       this._tried = true;
       this.on = true;
+      this._lastMsg = performance.now();
       this.ui.setPatchMode(true);
       if (first) this.ui.toast('🌍 Connected to the CARROT PATCH — one garden, whole world.');
       else this.ui.toast('🌍 Reconnected to the patch.');
     };
     ws.onmessage = e => {
+      this._lastMsg = performance.now();
       let msg;
       try { msg = JSON.parse(e.data); } catch (err) { return; }
       this.handle(msg);
@@ -49,19 +64,50 @@ CC.Patch = class {
       const was = this.on;
       this.on = false;
       if (was) {
-        this.ui.setPatchMode(false);
-        this.ui.toast('🌍 Lost the patch — retrying…');
+        this.ui.setPatchResync();
+        this.ui.toast('🌍 Lost the patch — re-syncing…');
       }
       if (this._tried) {
         /* we had a server once: keep trying, it may just be restarting */
-        setTimeout(() => this.connect(), 4000);
+        this._retryTimer = setTimeout(() => { this._retryTimer = null; this.connect(); }, 4000);
       } else {
         /* never connected: probably plain static hosting — try thrice, then stay solo */
         this._attempts = (this._attempts || 0) + 1;
-        if (this._attempts < 3) setTimeout(() => this.connect(), 5000);
+        if (this._attempts < 3) {
+          this._retryTimer = setTimeout(() => { this._retryTimer = null; this.connect(); }, 5000);
+        } else {
+          this.ui.toast('🌱 No patch server found — tending your own private garden (solo mode).');
+        }
       }
     };
     ws.onerror = () => { try { ws.close(); } catch (e) { /* already closed */ } };
+  }
+
+  /* R1 staleness watchdog: a healthy server talks every second; silence
+     past CC.PATCH_STALE_MS means the socket died without telling us. */
+  watchdog() {
+    if (this.on) {
+      if (performance.now() - this._lastMsg > CC.PATCH_STALE_MS) {
+        this.ui.toast('🌍 Patch gone quiet — re-syncing…');
+        this.redial();
+      }
+    } else if (this._tried && !this._retryTimer && (!this.ws || this.ws.readyState === 3)) {
+      /* tab woke up after a scheduled retry already came and went */
+      this.redial();
+    }
+  }
+
+  redial() {
+    if (this._retryTimer) { clearTimeout(this._retryTimer); this._retryTimer = null; }
+    if (this.ws) {
+      this.ws.onclose = null; /* we're taking over the reconnect */
+      try { this.ws.close(); } catch (e) { /* already closed */ }
+    }
+    if (this.on) {
+      this.on = false;
+      this.ui.setPatchResync();
+    }
+    this.connect(); /* fresh socket ⇒ fresh snapshot ⇒ re-synced (P5) */
   }
 
   handle(msg) {
