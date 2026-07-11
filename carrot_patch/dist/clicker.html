@@ -366,7 +366,7 @@ html, body { margin: 0; padding: 0; }
 </div>
 
 <script>
-globalThis.CC = globalThis.CC || {}; CC.BUILD = '7d7fe64';
+globalThis.CC = globalThis.CC || {}; CC.BUILD = 'df51b75';
 /* ==== data.js ==== */
 /* Carrot Clicker — content: buildings, upgrades, ribbons, news. */
 globalThis.CC = globalThis.CC || {};
@@ -412,6 +412,19 @@ CC.TIERS = [
   { need: 100, costMult: 5000, prefix: 'Mythic' },
 ];
 
+/* Any upgrade below (click / global / synergy) may carry an optional
+   `unlock: [ ... ]` list that REPLACES its type's default visibility rule;
+   every condition must hold. Conditions (see DESIGN.md "Unlock conditions"):
+     { owned: i, n: N }   own ≥ N of building index i (0 = Window Box, …)
+     { lifetime: N }      lifetime harvest ≥ N carrots
+     { seeds: N }         seeds ≥ N
+     { clicks: N }        lifetime clicks ≥ N
+     { bought: 'id' }     another upgrade already bought
+   Example — a click upgrade that appears only after 50 Garden Plots and
+   another purchase:  unlock: [{ owned: 1, n: 50 }, { bought: 'c0' }]
+   Without `unlock`, defaults apply: click/global show at lifetime ≥ cost/4;
+   synergy at needTarget/needPer. Combining primitives here never requires
+   touching core.js or economy.py (DESIGN P7). */
 CC.CLICK_UPGRADES = [
   { id: 'c0', name: 'Calloused Thumb', cost: 100, mult: 2,
     flavor: 'The blister becomes a callus. The callus becomes technique.' },
@@ -569,8 +582,27 @@ CC.Core = class {
     return this._upgrades;
   }
 
+  /* Declarative unlock conditions (DESIGN R8/P7): `unlock: [...]` on any
+     data-defined upgrade replaces its type's default visibility rule; all
+     conditions must hold. Vocabulary (mirrored in carrot_patch/economy.py):
+       { owned: i, n: N }   own ≥ N of building index i
+       { lifetime: N }      lifetime harvest ≥ N
+       { seeds: N }         seeds ≥ N
+       { clicks: N }        lifetime clicks ≥ N (clicks survive prestige)
+       { bought: 'id' }     another upgrade already bought
+     Unknown conditions fail closed: the upgrade stays hidden. */
+  condMet(c) {
+    if (c.owned !== undefined) return this.owned[c.owned] >= c.n;
+    if (c.lifetime !== undefined) return this.totalAllTime >= c.lifetime;
+    if (c.seeds !== undefined) return this.seeds >= c.seeds;
+    if (c.clicks !== undefined) return this.clicks >= c.clicks;
+    if (c.bought !== undefined) return !!this.bought[c.bought];
+    return false;
+  }
+
   upgradeVisible(u) {
     if (this.bought[u.id]) return false;
+    if (u.unlock) return u.unlock.every(c => this.condMet(c));
     if (u.type === 'building') return this.owned[u.b] >= u.need;
     if (u.type === 'synergy') return this.owned[u.target] >= u.needTarget && this.owned[u.per] >= u.needPer;
     return this.totalAllTime >= u.cost / 4;

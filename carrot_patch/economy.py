@@ -68,9 +68,26 @@ class Economy:
             self._upgrades = ups
         return self._upgrades
 
+    def cond_met(self, c: dict) -> bool:
+        """One unlock condition (DESIGN R8) — mirror of core.js condMet.
+        Unknown conditions fail closed: the upgrade stays hidden."""
+        if "owned" in c:
+            return self.owned[c["owned"]] >= c["n"]
+        if "lifetime" in c:
+            return self.total_all_time >= c["lifetime"]
+        if "seeds" in c:
+            return self.seeds >= c["seeds"]
+        if "clicks" in c:
+            return self.clicks >= c["clicks"]
+        if "bought" in c:
+            return bool(self.bought.get(c["bought"]))
+        return False
+
     def upgrade_visible(self, u: dict) -> bool:
         if self.bought.get(u["id"]):
             return False
+        if u.get("unlock"):
+            return all(self.cond_met(c) for c in u["unlock"])
         if u["type"] == "building":
             return self.owned[u["b"]] >= u["need"]
         if u["type"] == "synergy":
