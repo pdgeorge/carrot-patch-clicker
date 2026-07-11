@@ -266,6 +266,29 @@ Numbered for reference. R2 and R7 are the active priorities.
   sandbox. If ever built it must be an explicit choice with an explicit
   warning that the fork is **one-way** — private progress can never merge
   back into the world (P2: that's a cheat vector, not a feature).
+- **R11 — The community noticeboard: Tenders & Gardeners.** A billboard in
+  the UI, styled as a community noticeboard: left half **Tenders** — the
+  people tending the garden, shown as `<name> <clicks>`, to encourage
+  clicking and give regulars recognition; right half **Gardeners** — the
+  people who grew the garden itself (contributors, from a credits list in
+  `data.js`). Left/right because the Tenders board is alive and about its
+  readers; the Gardeners half is a plaque. Design constraints settled up
+  front:
+  - **Recognition, never resources.** This is the first persistent
+    per-player state, so the P1 boundary must hold: a name and a click
+    tally confer zero gameplay effect. (Extends R6, which allowed only
+    ephemeral stats.)
+  - **Identity is opt-in.** Anonymous by default; a self-chosen display
+    name (length-capped, server-validated) attached to click batches, with
+    a moderation stance decided before shipping — names are visible to the
+    whole world.
+  - **Vocabulary migration:** the UI currently calls players "gardeners"
+    ("N gardeners tending", rabbit toasts). Adopting Tenders/Gardeners
+    means renaming that copy in the same PR, and revisiting the prestige
+    modal's "Your name will not be recorded" flavor line, which this
+    feature contradicts.
+  - Needs a world-save format addition (per-name tallies) — additive field,
+    old saves must load unchanged.
 
 ## Process for changing the game
 
