@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build client from source
+        run: node build.js
+
+      - name: Committed dist must match a fresh build
+        run: |
+          git diff --exit-code -- carrot_patch/dist || {
+            echo '::error::carrot_patch/dist is stale — run `node build.js` and commit the result.'
+            exit 1
+          }
+
+      - name: Game pacing simulation
+        run: node tests/sim.js
+
+      - name: Install server deps (httpx is test-only, for TestClient)
+        run: pip install -r requirements.txt httpx
+
+      - name: Economy parity + websocket protocol suite
+        run: python tests/test_patch.py

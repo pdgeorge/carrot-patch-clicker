@@ -1,10 +1,10 @@
 """Carrot Patch — one shared garden for the whole world.
 
 Run standalone:
-    uvicorn server.main:app --host 0.0.0.0 --port 8420
+    uvicorn carrot_patch.main:app --host 0.0.0.0 --port 8420
 
 Or mount into an existing FastAPI site:
-    from server.main import create_app
+    from carrot_patch.main import create_app
     site.mount("/carrot-patch", create_app())
 
 Every connected client sees and spends the same global carrot bank.
@@ -234,7 +234,7 @@ def create_app() -> FastAPI:
 
 
 def __getattr__(name: str):
-    """`uvicorn server.main:app` still works, but importing this module for
+    """`uvicorn carrot_patch.main:app` still works, but importing this module for
     create_app() no longer eagerly builds a second world as a side effect."""
     if name == "app":
         return create_app()

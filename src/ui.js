@@ -90,6 +90,13 @@ CC.UI = class {
     }
   }
 
+  /* connection lost but the patch exists: stay in world mode and say so —
+     flipping back to CLICKER would lie about which garden you're in (P6) */
+  setPatchResync() {
+    this.$('patch-line').classList.remove('hidden');
+    this.$('patch-line').textContent = '🌍 Re-syncing with the patch…';
+  }
+
   /* ---------------- persistence ---------------- */
   save() {
     if (this._patchedOnce) return; /* world state lives on the server */
