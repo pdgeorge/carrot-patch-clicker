@@ -133,6 +133,7 @@ between layers, and update it in the same PR when you do.
 | --- | --- | --- | --- |
 | **World state** (the real game) | `carrot_patch/patch_state.json`, or the `CARROT_PATCH_STATE` env var (point it at a persistent volume in Docker) | Every 30 s, plus on prestige and on server shutdown; written atomically (tmp file + rename) | JSON via `economy.serialize()` |
 | **Dev-garden save** (`file://` only) | Browser `localStorage`, key `carrot-clicker-save` | Every 15 s, on tab hide, on page close | JSON via `core.serialize()` |
+| **Tender registry** (names → clicks/buildings, R11) | SQLite, `<state>_tenders.db` beside the world save | Write-through as tallied batches land | `carrot_patch/tenders.py` |
 
 - **Connecting to the patch = loading.** The server sends a full snapshot
   the moment you connect and every second after; your display is always at
@@ -140,8 +141,10 @@ between layers, and update it in the same PR when you do.
   dropped Wi-Fi), the client watchdog notices the missing heartbeat within
   ~5 s — or the instant the tab becomes visible again — and redials, which
   re-syncs by design (R1).
-- On a served page, **localStorage is never read or written** — world state
-  lives on the server, full stop. Before the first-ever snapshot the page
+- On a served page, **localStorage is never read or written for game
+  state** — that lives on the server, full stop. The one deliberate
+  exception is your noticeboard signature (R11), a display preference that
+  must survive a refresh. Before the first-ever snapshot the page
   shows "🌍 Reaching the carrot patch…" and ignores input (there is nothing
   real to act on yet); after that, disconnections keep the garden ticking
   as a labeled prediction until re-sync. The dev garden's localStorage save
@@ -178,6 +181,9 @@ restatement of the value.
 | Frenzy | ×7 for 30 s | `src/core.js` / `economy.py` | The click-renaissance enabler (P4/arc §3). |
 | Reconnect retry | every 4 s, forever — served pages never give up and never fall back to solo | `src/net.js` | P6: a served page is always the world game. A restarting server, or a proxy that comes good, reclaims its players; until then the page visibly waits ("reaching the carrot patch…") rather than becoming a different game. |
 | Staleness threshold | 5 s without any server message | `src/net.js` `CC.PATCH_STALE_MS` | The server heartbeats a snapshot every 1 s, so 5 s of silence means the socket is dead even if the browser doesn't know it (half-open TCP). Redialing re-syncs (P5). |
+| Noticeboard names | 2–20 chars, casefolded contains-check vs `blocklist.txt` | `carrot_patch/tenders.py` | Long enough for a name, short enough for the board; the filter is crude by design (R11). |
+| Noticeboard size | top 10 by clicks | `carrot_patch/main.py` `/api/board` | One-click visitors vastly outnumber regulars; recognition, not a ledger. |
+| Noticeboard refresh | 60 s poll + on sign | `src/ui.js` | Recognition doesn't need to be live; a minute keeps it cheap at any player count. |
 | Watchdog cadence | every 2 s, plus on tab-becomes-visible | `src/net.js` | Frequent enough to catch staleness fast while foregrounded; the visibility hook covers waking from sleep, when background timers were throttled. |
 
 ## Unlock conditions
@@ -270,39 +276,36 @@ Numbered for reference. R2 and R7 are the active priorities.
   sandbox. If ever built it must be an explicit choice with an explicit
   warning that the fork is **one-way** — private progress can never merge
   back into the world (P2: that's a cheat vector, not a feature).
-- **R11 — The community noticeboard: Tenders & Gardeners.** A billboard in
-  the UI, styled as a community noticeboard: left half **Tenders** — the
-  people tending the garden, shown as `<name> <clicks> <buildings bought>`,
-  to encourage clicking and give regulars recognition; right half
-  **Gardeners** — the people who grew the garden itself (contributors,
-  from a credits list in `data.js`). Left/right because the Tenders board
-  is alive and about its readers; the Gardeners half is a plaque. Design
-  decisions settled up front:
-  - **Recognition, never resources.** This is the first persistent
-    per-player state, so the P1 boundary must hold: a name and its tallies
-    confer zero gameplay effect. (Extends R6, which allowed only ephemeral
-    stats.)
-  - **Seeds are deliberately excluded** from the board. Going to seed stays
-    anonymous — the prestige modal's "Your name will not be recorded. Your
-    deed will be felt" remains literally true. Tending gets a name; the
-    world-resetting deed never does.
-  - **Top 10 by clicks only.** Drive-by players (one name, one click, gone)
-    will vastly outnumber regulars; the board shows the top 10, not an
-    ever-growing ledger. A runaway #1 (e^99 vs. 100) is a known
-    possibility, deliberately deferred until it actually happens.
-  - **Identity is opt-in.** Anonymous by default; a self-chosen display
-    name (length-capped, server-validated) attached to click batches.
-    Moderation: a basic contains-substring blocklist from a bundled
-    wordlist (same approach as dabidotcom chat) — crude, known to
-    false-positive on innocents like "shiitake", and accepted as good
-    enough for the internet.
-  - **Storage: likely SQLite**, not the world-state JSON. The tender
-    registry grows unboundedly with one-click visitors and shouldn't bloat
-    (or risk corrupting) the 30-second atomic world save. World state
-    stays JSON; names/tallies get their own store.
-  - **Vocabulary migration:** the UI currently calls players "gardeners"
-    ("N gardeners tending", rabbit toasts). Adopting Tenders/Gardeners
-    means renaming that copy in the same PR.
+- **R11 — The community noticeboard: Tenders & Gardeners. ✅ Shipped.** A
+  board under the carrot, spanning the left and middle columns (the shop
+  column runs long beside it), skinned with `src/community_board.png`
+  (inlined as a data URI at build time — the game stays one self-contained
+  file; the image's frame and centre post delineate the halves). Left half
+  **Tenders**: sign with a name and your clicks + buildings-bought tallies
+  join the world's top 10, refreshed each minute from `GET /api/board`.
+  Right half **Gardeners**: `contributors.txt` at the repo root, one name
+  per line — add yourself in the PR where you contribute. As built:
+  - **Recognition, never resources (P1):** names and tallies have zero
+    gameplay effect. **Seeds are never tracked or shown** — going to seed
+    stays anonymous, so the prestige modal's "Your name will not be
+    recorded. Your deed will be felt" remains literally true.
+  - **Top 10 by clicks only** — drive-by one-click visitors vastly
+    outnumber regulars; no infinite ledger. A runaway #1 (e^99 vs. 100) is
+    a known possibility, deliberately deferred until it actually happens.
+  - **Names:** opt-in, 2–20 chars, whitespace-collapsed, validated
+    server-side by a casefolded contains-check against
+    `carrot_patch/blocklist.txt` (crude by design — shiitake casualties
+    accepted as good enough for the internet). Rejections reply only to
+    the sender; tallies survive prestige, like the world's click stat.
+  - **Storage: SQLite** (`<state>_tenders.db`, beside the world save — see
+    the save table), so the unbounded registry can never bloat or endanger
+    the 30-second atomic world save.
+  - **Your signature is a localStorage *preference*** — the one deliberate
+    exception to "served pages never touch localStorage", which governs
+    *game state*. A signature must survive refresh; it's re-sent silently
+    on every reconnect so tallies keep landing.
+  - **Vocabulary migrated:** players are now "tenders" in the patch line
+    and rabbit announcements; "gardeners" means the plaque.
 - **R12 — Drop the legacy toast prose.** F1 made the server broadcast
   structured `event` messages; a prose `toast` twin still accompanies each
   one so stale pre-F1 browser tabs (which reconnect via the R1 watchdog

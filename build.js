@@ -15,19 +15,32 @@ const read = f => fs.readFileSync(path.join(SRC, f), 'utf8');
 /* Build id: content hash of everything that deploys. Deterministic on
    purpose — CI rebuilds dist and diffs it against the commit, so the id
    must depend only on the sources, never on a clock or git state. */
+const readOpt = f => {                 // optional inputs hash/embed as empty when absent
+  try { return fs.readFileSync(path.join(__dirname, f)); } catch (e) { return Buffer.alloc(0); }
+};
 const BUILD_INPUTS = [
   'build.js',
   'src/styles.css', 'src/page.html',
   'src/data.js', 'src/core.js', 'src/net.js', 'src/ui.js',
+  'src/community_board.png', 'contributors.txt',
   'carrot_patch/__init__.py', 'carrot_patch/economy.py', 'carrot_patch/main.py',
+  'carrot_patch/tenders.py', 'carrot_patch/blocklist.txt',
 ];
 const hash = crypto.createHash('sha256');
-for (const f of BUILD_INPUTS) hash.update(fs.readFileSync(path.join(__dirname, f)));
+for (const f of BUILD_INPUTS) hash.update(readOpt(f));
 const BUILD = hash.digest('hex').slice(0, 7);
 
+/* gardeners half of the noticeboard: contributors.txt, one name per line */
+const GARDENERS = readOpt('contributors.txt').toString('utf8').split('\n')
+  .map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+
 const JS_ORDER = ['data.js', 'core.js', 'net.js', 'ui.js'];
-const css = read('styles.css');
-const js = `globalThis.CC = globalThis.CC || {}; CC.BUILD = '${BUILD}';\n`
+const boardPng = readOpt('src/community_board.png');
+const css = read('styles.css') + (boardPng.length ? `
+#noticeboard { background-image: url(data:image/png;base64,${boardPng.toString('base64')}); }
+` : '');
+const js = `globalThis.CC = globalThis.CC || {}; CC.BUILD = '${BUILD}'; `
+  + `CC.GARDENERS = ${JSON.stringify(GARDENERS)};\n`
   + JS_ORDER.map(f => `/* ==== ${f} ==== */\n${read(f)}`).join('\n');
 const body = read('page.html');
 
