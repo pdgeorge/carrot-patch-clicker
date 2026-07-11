@@ -268,27 +268,37 @@ Numbered for reference. R2 and R7 are the active priorities.
   back into the world (P2: that's a cheat vector, not a feature).
 - **R11 — The community noticeboard: Tenders & Gardeners.** A billboard in
   the UI, styled as a community noticeboard: left half **Tenders** — the
-  people tending the garden, shown as `<name> <clicks>`, to encourage
-  clicking and give regulars recognition; right half **Gardeners** — the
-  people who grew the garden itself (contributors, from a credits list in
-  `data.js`). Left/right because the Tenders board is alive and about its
-  readers; the Gardeners half is a plaque. Design constraints settled up
-  front:
+  people tending the garden, shown as `<name> <clicks> <buildings bought>`,
+  to encourage clicking and give regulars recognition; right half
+  **Gardeners** — the people who grew the garden itself (contributors,
+  from a credits list in `data.js`). Left/right because the Tenders board
+  is alive and about its readers; the Gardeners half is a plaque. Design
+  decisions settled up front:
   - **Recognition, never resources.** This is the first persistent
-    per-player state, so the P1 boundary must hold: a name and a click
-    tally confer zero gameplay effect. (Extends R6, which allowed only
-    ephemeral stats.)
+    per-player state, so the P1 boundary must hold: a name and its tallies
+    confer zero gameplay effect. (Extends R6, which allowed only ephemeral
+    stats.)
+  - **Seeds are deliberately excluded** from the board. Going to seed stays
+    anonymous — the prestige modal's "Your name will not be recorded. Your
+    deed will be felt" remains literally true. Tending gets a name; the
+    world-resetting deed never does.
+  - **Top 10 by clicks only.** Drive-by players (one name, one click, gone)
+    will vastly outnumber regulars; the board shows the top 10, not an
+    ever-growing ledger. A runaway #1 (e^99 vs. 100) is a known
+    possibility, deliberately deferred until it actually happens.
   - **Identity is opt-in.** Anonymous by default; a self-chosen display
-    name (length-capped, server-validated) attached to click batches, with
-    a moderation stance decided before shipping — names are visible to the
-    whole world.
+    name (length-capped, server-validated) attached to click batches.
+    Moderation: a basic contains-substring blocklist from a bundled
+    wordlist (same approach as dabidotcom chat) — crude, known to
+    false-positive on innocents like "shiitake", and accepted as good
+    enough for the internet.
+  - **Storage: likely SQLite**, not the world-state JSON. The tender
+    registry grows unboundedly with one-click visitors and shouldn't bloat
+    (or risk corrupting) the 30-second atomic world save. World state
+    stays JSON; names/tallies get their own store.
   - **Vocabulary migration:** the UI currently calls players "gardeners"
     ("N gardeners tending", rabbit toasts). Adopting Tenders/Gardeners
-    means renaming that copy in the same PR, and revisiting the prestige
-    modal's "Your name will not be recorded" flavor line, which this
-    feature contradicts.
-  - Needs a world-save format addition (per-name tallies) — additive field,
-    old saves must load unchanged.
+    means renaming that copy in the same PR.
 
 ## Process for changing the game
 
