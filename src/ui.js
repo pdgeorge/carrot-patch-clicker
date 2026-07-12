@@ -466,7 +466,7 @@ CC.UI = class {
       const u = CC.SHED.find(u => u.id === ev.id);
       if (!u) return;
       CC.audio.seed();
-      this.toast(`🌱 A sprout was trained: ${u.name}! +${Math.round((u.mult - 1) * 100)}% production, forever.`);
+      this.toast(`🌱 A sprout was planted: ${u.name}! +${Math.round((u.mult - 1) * 100)}% production, forever.`);
     }
   }
 

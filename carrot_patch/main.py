@@ -114,7 +114,7 @@ class Patch:
                     f"(+{ev['gained'] * 8}% forever) for everyone. A new spring begins.")
         if ev["type"] == "shed":
             u = next((u for u in d["shed"] if u["id"] == ev["id"]), None)
-            return (f"🌱 A sprout was trained: {u['name']}! "
+            return (f"🌱 A sprout was planted: {u['name']}! "
                     f"+{round((u['mult'] - 1) * 100)}% production, forever.") if u else None
         return None
 
