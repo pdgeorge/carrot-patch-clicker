@@ -50,6 +50,7 @@ CC.TIERS = [
      { seeds: N }         seeds ≥ N
      { clicks: N }        lifetime clicks ≥ N
      { bought: 'id' }     another upgrade already bought
+     { shed: 'id' }       Potting Shed item already bought (R13)
    Example — a click upgrade that appears only after 50 Garden Plots and
    another purchase:  unlock: [{ owned: 1, n: 50 }, { bought: 'c0' }]
    Without `unlock`, defaults apply: click/global show at lifetime ≥ cost/4;
@@ -110,6 +111,25 @@ CC.SYNERGY_UPGRADES = [
     flavor: 'Space rabbits. Unionized. Rabbit Unions gain +10% per Orbital Polytunnel.' },
 ];
 
+/* The Potting Shed (R13): permanent perks bought with SPROUTS — the seed's
+   spendable twin. Going to seed mints 1 sprout per seed; seeds themselves
+   are never spent (+8% each, forever). Shed purchases survive prestige.
+   The catalog is completable by design: every item is strictly positive and
+   nothing is exclusive, so "no matter what happens, eventually every sprout
+   will be purchased — it just might not be the most optimal way". Prices
+   are pacing knobs (DESIGN "Tunables"), not choices. Future items may gate
+   other content via unlock: [{ shed: 'id' }]. */
+CC.SHED = [
+  { id: 'p0', name: 'Potting Bench', cost: 5, mult: 1.05,
+    flavor: 'Somewhere to stand, somewhere to plan. The whole world leans on it.' },
+  { id: 'p1', name: 'Cold Frame', cost: 25, mult: 1.08,
+    flavor: 'A little glass roof against the frost. Spring arrives whenever you lift the lid.' },
+  { id: 'p2', name: 'Heirloom Seed Library', cost: 125, mult: 1.10,
+    flavor: 'Every variety the world ever grew, filed under W for wonderful.' },
+  { id: 'p3', name: 'The Grafting Table', cost: 625, mult: 1.12,
+    flavor: 'Two gardens, one stem. The judges have questions; the carrots have answers.' },
+];
+
 /* Ribbons: permanent multipliers at lifetime-harvest milestones (your trophy shelf). */
 CC.RIBBONS = [
   { at: 1e3, name: 'White Ribbon', color: '#e5e7eb', mult: 1.02,
@@ -150,6 +170,7 @@ CC.NEWS = [
   { min: 1e12, text: 'Interdimensional carrot monopoly denies being a monopoly in this dimension.' },
   { min: 1e13, text: 'Historians agree history was mostly leading up to this.' },
   { min: 0, minSeeds: 1, text: 'Botanists confirm: every carrot this year is a little bit you. Not a metaphor.' },
+  { min: 0, minSeeds: 1, text: 'The Potting Shed opens its doors. Every sprout will find a pot eventually.' },
   { min: 0, minSeeds: 1, text: 'Heirloom seed prices soar. Yours are not for sale.' },
   { min: 0, minSeeds: 10, text: 'Tenth-generation carrots exhibit “ancestral memory of being clicked.”' },
 ];

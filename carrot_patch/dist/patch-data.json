@@ -304,5 +304,35 @@
    "mult": 1.15,
    "flavor": "There is no category for what you have grown. They give you the tears directly."
   }
+ ],
+ "shed": [
+  {
+   "id": "p0",
+   "name": "Potting Bench",
+   "cost": 5,
+   "mult": 1.05,
+   "flavor": "Somewhere to stand, somewhere to plan. The whole world leans on it."
+  },
+  {
+   "id": "p1",
+   "name": "Cold Frame",
+   "cost": 25,
+   "mult": 1.08,
+   "flavor": "A little glass roof against the frost. Spring arrives whenever you lift the lid."
+  },
+  {
+   "id": "p2",
+   "name": "Heirloom Seed Library",
+   "cost": 125,
+   "mult": 1.1,
+   "flavor": "Every variety the world ever grew, filed under W for wonderful."
+  },
+  {
+   "id": "p3",
+   "name": "The Grafting Table",
+   "cost": 625,
+   "mult": 1.12,
+   "flavor": "Two gardens, one stem. The judges have questions; the carrots have answers."
+  }
  ]
 }

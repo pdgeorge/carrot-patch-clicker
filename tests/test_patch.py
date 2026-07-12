@@ -41,10 +41,12 @@ c.earn(1e9);
 c.buy(0, 30); c.buy(1, 12); c.buy(3, 10); c.buy(5, 3);
 c.buyUpgrade('b0t0'); c.buyUpgrade('b0t1'); c.buyUpgrade('c0'); c.buyUpgrade('g0'); c.buyUpgrade('s0');
 c.seeds = 7;
+c.sprouts = 20; c.buyShed('p0');
 c.buffs.push({ name: 'Rabbit Frenzy', mult: 7, left: 30 });
 console.log(JSON.stringify({
   cps: c.cps(), click: c.clickPower(), cost0: c.costOf(0, 10),
   gmult: c.globalMult(), bank: c.bank, pending: c.pendingSeeds(),
+  sprouts: c.sprouts,
 }));
 """
 js = json.loads(subprocess.run(
@@ -56,10 +58,13 @@ py.buy(0, 30); py.buy(1, 12); py.buy(3, 10); py.buy(5, 3)
 for uid in ["b0t0", "b0t1", "c0", "g0", "s0"]:
     py.buy_upgrade(uid)
 py.seeds = 7
+py.sprouts = 20
+py.buy_shed("p0")
 py.buffs.append({"name": "Rabbit Frenzy", "mult": 7, "left": 30.0})
 
 pairs = [("cps", py.cps()), ("click", py.click_power()), ("cost0", py.cost_of(0, 10)),
-         ("gmult", py.global_mult()), ("bank", py.bank), ("pending", py.pending_seeds())]
+         ("gmult", py.global_mult()), ("bank", py.bank), ("pending", py.pending_seeds()),
+         ("sprouts", py.sprouts)]
 for name, pv in pairs:
     jv = js[name]
     ok = abs(pv - jv) <= 1e-6 * max(1.0, abs(jv))
@@ -68,7 +73,7 @@ for name, pv in pairs:
 # ---------- 1b. unlock vocabulary parity (DESIGN R8) ----------
 print("\n=== unlock vocabulary parity ===")
 UNLOCK = [{"owned": 1, "n": 50}, {"lifetime": 1000}, {"seeds": 2},
-          {"clicks": 10}, {"bought": "c0"}]
+          {"clicks": 10}, {"bought": "c0"}, {"shed": "p0"}]
 JS_UNLOCK = r"""
 const fs = require('fs'), path = require('path'), vm = require('vm');
 for (const f of ['data.js', 'core.js']) {
@@ -83,6 +88,8 @@ c.earn(1e6); c.owned[1] = 50; c.seeds = 2;
 for (let i = 0; i < 10; i++) c.click();
 out.push(vis());
 c.buyUpgrade('c0');
+out.push(vis());
+c.sprouts = 99; c.buyShed('p0');
 out.push(vis());
 console.log(JSON.stringify(out));
 """
@@ -105,11 +112,14 @@ pu.earn(1e6); pu.owned[1] = 50; pu.seeds = 2; pu.do_clicks(10)
 py_states.append(visible_ids(pu))
 pu.buy_upgrade("c0")
 py_states.append(visible_ids(pu))
+pu.sprouts = 99
+pu.buy_shed("p0")
+py_states.append(visible_ids(pu))
 
 for i, (jv, pv) in enumerate(zip(js_states, py_states)):
     check(jv == pv, f"visible-upgrade sets identical at state {i} ({len(pv)} upgrades)")
-check("tu" not in py_states[1], "gated upgrade hidden while one condition unmet")
-check("tu" in py_states[2], "gated upgrade appears once every condition holds")
+check("tu" not in py_states[2], "gated upgrade hidden while one condition unmet")
+check("tu" in py_states[3], "gated upgrade appears once every condition holds (incl. shed)")
 
 # unknown condition types must fail closed in both engines
 udata2 = load_data()
@@ -176,6 +186,19 @@ with TestClient(app) as client:
         check(patch.eco.owned[9] == 0 and not patch.eco.bought and patch.eco.seeds == 0,
               "invalid intents change nothing")
 
+        # the Potting Shed (R13): broke world can't buy; sprouts spend globally
+        ws.send_json({"type": "shed", "id": "p0"})
+        time.sleep(0.05)
+        check(not patch.eco.shed, "shed purchase without sprouts is ignored")
+        patch.eco.sprouts = 7
+        ws.send_json({"type": "shed", "id": "p0"})
+        time.sleep(0.05)
+        check(patch.eco.shed.get("p0") and patch.eco.sprouts == 2,
+              f"shed purchase spends the world's sprouts (left {patch.eco.sprouts})")
+        ws.send_json({"type": "shed", "id": "p0"})
+        time.sleep(0.05)
+        check(patch.eco.sprouts == 2, "double-buying a shed item is ignored")
+
         # two gardeners share one world
         with client.websocket_connect("/ws") as ws2:
             snap2 = ws2.receive_json()
@@ -183,6 +206,7 @@ with TestClient(app) as client:
             check(snap2["online"] == 2, "presence counts both")
 
         # golden rabbit: force one and catch it
+        time.sleep(1.0)  # clear MAX_MSGS_PER_SEC — the shed intents above used the window
         patch.rabbit = {"id": 1, "until": time.monotonic() + 10}
         before = patch.eco.bank
         ws.send_json({"type": "catch"})
@@ -239,6 +263,15 @@ with TestClient(app) as client:
     fresh = Economy(load_data())
     fresh.deserialize(json.loads(state_path.read_text()))
     check(fresh.total_all_time >= 12345, "world state survives a save/load")
+    check(fresh.shed.get("p0") and fresh.sprouts == 2, "shed purchases and sprouts survive a save/load")
+
+    # pre-R13 save migration: sprouts backlog = seeds (none were ever spendable)
+    legacy = json.loads(state_path.read_text())
+    del legacy["sprouts"], legacy["shed"]
+    legacy["seeds"] = 42
+    old = Economy(load_data())
+    old.deserialize(legacy)
+    check(old.sprouts == 42 and not old.shed, "pre-R13 save mints retroactive sprouts 1:1 with seeds")
 
 # ---------- 3. mounted inside a parent site (lifespan never reaches sub-apps) ----------
 print("\n=== mounted under a parent FastAPI site ===")

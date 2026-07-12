@@ -42,7 +42,9 @@ class Economy:
         self.clicks: int = 0
         self.owned: list[int] = [0] * len(data["buildings"])
         self.bought: dict[str, bool] = {}
-        self.seeds: int = 0
+        self.seeds: int = 0            # permanent: +8% each, never spent
+        self.sprouts: int = 0          # spendable twin: minted 1:1 with seeds (R13)
+        self.shed: dict[str, bool] = {}  # Potting Shed item id -> True; survives prestige
         self.buffs: list[dict] = []  # {name, mult, left}
         self._ribbon_seen = 0
         self._bumper_seen = [0] * len(data["buildings"])
@@ -81,6 +83,8 @@ class Economy:
             return self.clicks >= c["clicks"]
         if "bought" in c:
             return bool(self.bought.get(c["bought"]))
+        if "shed" in c:
+            return bool(self.shed.get(c["shed"]))
         return False
 
     def upgrade_visible(self, u: dict) -> bool:
@@ -129,6 +133,9 @@ class Economy:
             m *= r["mult"]
         for u in self.d["globalUpgrades"]:
             if self.bought.get(u["id"]):
+                m *= u["mult"]
+        for u in self.d["shed"]:
+            if self.shed.get(u["id"]):
                 m *= u["mult"]
         m *= self.d["milestoneMult"] ** self.bumper_total()
         return m
@@ -184,6 +191,15 @@ class Economy:
             bought += 1
         return bought
 
+    # ---------- the Potting Shed (R13) ----------
+    def buy_shed(self, uid: str) -> bool:
+        u = next((u for u in self.d["shed"] if u["id"] == uid), None)
+        if not u or self.shed.get(uid) or self.sprouts < u["cost"]:
+            return False
+        self.sprouts -= u["cost"]
+        self.shed[uid] = True
+        return True
+
     def rabbit_reward(self, rng=random.random) -> dict:
         if rng() < 0.55:
             self.buffs.append({"name": "Rabbit Frenzy", "mult": 7, "left": 30.0})
@@ -205,6 +221,7 @@ class Economy:
         if gain < 1:
             return 0
         self.seeds += gain
+        self.sprouts += gain  # every seed also sprouts (R13); shed keeps its purchases
         self.bank = 0.0
         self.total_run = 0.0
         self.owned = [0] * len(self.owned)
@@ -243,6 +260,7 @@ class Economy:
             "v": 1, "bank": self.bank, "totalAllTime": self.total_all_time,
             "totalRun": self.total_run, "clicks": self.clicks, "owned": self.owned,
             "bought": self.bought, "seeds": self.seeds, "buffs": self.buffs,
+            "sprouts": self.sprouts, "shed": self.shed,
             "saved": time.time(),
         }
 
@@ -257,6 +275,10 @@ class Economy:
                       for i in range(len(self.owned))]
         self.bought = s.get("bought", {})
         self.seeds = s.get("seeds", 0)
+        # pre-R13 saves earned their seeds when none were spendable: mint the
+        # backlog — sprouts = seeds — as the fair one-time migration
+        self.sprouts = s["sprouts"] if "sprouts" in s else s.get("seeds", 0)
+        self.shed = s.get("shed", {})
         self.buffs = s.get("buffs", [])
         self._ribbon_seen = len(self.ribbons())
         self._bumper_seen = [self.bumper_count(i) for i in range(len(self.owned))]
@@ -271,6 +293,7 @@ class Economy:
             "bank": self.bank, "totalAllTime": self.total_all_time,
             "totalRun": self.total_run, "clicks": self.clicks,
             "owned": self.owned, "bought": self.bought, "seeds": self.seeds,
+            "sprouts": self.sprouts, "shed": self.shed,
             "buffs": [{"name": b["name"], "mult": b["mult"], "left": b["left"]} for b in self.buffs],
         }
 

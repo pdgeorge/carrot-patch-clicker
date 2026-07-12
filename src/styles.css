@@ -143,6 +143,7 @@
 }
 #hero:active { transform: scale(0.995); }
 #seed-line { font-size: 12.5px; color: #eab8e4; min-height: 18px; }
+#sprout-line { font-size: 12.5px; color: #a8e6a0; min-height: 18px; font-variant-numeric: tabular-nums; }
 #prestige-btn {
   margin-top: 6px;
   width: 100%;
@@ -157,6 +158,77 @@
   box-shadow: 0 4px 16px rgba(217, 140, 201, 0.35);
 }
 #prestige-btn:hover { filter: brightness(1.08); }
+
+/* ---------- the Potting Shed (R13) ---------- */
+#shed-btn {
+  margin-top: 6px;
+  width: 100%;
+  padding: 8px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #0e2410;
+  background: linear-gradient(180deg, #b8e6a8, #7cbf6a);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(124, 191, 106, 0.3);
+}
+#shed-btn:hover { filter: brightness(1.08); }
+#shed-btn.affordable { animation: shed-glow 1.6s ease-in-out infinite; }
+@keyframes shed-glow {
+  0%, 100% { box-shadow: 0 4px 16px rgba(124, 191, 106, 0.3); }
+  50% { box-shadow: 0 0 22px rgba(168, 230, 160, 0.85); }
+}
+#shed {
+  position: fixed; inset: 0;
+  background: rgba(5, 8, 3, 0.82);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 28;
+}
+#shed-box {
+  background: linear-gradient(180deg, #1a2412, #10160a);
+  border: 1px solid #a8e6a055;
+  border-radius: 14px;
+  padding: 22px 26px;
+  width: min(560px, calc(100vw - 40px));
+  max-height: 82vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+#shed-box h2 { margin: 0 0 4px; color: #a8e6a0; letter-spacing: 0.12em; font-size: 18px; text-align: center; }
+#shed-sub { margin: 0 0 10px; font-size: 12.5px; font-style: italic; color: var(--dim); text-align: center; }
+#shed-balance { text-align: center; font-size: 14px; color: #a8e6a0; margin-bottom: 12px; font-variant-numeric: tabular-nums; }
+#shed-balance b { font-size: 18px; }
+#shed-items { display: flex; flex-direction: column; gap: 8px; }
+.shed-item {
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  line-height: 1.45;
+}
+.shed-item:not(.cant):not(.bought):hover { border-color: #a8e6a0; }
+.shed-item.cant { opacity: 0.5; cursor: default; }
+.shed-item.bought { border-color: #7cbf6a88; cursor: default; }
+.shed-item.bought .s-head b { color: #a8e6a0; }
+.shed-item .s-head { display: flex; justify-content: space-between; gap: 8px; }
+.shed-item .s-head b { color: #ffd98a; font-size: 13.5px; }
+.shed-item .s-cost { color: #a8e6a0; font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.shed-item .s-effect { font-size: 12px; color: var(--leaf); font-weight: 700; }
+.shed-item .s-flavor { font-size: 12px; font-style: italic; color: var(--dim); }
+#shed-close {
+  margin-top: 14px;
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+  background: #2c3a22;
+  color: var(--text);
+}
 .small-controls { margin-top: 8px; display: flex; gap: 6px; justify-content: center; }
 .small-controls button {
   background: var(--panel);

@@ -81,7 +81,12 @@ Numbered so they can be cited in reviews (EG: "this violates P4").
    sanctioned "auto-clicker returns" combo, Cookie Clicker style.
 4. **Prestige:** seeds = ⌊√(lifetime harvest / 1e6)⌋, each +8% production
    forever. **Going to seed resets the whole world's run** — it's a global,
-   dramatic, communal decision. Seeds and ribbons persist forever.
+   dramatic, communal decision. Seeds and ribbons persist forever. Every
+   seed also mints one **sprout** — the seed's spendable twin (R13). Seeds
+   are never spent; sprouts are spent at the **Potting Shed** on permanent
+   perks that survive prestige. The shed catalog is completable by design:
+   every item is strictly positive and nothing is exclusive, so *eventually
+   every sprout will be purchased — the only communal decision is order*.
 5. **The golden rabbit is global:** one rabbit for the whole planet, first
    click on Earth catches it, everyone gets the reward.
 
@@ -117,7 +122,7 @@ between layers, and update it in the same PR when you do.
 - The economy exists twice (JS for solo/prediction, Python for the world).
   Both read the same `patch-data.json`; `tests/test_patch.py` asserts the
   two implementations stay numerically identical.
-- Protocol: client → server `{type: clicks|buy|upgrade|catch|prestige, …}`;
+- Protocol: client → server `{type: clicks|buy|upgrade|catch|prestige|shed, …}`;
   server → client `snapshot` (full state, 1/s), `event` (structured game
   events — ribbon, bumper, upgrade, rabbitCaught, prestige; the client
   turns them into words and sound), `rabbit`. A legacy `toast` (prose)
@@ -176,6 +181,9 @@ restatement of the value.
 | Building cost curve | ×1.15 per owned | `src/core.js` / `economy.py` | Genre-standard geometric ramp (same as Cookie Clicker). |
 | Seed formula | ⌊√(lifetime/1e6)⌋ | `src/core.js` / `economy.py` | First seed at 1M lifetime carrots; square root keeps late seeds meaningful but not runaway. |
 | Seed bonus | +8%/seed, forever | `src/core.js` / `economy.py` | Big enough that a world prestige feels worth the reset. |
+| Sprout mint | 1 per seed, at prestige | `src/core.js` / `economy.py` | The seed's spendable twin (R13): seeds are forever (+8%), sprouts are the shop budget. 1:1 keeps the pair legible — one glance tells you what a prestige is worth in both currencies. |
+| Shed catalog & prices | 5 → 625 sprouts, ×5 steps (`CC.SHED`) | `src/data.js` | Pacing knobs, not choices: the catalog is completable — every item strictly positive, nothing exclusive — so prices only control how many prestiges the ladder spans. |
+| Retroactive sprouts | sprouts = seeds, on first load of a pre-R13 save | `src/core.js` / `economy.py` `deserialize` | Existing worlds earned their seeds when nothing was spendable; minting the backlog is the fair migration, and it happens exactly once because the save carries `sprouts` from then on. |
 | Rabbit spawn gap | 60–150 s first, then 90–240 s | `carrot_patch/main.py` | One shared rabbit; scarce enough to be an event, common enough to matter. |
 | Rabbit lifetime | 12 s | `carrot_patch/main.py` | First-click-on-Earth race needs a real window across time zones and reflexes. |
 | Frenzy | ×7 for 30 s | `src/core.js` / `economy.py` | The click-renaissance enabler (P4/arc §3). |
@@ -200,6 +208,7 @@ upgrade appears only when *every* condition holds:
 | `{ seeds: N }` | seeds ≥ N |
 | `{ clicks: N }` | lifetime clicks ≥ N (clicks survive prestige) |
 | `{ bought: 'id' }` | another upgrade already bought |
+| `{ shed: 'id' }` | Potting Shed item already bought (R13) — the valve for gating future content behind the world's sprout spending |
 
 Without `unlock`, defaults apply: click/global upgrades show at lifetime ≥
 cost ÷ 4; synergy at `needTarget`/`needPer`; generated building tiers at
@@ -216,7 +225,7 @@ the parity test, and add a row here in the same commit.
 
 ## Known gaps & roadmap
 
-Numbered for reference. R2 and R7 are the active priorities.
+Numbered for reference. R7 and R14 are the active priorities.
 
 - **R1 — Staleness detection & re-sync. ✅ Shipped.** If the WebSocket dies
   *silently* (laptop sleep, dropped Wi-Fi — TCP half-open, so `onclose`
@@ -313,6 +322,34 @@ Numbered for reference. R2 and R7 are the active priorities.
   build has been deployed for a week or two, delete `legacy_text()` and the
   `announce()` twin in `carrot_patch/main.py` — the server stops composing
   English forever.
+- **R13 — The Potting Shed: seeds & sprouts. ✅ Shipped (bare minimum).**
+  Two players without autoclickers effectively cleared the game in two
+  days; the shed is the keystone of the fix. Going to seed now mints two
+  currencies: **seeds** (infinite, +8% each, never spent — unchanged) and
+  **sprouts**, the spendable twin, minted 1:1 alongside them. Sprouts are
+  spent at the Potting Shed — a full-screen overlay opened from a button
+  under Go to Seed that glows when something is affordable; the sprout
+  balance always sits on the main screen beside the seed count. Purchases
+  survive prestige. Founding rule: **the catalog is completable** — *"no
+  matter what happens, eventually every sprout will be purchased; it just
+  might not be the most optimal way."* Every item is strictly positive and
+  nothing is exclusive, so the only communal decision is ordering — no
+  governance machinery needed, and a lone spender can at worst delay the
+  optimum. Prices are pure pacing knobs (see Tunables). Pre-R13 saves mint
+  retroactive sprouts = seeds (they were earned when nothing was
+  spendable). Bare minimum ships four flat production perks and the
+  `{ shed: 'id' }` unlock condition; the intended destination is shed items
+  that **unlock new top-end buildings** — the endgame content valve — which
+  waits on R14. When the catalog runs dry, idle sprouts are the signal that
+  content owes the shed new entries.
+- **R14 — Id-keyed world state (planned).** Buildings are referenced by
+  array index in the world save, the dev-garden save, and synergy upgrades
+  (`target`/`per`), so content cannot insert or reorder buildings without
+  corrupting live worlds. One-time migration: give buildings stable string
+  ids, serialize counts as a dict keyed by id, point synergies at ids —
+  after which `data.js` ordering is display-only forever. Prerequisite for
+  shed-unlocked buildings and for new buildings before the Singularity
+  (both wanted per R13/the pacing fix).
 
 ## Process for changing the game
 

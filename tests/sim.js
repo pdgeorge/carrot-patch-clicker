@@ -120,14 +120,38 @@ check(Math.abs(bc.buildingMult(0) / multBefore - 1.5) < 1e-9, 'synergy: Window B
 console.log(`  4h-session spread: [${core.owned.join(', ')}] — bumpers ${core.bumperTotal()}`);
 check(core.bumperTotal() >= 6, `session earns ${core.bumperTotal()} bumper milestones organically`);
 
+/* the Potting Shed (R13): seeds forever, sprouts spendable */
+console.log('\n=== potting shed ===');
+const sh = new CC.Core();
+sh.earn(25e6); /* lifetime 25M → 5 seeds pending */
+const minted = sh.prestige();
+check(minted === 5 && sh.sprouts === 5 && sh.seeds === 5, 'prestige mints sprouts 1:1 with seeds');
+const gmBefore = sh.globalMult();
+check(sh.buyShed('p0'), 'shed item purchasable with sprouts');
+check(sh.sprouts === 5 - CC.SHED[0].cost, `sprouts spent, seeds untouched (${sh.seeds} seeds remain)`);
+check(sh.seeds === 5, 'seeds are never spent');
+check(Math.abs(sh.globalMult() / gmBefore - CC.SHED[0].mult) < 1e-9, 'shed perk multiplies production');
+check(!sh.buyShed('p1'), 'cannot overspend sprouts');
+check(!sh.buyShed('p0'), 'cannot re-buy a shed item');
+sh.earn(1e9);
+const minted2 = sh.prestige();
+check(sh.shed['p0'] && sh.sprouts === minted2, 'shed purchases survive prestige; new sprouts mint');
+
 /* save round-trip */
 console.log('\n=== save round-trip ===');
 const a = new CC.Core();
 a.earn(5e6); a.buy(0, 10); a.buy(1, 5); a.buyUpgrade('b0t0'); a.seeds = 3;
+a.sprouts = 9; a.shed = { p0: true };
 const b = new CC.Core();
 b.deserialize(JSON.parse(JSON.stringify(a.serialize())));
 check(Math.abs(a.cps() - b.cps()) < 1e-9, 'cps identical after save/load');
 check(b.seeds === 3 && b.owned[0] === 10, 'seeds and buildings persist');
+check(b.sprouts === 9 && b.shed.p0, 'sprouts and shed persist');
+const legacy = a.serialize();
+delete legacy.sprouts; delete legacy.shed;
+const m = new CC.Core();
+m.deserialize(JSON.parse(JSON.stringify(legacy)));
+check(m.sprouts === m.seeds && m.seeds === 3, 'pre-R13 save mints retroactive sprouts 1:1 with seeds');
 
 console.log(fails ? `\n${fails} FAILURE(S)` : '\nALL CHECKS PASSED');
 process.exit(fails ? 1 : 0);

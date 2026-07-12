@@ -87,6 +87,11 @@ Env vars: `CARROT_PATCH_STATE` (world save file), `CARROT_PATCH_DIST`
   the frenzy for everyone.
 - **Go to Seed prestiges the entire planet.** The confirmation dialog is
   appropriately dramatic. Seeds and ribbons persist forever.
+- **Every seed also mints a sprout** — the spendable twin currency
+  (DESIGN R13). Seeds are never spent (+8% each, forever); sprouts are
+  spent at the **Potting Shed** on permanent perks that survive prestige.
+  The catalog is completable: every item is strictly positive, so the only
+  communal decision is what the world buys first.
 - **The community noticeboard** (under the carrot): sign it with a name and
   your clicks + buildings join the world's top-10 **Tenders**; the
   **Gardeners** half lists the people who built the game — add yourself to

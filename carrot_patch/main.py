@@ -112,6 +112,10 @@ class Patch:
         if ev["type"] == "prestige":
             return (f"🌸 SOMEONE SENT THE WHOLE GARDEN TO SEED. +{fmt(ev['gained'])} seeds "
                     f"(+{ev['gained'] * 8}% forever) for everyone. A new spring begins.")
+        if ev["type"] == "shed":
+            u = next((u for u in d["shed"] if u["id"] == ev["id"]), None)
+            return (f"🌱 A sprout was trained: {u['name']}! "
+                    f"+{round((u['mult'] - 1) * 100)}% production, forever.") if u else None
         return None
 
     # ---------- main loop ----------
@@ -192,6 +196,13 @@ class Patch:
             uid = str(msg.get("id", ""))[:16]
             if eco.buy_upgrade(uid):
                 self.emit({"type": "upgrade", "id": uid})
+
+        elif kind == "shed":
+            # the Potting Shed (R13): spend the world's sprouts on a permanent perk
+            uid = str(msg.get("id", ""))[:16]
+            if eco.buy_shed(uid):
+                self.emit({"type": "shed", "id": uid})
+                self.save()  # permanent purchases deserve the prestige treatment
 
         elif kind == "catch":
             if self.rabbit and now <= self.rabbit["until"]:

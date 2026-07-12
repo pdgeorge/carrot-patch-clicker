@@ -43,7 +43,7 @@ CC.UI = class {
     this.rabbit = null;
     this.nextRabbit = 40 + Math.random() * 60;
     this.tickerT = 0;
-    this._upgSig = null; this._shopSig = null;
+    this._upgSig = null; this._shopSig = null; this._shedSig = null;
     this._wipeArm = 0;
 
     this.store = (() => {
@@ -254,6 +254,20 @@ CC.UI = class {
       return row;
     });
 
+    /* Potting Shed catalog (R13): all items visible — the catalog is
+       completable, so browsing the whole ladder IS the long-term goal */
+    const sitems = this.$('shed-items');
+    this.shedEls = CC.SHED.map(u => {
+      const el = document.createElement('div');
+      el.className = 'shed-item';
+      el.innerHTML = `<div class="s-head"><b>${u.name}</b><span class="s-cost"></span></div>` +
+        `<div class="s-effect">+${Math.round((u.mult - 1) * 100)}% production, forever</div>` +
+        `<div class="s-flavor">${u.flavor}</div>`;
+      el.addEventListener('click', () => this.buyShed(u.id));
+      sitems.appendChild(el);
+      return el;
+    });
+
     /* ribbon shelf */
     const shelf = this.$('ribbons');
     this.ribbonEls = CC.RIBBONS.map(r => {
@@ -284,6 +298,11 @@ CC.UI = class {
         this.buyN = +e.target.dataset.n;
         for (const b of this.$('buy-amount').children) b.classList.toggle('on', +b.dataset.n === this.buyN);
       }
+    });
+    this.$('shed-btn').addEventListener('click', () => this.$('shed').classList.remove('hidden'));
+    this.$('shed-close').addEventListener('click', () => this.$('shed').classList.add('hidden'));
+    this.$('shed').addEventListener('click', e => {
+      if (e.target === this.$('shed')) this.$('shed').classList.add('hidden');
     });
     this.$('prestige-btn').addEventListener('click', () => this.askPrestige());
     this.$('prestige-btn').addEventListener('mouseenter', () => this.tooltip({ kind: 'prestige' }));
@@ -351,6 +370,21 @@ CC.UI = class {
     if (this.core.buyUpgrade(id)) {
       CC.audio.upgrade();
       this.tooltip(null);
+    }
+  }
+
+  buyShed(id) {
+    if (this.awaitingWorld()) return;
+    CC.audio.ensure();
+    if (this.worldMode) {
+      /* intent only — the server announces the purchase to the world */
+      this.patch.send({ type: 'shed', id });
+      return;
+    }
+    if (this.core.buyShed(id)) {
+      const u = CC.SHED.find(u => u.id === id);
+      CC.audio.seed();
+      this.toast(`🌱 ${u.name}! +${Math.round((u.mult - 1) * 100)}% production, forever.`);
     }
   }
 
@@ -428,6 +462,11 @@ CC.UI = class {
       CC.audio.seed();
       this.toast(`🌸 SOMEONE SENT THE WHOLE GARDEN TO SEED. +${CC.fmt(ev.gained)} seeds ` +
         `(+${ev.gained * 8}% forever) for everyone. A new spring begins.`);
+    } else if (ev.type === 'shed') {
+      const u = CC.SHED.find(u => u.id === ev.id);
+      if (!u) return;
+      CC.audio.seed();
+      this.toast(`🌱 A sprout was trained: ${u.name}! +${Math.round((u.mult - 1) * 100)}% production, forever.`);
     }
   }
 
@@ -528,6 +567,27 @@ CC.UI = class {
 
     this.$('seed-line').textContent = c.seeds > 0
       ? `🌸 ${CC.fmt(c.seeds)} seeds — +${c.seeds * 8}% forever` : '';
+
+    /* the Potting Shed (R13): balance always on the main screen, catalog
+       behind its own screen; the button glows when the world can afford
+       something new */
+    const shedBought = Object.keys(c.shed).length;
+    this.$('sprout-line').textContent = (c.sprouts > 0 || shedBought > 0)
+      ? `🌱 ${CC.fmt(c.sprouts)} sprout${c.sprouts === 1 ? '' : 's'} to spend` : '';
+    const sb = this.$('shed-btn');
+    sb.classList.toggle('hidden', !(c.seeds > 0 || c.sprouts > 0 || shedBought > 0));
+    sb.classList.toggle('affordable', CC.SHED.some(u => !c.shed[u.id] && c.sprouts >= u.cost));
+    const shedSig = CC.SHED.map(u => (c.shed[u.id] ? 'x' : c.sprouts >= u.cost ? '+' : '-')).join('') + '|' + c.sprouts;
+    if (shedSig !== this._shedSig) {
+      this._shedSig = shedSig;
+      this.$('shed-balance').innerHTML = `<b>${CC.fmt(c.sprouts)}</b> 🌱 sprouts ready for planting`;
+      CC.SHED.forEach((u, i) => {
+        const el = this.shedEls[i];
+        el.classList.toggle('bought', !!c.shed[u.id]);
+        el.classList.toggle('cant', !c.shed[u.id] && c.sprouts < u.cost);
+        el.querySelector('.s-cost').textContent = c.shed[u.id] ? '🌱 planted' : `${CC.fmt(u.cost)} 🌱`;
+      });
+    }
 
     const pending = c.pendingSeeds();
     const pb = this.$('prestige-btn');
@@ -723,7 +783,10 @@ CC.UI = class {
 if (typeof document !== 'undefined') {
   addEventListener('DOMContentLoaded', () => {
     globalThis.game = new CC.UI(new CC.Core());
-    const grant = new URLSearchParams(location.search).get('grant');
+    const params = new URLSearchParams(location.search);
+    const grant = params.get('grant');
     if (grant) game.core.earn(+grant); /* debug/testing */
+    const sprouts = params.get('sprouts');
+    if (sprouts) game.core.sprouts += +sprouts; /* debug/testing (dev garden; the server ignores predictions) */
   });
 }

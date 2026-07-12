@@ -20,7 +20,9 @@ CC.Core = class {
     this.clicks = 0;
     this.owned = CC.BUILDINGS.map(() => 0);
     this.bought = {};             /* upgrade id -> true */
-    this.seeds = 0;
+    this.seeds = 0;               /* permanent: +8% each, never spent */
+    this.sprouts = 0;             /* spendable twin: minted 1:1 with seeds (R13) */
+    this.shed = {};               /* Potting Shed item id -> true; survives prestige */
     this.buffs = [];              /* {name, mult, left} */
     this.t = 0;
     this._ribbonCount = 0;
@@ -58,6 +60,7 @@ CC.Core = class {
        { seeds: N }         seeds ≥ N
        { clicks: N }        lifetime clicks ≥ N (clicks survive prestige)
        { bought: 'id' }     another upgrade already bought
+       { shed: 'id' }       Potting Shed item already bought (R13)
      Unknown conditions fail closed: the upgrade stays hidden. */
   condMet(c) {
     if (c.owned !== undefined) return this.owned[c.owned] >= c.n;
@@ -65,6 +68,7 @@ CC.Core = class {
     if (c.seeds !== undefined) return this.seeds >= c.seeds;
     if (c.clicks !== undefined) return this.clicks >= c.clicks;
     if (c.bought !== undefined) return !!this.bought[c.bought];
+    if (c.shed !== undefined) return !!this.shed[c.shed];
     return false;
   }
 
@@ -120,6 +124,7 @@ CC.Core = class {
     let m = 1 + 0.08 * this.seeds;
     for (const r of this.ribbons()) m *= r.mult;
     for (const u of CC.GLOBAL_UPGRADES) if (this.bought[u.id]) m *= u.mult;
+    for (const u of CC.SHED) if (this.shed[u.id]) m *= u.mult;
     m *= Math.pow(CC.MILESTONE_MULT, this.bumperTotal());
     return m;
   }
@@ -174,6 +179,15 @@ CC.Core = class {
     return true;
   }
 
+  /* ---------- the Potting Shed (R13) ---------- */
+  buyShed(id) {
+    const u = CC.SHED.find(u => u.id === id);
+    if (!u || this.shed[id] || this.sprouts < u.cost) return false;
+    this.sprouts -= u.cost;
+    this.shed[id] = true;
+    return true;
+  }
+
   /* ---------- golden rabbit ---------- */
   rabbitReward(rng = Math.random) {
     if (rng() < 0.55) {
@@ -193,6 +207,7 @@ CC.Core = class {
     const gain = this.pendingSeeds();
     if (gain < 1) return 0;
     this.seeds += gain;
+    this.sprouts += gain; /* every seed also sprouts (R13); shed keeps its purchases */
     this.bank = 0;
     this.totalRun = 0;
     this.owned = CC.BUILDINGS.map(() => 0);
@@ -233,6 +248,7 @@ CC.Core = class {
     return {
       v: 1, bank: this.bank, totalAllTime: this.totalAllTime, totalRun: this.totalRun,
       clicks: this.clicks, owned: this.owned, bought: this.bought, seeds: this.seeds,
+      sprouts: this.sprouts, shed: this.shed,
       last: Date.now(),
     };
   }
@@ -246,6 +262,10 @@ CC.Core = class {
     this.owned = CC.BUILDINGS.map((_, i) => (s.owned && s.owned[i]) || 0);
     this.bought = s.bought || {};
     this.seeds = s.seeds || 0;
+    /* pre-R13 saves earned their seeds when none were spendable: mint the
+       backlog — sprouts = seeds — as the fair one-time migration */
+    this.sprouts = s.sprouts !== undefined ? s.sprouts : (s.seeds || 0);
+    this.shed = s.shed || {};
     this._ribbonCount = this.ribbons().length;
     this._bumperSeen = CC.BUILDINGS.map((_, i) => this.bumperCount(i));
     /* offline earnings: half rate, capped at 8 hours */

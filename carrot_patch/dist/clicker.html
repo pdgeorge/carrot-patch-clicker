@@ -151,6 +151,7 @@ html, body { margin: 0; padding: 0; }
 }
 #hero:active { transform: scale(0.995); }
 #seed-line { font-size: 12.5px; color: #eab8e4; min-height: 18px; }
+#sprout-line { font-size: 12.5px; color: #a8e6a0; min-height: 18px; font-variant-numeric: tabular-nums; }
 #prestige-btn {
   margin-top: 6px;
   width: 100%;
@@ -165,6 +166,77 @@ html, body { margin: 0; padding: 0; }
   box-shadow: 0 4px 16px rgba(217, 140, 201, 0.35);
 }
 #prestige-btn:hover { filter: brightness(1.08); }
+
+/* ---------- the Potting Shed (R13) ---------- */
+#shed-btn {
+  margin-top: 6px;
+  width: 100%;
+  padding: 8px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #0e2410;
+  background: linear-gradient(180deg, #b8e6a8, #7cbf6a);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(124, 191, 106, 0.3);
+}
+#shed-btn:hover { filter: brightness(1.08); }
+#shed-btn.affordable { animation: shed-glow 1.6s ease-in-out infinite; }
+@keyframes shed-glow {
+  0%, 100% { box-shadow: 0 4px 16px rgba(124, 191, 106, 0.3); }
+  50% { box-shadow: 0 0 22px rgba(168, 230, 160, 0.85); }
+}
+#shed {
+  position: fixed; inset: 0;
+  background: rgba(5, 8, 3, 0.82);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 28;
+}
+#shed-box {
+  background: linear-gradient(180deg, #1a2412, #10160a);
+  border: 1px solid #a8e6a055;
+  border-radius: 14px;
+  padding: 22px 26px;
+  width: min(560px, calc(100vw - 40px));
+  max-height: 82vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+#shed-box h2 { margin: 0 0 4px; color: #a8e6a0; letter-spacing: 0.12em; font-size: 18px; text-align: center; }
+#shed-sub { margin: 0 0 10px; font-size: 12.5px; font-style: italic; color: var(--dim); text-align: center; }
+#shed-balance { text-align: center; font-size: 14px; color: #a8e6a0; margin-bottom: 12px; font-variant-numeric: tabular-nums; }
+#shed-balance b { font-size: 18px; }
+#shed-items { display: flex; flex-direction: column; gap: 8px; }
+.shed-item {
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  line-height: 1.45;
+}
+.shed-item:not(.cant):not(.bought):hover { border-color: #a8e6a0; }
+.shed-item.cant { opacity: 0.5; cursor: default; }
+.shed-item.bought { border-color: #7cbf6a88; cursor: default; }
+.shed-item.bought .s-head b { color: #a8e6a0; }
+.shed-item .s-head { display: flex; justify-content: space-between; gap: 8px; }
+.shed-item .s-head b { color: #ffd98a; font-size: 13.5px; }
+.shed-item .s-cost { color: #a8e6a0; font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.shed-item .s-effect { font-size: 12px; color: var(--leaf); font-weight: 700; }
+.shed-item .s-flavor { font-size: 12px; font-style: italic; color: var(--dim); }
+#shed-close {
+  margin-top: 14px;
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+  background: #2c3a22;
+  color: var(--text);
+}
 .small-controls { margin-top: 8px; display: flex; gap: 6px; justify-content: center; }
 .small-controls button {
   background: var(--panel);
@@ -378,7 +450,9 @@ html, body { margin: 0; padding: 0; }
       <div id="buff-line"></div>
       <canvas id="hero" width="320" height="360"></canvas>
       <div id="seed-line"></div>
+      <div id="sprout-line"></div>
       <button id="prestige-btn" class="hidden">🌸 Go to Seed</button>
+      <button id="shed-btn" class="hidden">🌱 The Potting Shed</button>
       <div class="small-controls">
         <button id="mute-btn" title="toggle sound">🔊</button>
         <button id="wipe-btn" title="wipe save (hold to confirm)">🗑</button>
@@ -425,6 +499,16 @@ html, body { margin: 0; padding: 0; }
 
   <div id="build-tag" title="build id — changes whenever any game source changes"></div>
 
+  <div id="shed" class="hidden">
+    <div id="shed-box">
+      <h2>🌱 THE POTTING SHED</h2>
+      <p id="shed-sub">Seeds are forever. Sprouts are for spending — every one will be planted eventually.</p>
+      <div id="shed-balance"></div>
+      <div id="shed-items"></div>
+      <button id="shed-close">Back to the garden</button>
+    </div>
+  </div>
+
   <div id="modal" class="hidden">
     <div id="modal-box">
       <h2 id="modal-title"></h2>
@@ -438,7 +522,7 @@ html, body { margin: 0; padding: 0; }
 </div>
 
 <script>
-globalThis.CC = globalThis.CC || {}; CC.BUILD = '9587bfe'; CC.GARDENERS = ["pdgeorge","Claude Fable 5"];
+globalThis.CC = globalThis.CC || {}; CC.BUILD = '216b8ab'; CC.GARDENERS = ["pdgeorge","Claude Fable 5"];
 /* ==== data.js ==== */
 /* Carrot Clicker — content: buildings, upgrades, ribbons, news. */
 globalThis.CC = globalThis.CC || {};
@@ -492,6 +576,7 @@ CC.TIERS = [
      { seeds: N }         seeds ≥ N
      { clicks: N }        lifetime clicks ≥ N
      { bought: 'id' }     another upgrade already bought
+     { shed: 'id' }       Potting Shed item already bought (R13)
    Example — a click upgrade that appears only after 50 Garden Plots and
    another purchase:  unlock: [{ owned: 1, n: 50 }, { bought: 'c0' }]
    Without `unlock`, defaults apply: click/global show at lifetime ≥ cost/4;
@@ -552,6 +637,25 @@ CC.SYNERGY_UPGRADES = [
     flavor: 'Space rabbits. Unionized. Rabbit Unions gain +10% per Orbital Polytunnel.' },
 ];
 
+/* The Potting Shed (R13): permanent perks bought with SPROUTS — the seed's
+   spendable twin. Going to seed mints 1 sprout per seed; seeds themselves
+   are never spent (+8% each, forever). Shed purchases survive prestige.
+   The catalog is completable by design: every item is strictly positive and
+   nothing is exclusive, so "no matter what happens, eventually every sprout
+   will be purchased — it just might not be the most optimal way". Prices
+   are pacing knobs (DESIGN "Tunables"), not choices. Future items may gate
+   other content via unlock: [{ shed: 'id' }]. */
+CC.SHED = [
+  { id: 'p0', name: 'Potting Bench', cost: 5, mult: 1.05,
+    flavor: 'Somewhere to stand, somewhere to plan. The whole world leans on it.' },
+  { id: 'p1', name: 'Cold Frame', cost: 25, mult: 1.08,
+    flavor: 'A little glass roof against the frost. Spring arrives whenever you lift the lid.' },
+  { id: 'p2', name: 'Heirloom Seed Library', cost: 125, mult: 1.10,
+    flavor: 'Every variety the world ever grew, filed under W for wonderful.' },
+  { id: 'p3', name: 'The Grafting Table', cost: 625, mult: 1.12,
+    flavor: 'Two gardens, one stem. The judges have questions; the carrots have answers.' },
+];
+
 /* Ribbons: permanent multipliers at lifetime-harvest milestones (your trophy shelf). */
 CC.RIBBONS = [
   { at: 1e3, name: 'White Ribbon', color: '#e5e7eb', mult: 1.02,
@@ -592,6 +696,7 @@ CC.NEWS = [
   { min: 1e12, text: 'Interdimensional carrot monopoly denies being a monopoly in this dimension.' },
   { min: 1e13, text: 'Historians agree history was mostly leading up to this.' },
   { min: 0, minSeeds: 1, text: 'Botanists confirm: every carrot this year is a little bit you. Not a metaphor.' },
+  { min: 0, minSeeds: 1, text: 'The Potting Shed opens its doors. Every sprout will find a pot eventually.' },
   { min: 0, minSeeds: 1, text: 'Heirloom seed prices soar. Yours are not for sale.' },
   { min: 0, minSeeds: 10, text: 'Tenth-generation carrots exhibit “ancestral memory of being clicked.”' },
 ];
@@ -624,7 +729,9 @@ CC.Core = class {
     this.clicks = 0;
     this.owned = CC.BUILDINGS.map(() => 0);
     this.bought = {};             /* upgrade id -> true */
-    this.seeds = 0;
+    this.seeds = 0;               /* permanent: +8% each, never spent */
+    this.sprouts = 0;             /* spendable twin: minted 1:1 with seeds (R13) */
+    this.shed = {};               /* Potting Shed item id -> true; survives prestige */
     this.buffs = [];              /* {name, mult, left} */
     this.t = 0;
     this._ribbonCount = 0;
@@ -662,6 +769,7 @@ CC.Core = class {
        { seeds: N }         seeds ≥ N
        { clicks: N }        lifetime clicks ≥ N (clicks survive prestige)
        { bought: 'id' }     another upgrade already bought
+       { shed: 'id' }       Potting Shed item already bought (R13)
      Unknown conditions fail closed: the upgrade stays hidden. */
   condMet(c) {
     if (c.owned !== undefined) return this.owned[c.owned] >= c.n;
@@ -669,6 +777,7 @@ CC.Core = class {
     if (c.seeds !== undefined) return this.seeds >= c.seeds;
     if (c.clicks !== undefined) return this.clicks >= c.clicks;
     if (c.bought !== undefined) return !!this.bought[c.bought];
+    if (c.shed !== undefined) return !!this.shed[c.shed];
     return false;
   }
 
@@ -724,6 +833,7 @@ CC.Core = class {
     let m = 1 + 0.08 * this.seeds;
     for (const r of this.ribbons()) m *= r.mult;
     for (const u of CC.GLOBAL_UPGRADES) if (this.bought[u.id]) m *= u.mult;
+    for (const u of CC.SHED) if (this.shed[u.id]) m *= u.mult;
     m *= Math.pow(CC.MILESTONE_MULT, this.bumperTotal());
     return m;
   }
@@ -778,6 +888,15 @@ CC.Core = class {
     return true;
   }
 
+  /* ---------- the Potting Shed (R13) ---------- */
+  buyShed(id) {
+    const u = CC.SHED.find(u => u.id === id);
+    if (!u || this.shed[id] || this.sprouts < u.cost) return false;
+    this.sprouts -= u.cost;
+    this.shed[id] = true;
+    return true;
+  }
+
   /* ---------- golden rabbit ---------- */
   rabbitReward(rng = Math.random) {
     if (rng() < 0.55) {
@@ -797,6 +916,7 @@ CC.Core = class {
     const gain = this.pendingSeeds();
     if (gain < 1) return 0;
     this.seeds += gain;
+    this.sprouts += gain; /* every seed also sprouts (R13); shed keeps its purchases */
     this.bank = 0;
     this.totalRun = 0;
     this.owned = CC.BUILDINGS.map(() => 0);
@@ -837,6 +957,7 @@ CC.Core = class {
     return {
       v: 1, bank: this.bank, totalAllTime: this.totalAllTime, totalRun: this.totalRun,
       clicks: this.clicks, owned: this.owned, bought: this.bought, seeds: this.seeds,
+      sprouts: this.sprouts, shed: this.shed,
       last: Date.now(),
     };
   }
@@ -850,6 +971,10 @@ CC.Core = class {
     this.owned = CC.BUILDINGS.map((_, i) => (s.owned && s.owned[i]) || 0);
     this.bought = s.bought || {};
     this.seeds = s.seeds || 0;
+    /* pre-R13 saves earned their seeds when none were spendable: mint the
+       backlog — sprouts = seeds — as the fair one-time migration */
+    this.sprouts = s.sprouts !== undefined ? s.sprouts : (s.seeds || 0);
+    this.shed = s.shed || {};
     this._ribbonCount = this.ribbons().length;
     this._bumperSeen = CC.BUILDINGS.map((_, i) => this.bumperCount(i));
     /* offline earnings: half rate, capped at 8 hours */
@@ -985,6 +1110,9 @@ CC.Patch = class {
       c.owned = s.owned.slice();
       c.bought = s.bought;
       c.seeds = s.seeds;
+      /* pre-R13 server: mirror the save migration (sprouts backlog = seeds) */
+      c.sprouts = s.sprouts !== undefined ? s.sprouts : (s.seeds || 0);
+      c.shed = s.shed || {};
       c.buffs = s.buffs.map(b => ({ ...b }));
       c._ribbonCount = c.ribbons().length;
       c._bumperSeen = CC.BUILDINGS.map((_, i) => c.bumperCount(i));
@@ -1070,7 +1198,7 @@ CC.UI = class {
     this.rabbit = null;
     this.nextRabbit = 40 + Math.random() * 60;
     this.tickerT = 0;
-    this._upgSig = null; this._shopSig = null;
+    this._upgSig = null; this._shopSig = null; this._shedSig = null;
     this._wipeArm = 0;
 
     this.store = (() => {
@@ -1281,6 +1409,20 @@ CC.UI = class {
       return row;
     });
 
+    /* Potting Shed catalog (R13): all items visible — the catalog is
+       completable, so browsing the whole ladder IS the long-term goal */
+    const sitems = this.$('shed-items');
+    this.shedEls = CC.SHED.map(u => {
+      const el = document.createElement('div');
+      el.className = 'shed-item';
+      el.innerHTML = `<div class="s-head"><b>${u.name}</b><span class="s-cost"></span></div>` +
+        `<div class="s-effect">+${Math.round((u.mult - 1) * 100)}% production, forever</div>` +
+        `<div class="s-flavor">${u.flavor}</div>`;
+      el.addEventListener('click', () => this.buyShed(u.id));
+      sitems.appendChild(el);
+      return el;
+    });
+
     /* ribbon shelf */
     const shelf = this.$('ribbons');
     this.ribbonEls = CC.RIBBONS.map(r => {
@@ -1311,6 +1453,11 @@ CC.UI = class {
         this.buyN = +e.target.dataset.n;
         for (const b of this.$('buy-amount').children) b.classList.toggle('on', +b.dataset.n === this.buyN);
       }
+    });
+    this.$('shed-btn').addEventListener('click', () => this.$('shed').classList.remove('hidden'));
+    this.$('shed-close').addEventListener('click', () => this.$('shed').classList.add('hidden'));
+    this.$('shed').addEventListener('click', e => {
+      if (e.target === this.$('shed')) this.$('shed').classList.add('hidden');
     });
     this.$('prestige-btn').addEventListener('click', () => this.askPrestige());
     this.$('prestige-btn').addEventListener('mouseenter', () => this.tooltip({ kind: 'prestige' }));
@@ -1378,6 +1525,21 @@ CC.UI = class {
     if (this.core.buyUpgrade(id)) {
       CC.audio.upgrade();
       this.tooltip(null);
+    }
+  }
+
+  buyShed(id) {
+    if (this.awaitingWorld()) return;
+    CC.audio.ensure();
+    if (this.worldMode) {
+      /* intent only — the server announces the purchase to the world */
+      this.patch.send({ type: 'shed', id });
+      return;
+    }
+    if (this.core.buyShed(id)) {
+      const u = CC.SHED.find(u => u.id === id);
+      CC.audio.seed();
+      this.toast(`🌱 ${u.name}! +${Math.round((u.mult - 1) * 100)}% production, forever.`);
     }
   }
 
@@ -1455,6 +1617,11 @@ CC.UI = class {
       CC.audio.seed();
       this.toast(`🌸 SOMEONE SENT THE WHOLE GARDEN TO SEED. +${CC.fmt(ev.gained)} seeds ` +
         `(+${ev.gained * 8}% forever) for everyone. A new spring begins.`);
+    } else if (ev.type === 'shed') {
+      const u = CC.SHED.find(u => u.id === ev.id);
+      if (!u) return;
+      CC.audio.seed();
+      this.toast(`🌱 A sprout was trained: ${u.name}! +${Math.round((u.mult - 1) * 100)}% production, forever.`);
     }
   }
 
@@ -1555,6 +1722,27 @@ CC.UI = class {
 
     this.$('seed-line').textContent = c.seeds > 0
       ? `🌸 ${CC.fmt(c.seeds)} seeds — +${c.seeds * 8}% forever` : '';
+
+    /* the Potting Shed (R13): balance always on the main screen, catalog
+       behind its own screen; the button glows when the world can afford
+       something new */
+    const shedBought = Object.keys(c.shed).length;
+    this.$('sprout-line').textContent = (c.sprouts > 0 || shedBought > 0)
+      ? `🌱 ${CC.fmt(c.sprouts)} sprout${c.sprouts === 1 ? '' : 's'} to spend` : '';
+    const sb = this.$('shed-btn');
+    sb.classList.toggle('hidden', !(c.seeds > 0 || c.sprouts > 0 || shedBought > 0));
+    sb.classList.toggle('affordable', CC.SHED.some(u => !c.shed[u.id] && c.sprouts >= u.cost));
+    const shedSig = CC.SHED.map(u => (c.shed[u.id] ? 'x' : c.sprouts >= u.cost ? '+' : '-')).join('') + '|' + c.sprouts;
+    if (shedSig !== this._shedSig) {
+      this._shedSig = shedSig;
+      this.$('shed-balance').innerHTML = `<b>${CC.fmt(c.sprouts)}</b> 🌱 sprouts ready for planting`;
+      CC.SHED.forEach((u, i) => {
+        const el = this.shedEls[i];
+        el.classList.toggle('bought', !!c.shed[u.id]);
+        el.classList.toggle('cant', !c.shed[u.id] && c.sprouts < u.cost);
+        el.querySelector('.s-cost').textContent = c.shed[u.id] ? '🌱 planted' : `${CC.fmt(u.cost)} 🌱`;
+      });
+    }
 
     const pending = c.pendingSeeds();
     const pb = this.$('prestige-btn');
@@ -1750,8 +1938,11 @@ CC.UI = class {
 if (typeof document !== 'undefined') {
   addEventListener('DOMContentLoaded', () => {
     globalThis.game = new CC.UI(new CC.Core());
-    const grant = new URLSearchParams(location.search).get('grant');
+    const params = new URLSearchParams(location.search);
+    const grant = params.get('grant');
     if (grant) game.core.earn(+grant); /* debug/testing */
+    const sprouts = params.get('sprouts');
+    if (sprouts) game.core.sprouts += +sprouts; /* debug/testing (dev garden; the server ignores predictions) */
   });
 }
 
