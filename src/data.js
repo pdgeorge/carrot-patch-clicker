@@ -262,6 +262,9 @@ CC.NEWS = [
   { min: 0, minSeeds: 1, text: 'The Potting Shed opens its doors. Every sprout will find a pot eventually.' },
   { min: 0, minSeeds: 1, text: 'Heirloom seed prices soar. Yours are not for sale.' },
   { min: 0, minSeeds: 10, text: 'Tenth-generation carrots exhibit “ancestral memory of being clicked.”' },
+
+  // TODO: unused? check with RP before deleting
+  // { min: 0, text: 'The big one asked for him by name.' },
 ];
 
 CC.RABBIT_NEWS = [
