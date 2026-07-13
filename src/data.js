@@ -220,6 +220,7 @@ CC.RIBBONS = [
 
 /* News ticker: shown when lifetime harvest ≥ min (and seeds ≥ minSeeds if set). */
 CC.NEWS = [
+  // The Rabbit Press isn't going to reveal its sources.
   { min: 500, text: 'MISSING: local man, answers to Dabi. Last seen "being helpful." — Rabbit Press' },
   { min: 2000, text: 'Drag marks found leading into row nine. Row nine denies everything. — Rabbit Press' },
   { min: 10000, text: 'Muffled complaints heard beneath the north field. Soil described as "smug." — Rabbit Press' },
@@ -229,7 +230,7 @@ CC.NEWS = [
 
   { min: 50000, text: 'The parsnip man has stopped filing complaints. Neighbours find the silence worse.' },
   { min: 200000, text: 'The parsnip man seen taking measurements of your fence at 3am. "For a gift," he says.' },
-  { min: 1e6, text: 'The parsnip man now refers to himself as "we." Root vegetables decline to comment.' },
+  { min: 1e6, text: 'The parsnip man now refers to himself as "we."' },
   { min: 1e7, text: 'Pale, knobbly figures gather at the patch edge at dusk. They do not click. They wait.' },
 
   { min: 1e7, text: 'Something in row nine has learned to count visitors. It is disappointed by the numbers.' },
