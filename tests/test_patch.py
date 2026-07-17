@@ -7,6 +7,7 @@ Run with a venv that has fastapi installed:
 from __future__ import annotations
 
 import json
+import math
 import subprocess
 import sys
 import time
@@ -122,6 +123,33 @@ js_fmt = json.loads(subprocess.run(
     ["node", "-e", JS_FMT, str(ROOT)], capture_output=True, text=True, check=True).stdout)
 mism = [i / 8 for i in range(200) if pyfmt(i / 8) != js_fmt[i]]
 check(not mism, f"fmt parity for 0..25 in eighths ({len(mism)} mismatches: {mism[:5]})")
+
+# …and across unit boundaries with exact decimal ties (10.25k etc — review F2/f5)
+JS_FMT2 = r"""
+const fs = require('fs'), path = require('path'), vm = require('vm');
+for (const f of ['data.js', 'core.js']) {
+  vm.runInThisContext(fs.readFileSync(path.join(process.argv[1], 'src', f), 'utf8'));
+}
+const out = [];
+for (let i = 0; i < 4000; i++) out.push(CC.fmt(i * 12.5));
+console.log(JSON.stringify(out));
+"""
+js_fmt2 = json.loads(subprocess.run(
+    ["node", "-e", JS_FMT2, str(ROOT)], capture_output=True, text=True, check=True).stdout)
+mism2 = [i * 12.5 for i in range(4000) if pyfmt(i * 12.5) != js_fmt2[i]]
+check(not mism2, f"fmt tie parity to 50k ({len(mism2)} mismatches: {mism2[:5]})")
+
+# corrupt saves are data, not authority (review F1: OverflowError killed the server)
+bad = {"v": 1, "bank": 0, "totalAllTime": 0, "totalRun": 0, "clicks": 0, "owned": [],
+       "bought": {}, "seeds": 0, "sprouts": 0,
+       "shed": {"l0": 1e18, "hax": 5, "p0": True}, "almanac": {"fake": True, "sd0": True}}
+pbad = Economy(load_data())
+pbad.deserialize(dict(bad))
+check(pbad.shed_level("l0") == 800 and pbad.shed_level("hax") == 0 and pbad.shed_level("p0") == 1,
+      "forged shed levels clamp, unknown ids drop, legacy true survives")
+check("fake" not in pbad.almanac and pbad.almanac.get("sd0") is True
+      and math.isfinite(pbad.shed_cost("l0")) and math.isfinite(pbad.global_mult()),
+      "junk almanac keys drop, real history stays, costs stay finite")
 
 # R14: Fair Circuit ribbon parity + the new fmt units, in both engines
 print("\n=== the Fair Circuit (R14) ===")
@@ -497,15 +525,28 @@ with TestClient(app) as client:
         time.sleep(1.3)  # one server tick after the prestige above
         check(patch.eco.almanac.get("sd0"), "the Almanac records the world's first seed")
 
+        # ladder levels announce milestones only (review: launch-day toast flood)
+        conn_stub = {"last_click_msg": 0.0, "msg_times": []}
+        patch.eco.sprouts += 1_000_000
+        patch._pending.clear()
+        for _ in range(3):
+            patch.handle({"type": "shed", "id": "l0"}, conn_stub)
+        noisy = [m for m in list(patch._pending)
+                 if m.get("type") == "event" and m["ev"]["type"] == "shed"]
+        check(patch.eco.shed_level("l0") == 5 and not noisy,
+              "ladder levels 3-5 climb silently — milestones only on the wire")
+
     # persistence round-trip
     patch.eco.earn(12345)
     patch.save()
     fresh = Economy(load_data())
     fresh.deserialize(json.loads(state_path.read_text()))
     check(fresh.total_all_time >= 12345, "world state survives a save/load")
-    check(fresh.shed.get("p0") and fresh.shed_level("l0") == 2 and fresh.sprouts == 9604,
-          "shed levels and sprouts survive a save/load (9602 left + 2 minted by the prestige above)")
-    check(fresh.prestiges == 1 and fresh.sprouts_spent == 20405,
+    check(fresh.shed.get("p0") and fresh.shed_level("l0") == patch.eco.shed_level("l0")
+          and fresh.sprouts == patch.eco.sprouts,
+          "shed levels and sprouts survive a save/load")
+    check(fresh.prestiges == patch.eco.prestiges
+          and fresh.sprouts_spent == patch.eco.sprouts_spent,
           "world counters survive a save/load")
     check(fresh.almanac.get("sd0"), "the Almanac survives a save/load")
 

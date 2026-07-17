@@ -11,6 +11,7 @@ import math
 import os
 import random
 import time
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
 
@@ -314,6 +315,8 @@ class Economy:
         gain = self.pending_seeds()
         if gain < 1:
             return 0
+        # a deed done in the dying second of a spring still counts (review F3)
+        self._latch_pages()
         self.seeds += gain
         self.sprouts += gain * self.mint_mult()  # every seed sprouts (R13); doublers stack (R15)
         self.prestiges += 1
@@ -354,11 +357,17 @@ class Economy:
                                "at": self.d["milestones"][n - 1]})
                 self._bumper_seen[i] = n
         # Almanac pages latch the moment their deed is done — forever (R16)
+        self._latch_pages(events)
+        return events
+
+    def _latch_pages(self, events: list | None = None) -> None:
+        """Latch every satisfied unwritten page; silent without `events`
+        (loads, prestige-instant deeds). Mirror of core.js latchPages."""
         for pg in self.d["almanac"]:
             if not self.almanac.get(pg["id"]) and all(self.cond_met(c) for c in pg["unlock"]):
                 self.almanac[pg["id"]] = True
-                events.append({"type": "almanac", "id": pg["id"]})
-        return events
+                if events is not None:
+                    events.append({"type": "almanac", "id": pg["id"]})
 
     # ---------- persistence ----------
     def serialize(self) -> dict:
@@ -385,17 +394,35 @@ class Economy:
         self.seeds = s.get("seeds", 0)
         # pre-R13 saves earned their seeds when none were spendable: mint the
         # backlog — sprouts = seeds — as the fair one-time migration
-        self.sprouts = s["sprouts"] if "sprouts" in s else s.get("seeds", 0)
-        self.shed = s.get("shed", {})
-        self.prestiges = s.get("prestiges", 0)   # R15 counters: absent = records begin now
-        self.rabbits = s.get("rabbits", 0)
-        self.sprouts_spent = s.get("sproutsSpent", 0)
-        self.almanac = s.get("almanac", {})
+        self.sprouts = max(0, s["sprouts"] if "sprouts" in s else s.get("seeds", 0))
+        # a save is data, not authority (review F1): unknown shed ids are
+        # dropped, levels forced to sane ints — a forged 1e9 "level" raises
+        # OverflowError in every cost/effect pow and would kill the server
+        self.shed = {}
+        raw_shed = s.get("shed") or {}
+        for u in self.d["shed"]:
+            v = raw_shed.get(u["id"], 0)
+            if v is True:
+                lv = 1
+            elif isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v):
+                lv = int(v)
+            else:
+                lv = 0
+            if lv > 0:
+                self.shed[u["id"]] = min(lv, u.get("max", 800))
+        self.prestiges = max(0, int(s.get("prestiges", 0) or 0))
+        self.rabbits = max(0, int(s.get("rabbits", 0) or 0))
+        self.sprouts_spent = max(0, s.get("sproutsSpent", 0) or 0)
+        # known page ids are historical fact and stay latched; junk ids
+        # would mint ×1.02 each forever — dropped
+        self.almanac = {}
+        raw_al = s.get("almanac") or {}
+        for pg in self.d["almanac"]:
+            if raw_al.get(pg["id"]):
+                self.almanac[pg["id"]] = True
         # pages already satisfied by an older save latch silently (R16):
         # the load is not the deed, so it gets no toast storm
-        for pg in self.d["almanac"]:
-            if not self.almanac.get(pg["id"]) and all(self.cond_met(c) for c in pg["unlock"]):
-                self.almanac[pg["id"]] = True
+        self._latch_pages()
         self.buffs = s.get("buffs", [])
         self._ribbon_seen = len(self.ribbons())
         self._bumper_seen = [self.bumper_count(i) for i in range(len(self.owned))]
@@ -421,12 +448,20 @@ class Economy:
         }
 
 
+def _fx(v: float, d: int) -> str:
+    """Format exactly like JS toFixed: round the EXACT binary value of v,
+    half away from zero on true ties. python's format() rounds half-even,
+    and multiply-then-floor mints false ties (1.075*100 == 107.5 exactly),
+    so this goes through Decimal, which converts doubles losslessly."""
+    return str(Decimal(v).quantize(Decimal(1).scaleb(-d), rounding=ROUND_HALF_UP))
+
+
 def fmt(n: float) -> str:
     if n < 1000:
         # mirror CC.fmt: one decimal for small non-integers, ties rounding up
         # like toFixed (5.25 -> "5.3"), not python's round-half-even ("5.2")
         if n < 10 and n % 1:
-            return f"{math.floor(n * 10 + 0.5) / 10:.1f}"
+            return _fx(n, 1)
         return str(int(n))
     units = ["k", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc",
              "Ud", "Dd", "Td", "Qad", "Qid"]  # Ud..Qid: R14, mirror of CC.fmt
@@ -437,4 +472,4 @@ def fmt(n: float) -> str:
     if n >= 999.5 and u < len(units) - 1:  # /1000 drift guard, mirror of CC.fmt
         n /= 1000
         u += 1
-    return f"{n:.0f}{units[u]}" if n >= 100 else f"{n:.1f}{units[u]}" if n >= 10 else f"{n:.2f}{units[u]}"
+    return f"{_fx(n, 0)}{units[u]}" if n >= 100 else f"{_fx(n, 1)}{units[u]}" if n >= 10 else f"{_fx(n, 2)}{units[u]}"

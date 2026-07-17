@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-for (const f of ['data.js', 'core.js', 'net.js']) {
+for (const f of ['data.js', 'core.js', 'net.js', 'ui.js']) {
   vm.runInThisContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), { filename: f });
 }
 const CC = global.CC;
@@ -179,6 +179,16 @@ oldShed.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0,
 check(oldShed.shedLevel('p0') === 1 && Math.abs(oldShed.globalMult() - 1.05) < 1e-9,
   'pre-R15 `true` reads as level 1');
 
+/* a save is data, not authority (review F1) */
+const bad = new CC.Core();
+bad.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0, owned: [], bought: {},
+  seeds: 0, sprouts: 0, shed: { l0: 1e18, hax: 5, p0: true }, almanac: { fake: true, sd0: true } });
+check(bad.shedLevel('l0') === 800 && bad.shedLevel('hax') === 0 && bad.shedLevel('p0') === 1,
+  'forged shed levels clamp, unknown ids drop, legacy true survives');
+check(!bad.almanac.fake && bad.almanac.sd0 === true
+  && isFinite(bad.shedCost('l0')) && isFinite(bad.globalMult()),
+  'junk almanac keys drop, real history stays, costs stay finite');
+
 /* the Almanac (R16): deeds latch forever, once, and compound */
 console.log('\n=== the Almanac ===');
 check(CC.ALMANAC.length === 72, `72 pages in the catalog (got ${CC.ALMANAC.length})`);
@@ -202,17 +212,67 @@ const al2 = new CC.Core();
 al2.deserialize(JSON.parse(JSON.stringify(al.serialize())));
 check(al2.almanacCount() >= al.almanacCount(), 'pages survive the save');
 check(al2.tick(0.1).filter(e => e.type === 'almanac').length === 0, 'and a reload announces nothing');
+const pz = new CC.Core();
+pz.earn(9e6);
+pz.owned[3] = 300; /* Market Saturation, never ticked before the reset */
+pz.prestige();
+check(pz.almanac['rn3'] === true, 'a deed done in the dying second of a spring still makes the book');
+const mir = new CC.Core();
+mir.mirrorBook = true; /* a world-mode client must never latch its own pages */
+mir.seeds = 100;
+check(mir.tick(0.1).filter(e => e.type === 'almanac').length === 0 && mir.almanacCount() === 0,
+  'a mirroring client never latches its own pages');
 
-/* growth-budget tripwire: every uncapped ladder's β must fit the budget —
-   if a data.js edit trips this, the economy has become super-linear */
+/* skin strings (review P1) */
+console.log('\n=== skin strings ===');
+const proto = CC.UI.prototype;
+check(proto.plural('Window Box') === 'Window Boxes'
+  && proto.plural('Carrot Singularity') === 'Carrot Singularities'
+  && proto.plural('Greenhouse') === 'Greenhouses', 'building plurals are English');
+const h0txt = proto.shedEffectText.call({ plural: proto.plural }, CC.SHED.find(u => u.id === 'h0'));
+check(h0txt.includes('Window Boxes'), `heirloom effect text pluralizes (${h0txt})`);
+
+/* growth-budget tripwire: every growth term is DERIVED FROM DATA (review
+   f2 — a hardcoded term can never trip), so any data.js edit that makes
+   the economy super-linear fails here */
 console.log('\n=== growth-budget tripwire ===');
-let beta = 0.098 + 0.03; /* Fair Circuit (per decade, spec) + Almanac headroom (R16) */
+let beta = 0.03; /* reserved headroom for future Almanac cadence (the finite catalog is 0 asymptotically) */
+const fair = CC.RIBBONS.filter(r => r.at >= 1e14);
+const fairDecades = Math.log10(fair[fair.length - 1].at / 1e13);
+beta += 2 * fair.reduce((s, r) => s + Math.log(r.mult), 0) / (Math.LN10 * fairDecades);
 for (const u of CC.SHED) {
   if (!u.repeat || u.max !== undefined) continue;
   if (u.mult) beta += Math.log(u.mult) / Math.log(u.costGrowth);
   if (u.bmult) beta += Math.log(u.bmult) / Math.log(u.costGrowth) / CC.BUILDINGS.length;
 }
 check(beta < 0.75, `β-budget ${beta.toFixed(3)} < 0.75 (runaway inflation at 1)`);
+
+/* dynamic projection: 300 modeled springs from the live state must
+   DECELERATE (polynomial growth) — this is the tripwire that actually
+   feels RIBBONS/ALMANAC/SHED edits, not just the static sum above */
+const w = new CC.Core();
+w.deserialize({ v: 1, bank: 0, totalAllTime: 3.4e22, totalRun: 0, clicks: 0, owned: [],
+  bought: {}, seeds: 184390889, sprouts: 184390889, shed: {} });
+const logs = [];
+for (let p = 0; p < 300; p++) {
+  let bought = true;
+  while (bought) { /* greedy communal spending */
+    bought = false;
+    for (const u of CC.SHED) {
+      if (!w.shedMaxed(u) && w.shedVisible(u) && w.sprouts >= w.shedCost(u.id)) {
+        w.buyShed(u.id);
+        bought = true;
+      }
+    }
+  }
+  w.earn(w.globalMult() * 1e6 * 21600); /* ~6h of a built-out world (1e6 base cps) */
+  w.tick(0.001);
+  w.prestige();
+  logs.push(Math.log10(w.totalAllTime));
+}
+const early = logs[149] - logs[99], late = logs[299] - logs[249];
+check(late <= early + 0.01, `growth decelerates (Δlog₁₀/50 springs: ${early.toFixed(2)} → ${late.toFixed(2)})`);
+check(logs[299] < 65, `300 springs stay bounded (lifetime 1e${logs[299].toFixed(1)})`);
 
 /* save round-trip */
 console.log('\n=== save round-trip ===');

@@ -84,6 +84,16 @@ class Patch:
         tmp.write_text(json.dumps(self.eco.serialize()))
         tmp.replace(target)
 
+    def save_soon(self) -> None:
+        """Durable-ish save for hot paths: at most one write per 5 s — a
+        launch-day shed spree is hundreds of purchases, and a synchronous
+        atomic write per purchase stalls the loop (review). The 30 s
+        autosave, prestige saves and shutdown cover the gaps."""
+        now = time.monotonic()
+        if now - getattr(self, "_last_soon", 0.0) > 5.0:
+            self._last_soon = now
+            self.save()
+
     # ---------- broadcast ----------
     async def broadcast(self, msg: dict) -> None:
         dead = []
@@ -143,7 +153,7 @@ class Patch:
             if not u:
                 return None
             lv = ev.get("lv", 1)
-            what = f" → Lv {lv}" if lv > 1 else "!"
+            what = f" → Lv {lv}!" if u.get("repeat") else "!"
             eff = (f" +{round((u['mult'] - 1) * 100)}% production, forever."
                    if u.get("mult") else "")
             return f"🌱 A sprout was planted: {u['name']}{what}{eff}"
@@ -232,8 +242,14 @@ class Patch:
             # the Potting Shed (R13/R15): spend the world's sprouts on a perk level
             uid = str(msg.get("id", ""))[:16]
             if eco.buy_shed(uid):
-                self.emit({"type": "shed", "id": uid, "lv": eco.shed_level(uid)})
-                self.save()  # permanent purchases deserve the prestige treatment
+                lv = eco.shed_level(uid)
+                item = next((u for u in eco.d["shed"] if u["id"] == uid), None)
+                # ladders announce milestones only (level 1 and every 10th) —
+                # a spree must not paint ten toasts a second on every screen;
+                # levels stay visible to everyone through the snapshot anyway
+                if not (item and item.get("repeat")) or lv == 1 or lv % 10 == 0:
+                    self.emit({"type": "shed", "id": uid, "lv": lv})
+                self.save_soon()
 
         elif kind == "catch":
             if self.rabbit and now <= self.rabbit["until"]:

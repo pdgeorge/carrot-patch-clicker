@@ -55,6 +55,7 @@ CC.UI = class {
 
     /* served page = the world game, always; file:// = private dev garden (P6) */
     this.worldMode = location.protocol.startsWith('http');
+    this.core.mirrorBook = this.worldMode; /* the server's almanac is the book (R16) */
 
     this.buildStatic();
     this.$('build-tag').textContent = `build ${CC.BUILD || 'dev'}`;
@@ -387,10 +388,17 @@ CC.UI = class {
     }
   }
 
+  /* "Window Boxes", "Carrot Singularities" — never "Boxs"/"Singularitys" */
+  plural(name) {
+    if (/y$/.test(name)) return name.replace(/y$/, 'ies');
+    if (/(s|x|ch|sh)$/.test(name)) return name + 'es';
+    return name + 's';
+  }
+
   /* one line per effect shape — the engine knows numbers, the skin words */
   shedEffectText(u) {
     if (u.mintMult) return `×${u.mintMult} sprouts from every Going to Seed`;
-    if (u.bmult) return `${CC.BUILDINGS[u.building].name}s +${Math.round((u.bmult - 1) * 100)}% per level · resprout each spring`;
+    if (u.bmult) return `${this.plural(CC.BUILDINGS[u.building].name)} +${Math.round((u.bmult - 1) * 100)}% per level · resprout each spring`;
     if (u.cpsPct) return `clicks +${(u.cpsPct * 100).toFixed(1)}% of CpS per level`;
     if (u.mult) return `+${Math.round((u.mult - 1) * 100)}% production${u.repeat ? ' per level' : ', forever'}`;
     return '';
@@ -400,7 +408,11 @@ CC.UI = class {
     if (this.awaitingWorld()) return;
     CC.audio.ensure();
     if (this.worldMode) {
-      /* intent only — the server announces the purchase to the world */
+      /* intent only — and only what the row itself would sell: clicks on
+         locked, maxed or unaffordable items are no-ops, not blind sends */
+      const u = CC.SHED.find(u => u.id === id);
+      if (!u || !this.core.shedVisible(u) || this.core.shedMaxed(u)
+        || this.core.sprouts < this.core.shedCost(id)) return;
       this.patch.send({ type: 'shed', id });
       return;
     }
@@ -519,7 +531,7 @@ CC.UI = class {
       const u = CC.SHED.find(u => u.id === ev.id);
       if (!u) return;
       CC.audio.seed();
-      this.toast(`🌱 A sprout was planted: ${u.name}${ev.lv > 1 ? ` → Lv ${ev.lv}` : ''}! ` +
+      this.toast(`🌱 A sprout was planted: ${u.name}${u.repeat && ev.lv ? ` → Lv ${ev.lv}` : ''}! ` +
         `${this.shedEffectText(u)}.`);
     } else if (ev.type === 'almanac') {
       const pg = CC.ALMANAC.find(p => p.id === ev.id);
@@ -718,12 +730,13 @@ CC.UI = class {
     /* ribbons */
     CC.RIBBONS.forEach((r, i) => this.ribbonEls[i].classList.toggle('locked', c.totalAllTime < r.at));
 
-    /* almanac */
-    const an = c.almanacCount();
-    if (an !== this._almanacSeen) {
-      this._almanacSeen = an;
+    /* almanac — signature is the page SET, not the count: a snapshot can
+       swap which pages are latched at equal count (review P3) */
+    const aSig = Object.keys(c.almanac).join();
+    if (aSig !== this._almanacSeen) {
+      this._almanacSeen = aSig;
       this.$('almanac-line').textContent =
-        `${an}/${CC.ALMANAC.length} pages written — ${this.fmtX(c.almanacMult())} production`;
+        `${c.almanacCount()}/${CC.ALMANAC.length} pages written — ${this.fmtX(c.almanacMult())} production`;
       CC.ALMANAC.forEach((pg, i) => this.almanacEls[i].classList.toggle('locked', !c.almanac[pg.id]));
     }
 

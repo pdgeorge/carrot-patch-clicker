@@ -33,6 +33,8 @@ CC.Core = class {
     this.rabbits = 0;
     this.sproutsSpent = 0;
     this.almanac = {};            /* Almanac page id -> true; latches forever (R16) */
+    this.mirrorBook = false;      /* world mode: the server's almanac is the book —
+                                     a mirroring client must never latch its own */
     this.buffs = [];              /* {name, mult, left} */
     this.t = 0;
     this._ribbonCount = 0;
@@ -284,6 +286,8 @@ CC.Core = class {
   prestige() {
     const gain = this.pendingSeeds();
     if (gain < 1) return 0;
+    /* a deed done in the dying second of a spring still counts (review F3) */
+    if (!this.mirrorBook) this.latchPages();
     this.seeds += gain;
     this.sprouts += gain * this.mintMult(); /* every seed sprouts (R13); doublers stack (R15) */
     this.prestiges++;
@@ -327,16 +331,21 @@ CC.Core = class {
         this._bumperSeen[i] = n;
       }
     }
-    /* Almanac pages latch the moment their deed is done — forever (R16).
-       Run-scoped deeds (owned-this-spring…) latch too: the page records
-       that it HAPPENED, and prestige cannot unwrite it. */
+    /* Almanac pages latch the moment their deed is done — forever (R16). */
+    if (!this.mirrorBook) this.latchPages(events);
+    return events;
+  }
+
+  /* Run-scoped deeds (owned-this-spring…) latch too: the page records that
+     it HAPPENED, and prestige cannot unwrite it. Without `events` the latch
+     is silent (loads, prestige-instant deeds). */
+  latchPages(events) {
     for (const pg of CC.ALMANAC) {
       if (!this.almanac[pg.id] && pg.unlock.every(c => this.condMet(c))) {
         this.almanac[pg.id] = true;
-        events.push({ type: 'almanac', id: pg.id });
+        if (events) events.push({ type: 'almanac', id: pg.id });
       }
     }
-    return events;
   }
 
   /* ---------- save / load ---------- */
@@ -363,17 +372,26 @@ CC.Core = class {
     this.seeds = s.seeds || 0;
     /* pre-R13 saves earned their seeds when none were spendable: mint the
        backlog — sprouts = seeds — as the fair one-time migration */
-    this.sprouts = s.sprouts !== undefined ? s.sprouts : (s.seeds || 0);
-    this.shed = s.shed || {};
-    this.prestiges = s.prestiges || 0;   /* R15 counters: absent = records begin now */
-    this.rabbits = s.rabbits || 0;
-    this.sproutsSpent = s.sproutsSpent || 0;
-    this.almanac = s.almanac || {};
+    this.sprouts = Math.max(0, s.sprouts !== undefined ? s.sprouts : (s.seeds || 0));
+    /* a save is data, not authority (review F1): unknown shed ids are
+       dropped, levels forced to sane ints — a forged 1e9 "level" would
+       overflow every cost/effect pow */
+    this.shed = {};
+    for (const u of CC.SHED) {
+      const v = (s.shed || {})[u.id];
+      const lv = v === true ? 1 : (Math.floor(v) || 0);
+      if (lv > 0) this.shed[u.id] = Math.min(lv, u.max !== undefined ? u.max : 800);
+    }
+    this.prestiges = Math.max(0, Math.floor(s.prestiges) || 0);
+    this.rabbits = Math.max(0, Math.floor(s.rabbits) || 0);
+    this.sproutsSpent = Math.max(0, s.sproutsSpent || 0);
+    /* known page ids are historical fact and stay latched; junk ids would
+       mint ×1.02 each forever — dropped */
+    this.almanac = {};
+    for (const pg of CC.ALMANAC) if ((s.almanac || {})[pg.id]) this.almanac[pg.id] = true;
     /* pages already satisfied by an older save latch silently — the load
        is not the deed, so it gets no toast storm (R16, same as ribbons) */
-    for (const pg of CC.ALMANAC) {
-      if (!this.almanac[pg.id] && pg.unlock.every(c => this.condMet(c))) this.almanac[pg.id] = true;
-    }
+    this.latchPages();
     this.buffs = (s.buffs || []).map(b => ({ ...b }));
     if (s.last) { /* buffs kept ticking while the tab was closed */
       const gone = Math.max(0, (Date.now() - s.last) / 1000);
