@@ -6,9 +6,15 @@ CC.fmt = function (n) {
   if (!isFinite(n)) return '∞';
   if (n < 0) return '-' + CC.fmt(-n);
   if (n < 1000) return n < 10 && n % 1 !== 0 ? n.toFixed(1) : Math.floor(n).toString();
-  const units = ['k', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+  /* Ud..Qid (R14): the Fair Circuit reaches 1e45 and the projection passes
+     1e41 — these units must exist before the numbers they format do */
+  const units = ['k', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc',
+    'Ud', 'Dd', 'Td', 'Qad', 'Qid'];
   let u = -1;
   while (n >= 1000 && u < units.length - 1) { n /= 1000; u++; }
+  /* repeated /1000 drifts: 1e45 lands at 999.999…, which would print
+     "1000Td" — anything that ROUNDS to 1000 belongs to the next unit */
+  if (n >= 999.5 && u < units.length - 1) { n /= 1000; u++; }
   return (n >= 100 ? n.toFixed(0) : n >= 10 ? n.toFixed(1) : n.toFixed(2)) + units[u];
 };
 

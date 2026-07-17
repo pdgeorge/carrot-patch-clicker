@@ -123,6 +123,30 @@ js_fmt = json.loads(subprocess.run(
 mism = [i / 8 for i in range(200) if pyfmt(i / 8) != js_fmt[i]]
 check(not mism, f"fmt parity for 0..25 in eighths ({len(mism)} mismatches: {mism[:5]})")
 
+# R14: Fair Circuit ribbon parity + the new fmt units, in both engines
+print("\n=== the Fair Circuit (R14) ===")
+JS_R14 = r"""
+const fs = require('fs'), path = require('path'), vm = require('vm');
+for (const f of ['data.js', 'core.js']) {
+  vm.runInThisContext(fs.readFileSync(path.join(process.argv[1], 'src', f), 'utf8'));
+}
+const c = new CC.Core();
+c.deserialize({ v: 1, bank: 0, totalAllTime: 3.4e22, totalRun: 0, clicks: 0,
+  owned: [], bought: {}, seeds: 184390889, sprouts: 0, shed: {} });
+console.log(JSON.stringify({ n: c.ribbons().length, rmult: c.ribbonMult(),
+  gmult: c.globalMult(), u36: CC.fmt(1e36), u45: CC.fmt(1e45) }));
+"""
+js_r14 = json.loads(subprocess.run(
+    ["node", "-e", JS_R14, str(ROOT)], capture_output=True, text=True, check=True).stdout)
+pr = Economy(load_data())
+pr.deserialize({"v": 1, "bank": 0, "totalAllTime": 3.4e22, "totalRun": 0, "clicks": 0,
+                "owned": [], "bought": {}, "seeds": 184390889, "sprouts": 0, "shed": {}})
+check(len(pr.ribbons()) == js_r14["n"] == 15, "both engines award 15 rungs at 3.4e22")
+check(abs(pr.ribbon_mult() - js_r14["rmult"]) <= 1e-9 * js_r14["rmult"], "ribbon_mult parity")
+check(abs(pr.global_mult() - js_r14["gmult"]) <= 1e-9 * js_r14["gmult"], "global_mult parity with the circuit")
+check(pyfmt(1e36) == js_r14["u36"] == "1.00Ud" and pyfmt(1e45) == js_r14["u45"] == "1.00Qad",
+      "new fmt units identical in both engines")
+
 # ---------- 1a'. bulk buys all-or-nothing in both engines (audit f9) ----------
 print("\n=== bulk buys all-or-nothing parity ===")
 JS_AO = r"""

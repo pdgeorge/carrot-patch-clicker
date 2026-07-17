@@ -333,9 +333,13 @@ def fmt(n: float) -> str:
         if n < 10 and n % 1:
             return f"{math.floor(n * 10 + 0.5) / 10:.1f}"
         return str(int(n))
-    units = ["k", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc"]
+    units = ["k", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc",
+             "Ud", "Dd", "Td", "Qad", "Qid"]  # Ud..Qid: R14, mirror of CC.fmt
     u = -1
     while n >= 1000 and u < len(units) - 1:
+        n /= 1000
+        u += 1
+    if n >= 999.5 and u < len(units) - 1:  # /1000 drift guard, mirror of CC.fmt
         n /= 1000
         u += 1
     return f"{n:.0f}{units[u]}" if n >= 100 else f"{n:.1f}{units[u]}" if n >= 10 else f"{n:.2f}{units[u]}"

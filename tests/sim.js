@@ -168,7 +168,8 @@ const big = new CC.Core();
 big.deserialize({ v: 1, bank: 0, totalAllTime: 3.4e22, totalRun: 0, clicks: 0,
   owned: [1], bought: {}, seeds: 184711462, sprouts: 0, shed: {} });
 const bcps = big.cps();
-check(bcps > 2e6 && bcps < 3e6, `one Window Box at 184.7M seeds makes ~2.27M/s (got ${CC.fmt(bcps)})`);
+/* post-R14: seeds ×14.78M × 15 ribbons ×4.255 → one box ≈ 6.29M/s */
+check(bcps > 6e6 && bcps < 7e6, `one Window Box at 184.7M seeds makes ~6.29M/s (got ${CC.fmt(bcps)})`);
 for (let k = 0; k < 20; k++) big.tick(1);
 const dl = big.totalAllTime - 3.4e22;
 check(Math.abs(dl - 20 * bcps) <= 4194304,
@@ -200,6 +201,23 @@ pp.handle({ type: 'snapshot', online: 3, clickRate: 7, rabbitTtl: 0, state: {
   sprouts: 0, shed: {}, buffs: [] } });
 check(pp.core.totalAllTime === 3.4e22, 'snapshot reconstructs lifetime exactly (run assigned first)');
 check(pp.core.pendingSeeds() === 0, 'no phantom pending seeds after a snapshot');
+
+/* the Fair Circuit (R14): 32 rungs into the former dead zone */
+console.log('\n=== the Fair Circuit ===');
+check(CC.RIBBONS.length === 38, `38 ribbons on the ladder (got ${CC.RIBBONS.length})`);
+check(CC.RIBBONS.every((r, i) => i === 0 || r.at > CC.RIBBONS[i - 1].at),
+  'ribbon thresholds strictly ascend');
+check(new Set(CC.RIBBONS.map(r => r.name)).size === CC.RIBBONS.length, 'ribbon names unique');
+const fc = new CC.Core();
+fc.deserialize({ v: 1, bank: 0, totalAllTime: 3.4e22, totalRun: 0, clicks: 0,
+  owned: [], bought: {}, seeds: 0, sprouts: 0, shed: {} });
+check(fc.ribbons().length === 15, `live world claims 15 rungs on deploy day (got ${fc.ribbons().length})`);
+check(Math.abs(fc.ribbonMult() / (1.5344979552 * Math.pow(1.12, 9)) - 1) < 1e-9,
+  `day-one ribbon mult is the old six × 1.12^9 (×${fc.ribbonMult().toFixed(3)})`);
+check(CC.fmt(1e36) === '1.00Ud' && CC.fmt(1.8e41) === '180Dd' && CC.fmt(1e45) === '1.00Qad',
+  'fmt speaks the new units (Ud/Dd/Td/Qad/Qid)');
+const evs2 = fc.tick(0.1);
+check(!evs2.some(e => e.type === 'ribbon'), 'no ribbon toast storm on load — rungs pre-seeded');
 
 /* active buffs survive the save (audit f27) */
 console.log('\n=== buffs survive save ===');
