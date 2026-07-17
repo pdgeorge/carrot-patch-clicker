@@ -347,6 +347,18 @@ html, body { margin: 0; padding: 0; }
 }
 .ribbon.locked { background: #333 !important; opacity: 0.35; }
 
+/* the Almanac (R16): the world's book of deeds, one slot per page */
+#almanac-line { font-size: 11.5px; color: #d9b98a; margin: 0 0 6px; font-variant-numeric: tabular-nums; }
+#almanac-pages { display: flex; flex-wrap: wrap; gap: 4px; min-height: 18px; }
+#almanac-pages .a-page {
+  width: 11px; height: 14px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #f4ead0, #e6d8b6);
+  border: 1px solid #b09468;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+#almanac-pages .a-page.locked { background: #3a3225; border-color: #57503f; opacity: 0.4; }
+
 /* stats as a page from the almanac */
 #stats {
   background: linear-gradient(180deg, var(--paper-2), var(--paper));
@@ -541,6 +553,9 @@ html, body { margin: 0; padding: 0; }
       <div id="upgrades"></div>
       <div class="panel-title">TROPHY SHELF</div>
       <div id="ribbons"></div>
+      <div class="panel-title">THE ALMANAC</div>
+      <div id="almanac-line"></div>
+      <div id="almanac-pages"></div>
       <div class="panel-title">STATS</div>
       <div id="stats"></div>
       <div id="tooltip" class="hidden"></div>
@@ -599,7 +614,7 @@ html, body { margin: 0; padding: 0; }
 </div>
 
 <script>
-globalThis.CC = globalThis.CC || {}; CC.BUILD = '85110ea'; CC.GARDENERS = ["pdgeorge","Claude Fable 5"];
+globalThis.CC = globalThis.CC || {}; CC.BUILD = '5f12669'; CC.GARDENERS = ["pdgeorge","Claude Fable 5"];
 /* ==== data.js ==== */
 /* Carrot Clicker — content: buildings, upgrades, ribbons, news. */
 globalThis.CC = globalThis.CC || {};
@@ -804,6 +819,106 @@ CC.SHED = [
     flavor: 'Pale as moonlight. All carrots, eventually, are a little bit this one.' },
 ];
 
+/* The Almanac (R16): the world's book of deeds. Each page latches FOREVER
+   the moment its deed is done — prestige cannot unwrite history — and every
+   written page compounds ×1.02 production. Earn-conditions are ordinary R8
+   unlock conditions, so new pages are data-only. Counters (springs, rabbits,
+   sprouts spent) began at zero when R15 shipped: records begin today. */
+CC.ALMANAC_MULT = 1.02;
+CC.ALMANAC = [];
+(() => {
+  const page = (id, name, flavor, ...unlock) => CC.ALMANAC.push({ id, name, flavor, unlock });
+  const ladder = (prefix, key, rows) =>
+    rows.forEach(([n, name, flavor], i) => page(`${prefix}${i}`, name, flavor, { [key]: n }));
+
+  ladder('sd', 'seeds', [
+    [1, 'The First Seed', 'It weighed nothing. It changed everything.'],
+    [10, 'A Pocketful', 'Ten futures, rattling softly.'],
+    [100, 'The Seed Jar', 'Kept on the highest shelf, away from optimists.'],
+    [1e3, 'The Seed Drawer', 'Labelled twice. Trusted once.'],
+    [1e4, 'The Seed Chest', 'The hinges creak in springtime keys.'],
+    [1e5, 'The Seed Cellar', 'Cool, dark, impossibly patient.'],
+    [1e6, 'The Millionth Seed', 'Indistinguishable from the first. That is the point.'],
+    [1e7, 'The Seed Silo', 'Visible from the next county. Audible in dreams.'],
+    [1e8, 'A Nation of Seeds', 'They have not voted yet. They are waiting.'],
+    [1e9, 'The Seed Billion', 'Astronomers ask to borrow the number.'],
+    [1e10, 'The Seed Ocean', 'Tides of potential. Do not swim after eating.'],
+    [1e11, 'Seeds Beyond Counting', 'The abacus retired. The seeds did not.'],
+    [1e12, 'The Trillionth', 'A page that is mostly zeroes, and proud of every one.'],
+  ]);
+  ladder('lf', 'lifetime', [
+    [1e6, 'The First Million', 'Pulled, weighed, recorded, eaten.'],
+    [1e9, 'The First Billion', 'The scale asked for a holiday.'],
+    [1e12, 'A Trillion Carrots', 'Laid end to end: a bad idea, gorgeous from orbit.'],
+    [1e15, 'The Quadrillion Harvest', 'The word "bumper" files for early retirement.'],
+    [1e18, 'Quintillion', 'The ledger switches to scientific notation and sighs.'],
+    [1e21, 'Sextillion Summers', 'Each carrot got one perfect afternoon.'],
+    [1e24, 'The Septillion Row', 'It bends with the planet now.'],
+    [1e27, 'Octillion', 'Other gardens send pilgrims.'],
+    [1e30, 'The Nonillion Garden', 'The soil remembers everything. So does this page.'],
+  ]);
+  ladder('sp', 'prestiges', [
+    [1, 'The First Recorded Spring', 'Everything before this page is folklore.'],
+    [10, 'Ten Springs', 'The rhythm settles in: bloom, seed, begin.'],
+    [50, 'Fifty Springs', 'The Almanac develops opinions about frost.'],
+    [250, 'The 250th Spring', 'Some pages are just the word "again", written warmly.'],
+    [1000, 'A Thousand Springs', 'The book grows a second spine.'],
+    [2500, 'Springs Uncountable', 'The margin notes have margin notes.'],
+  ]);
+  ladder('rb', 'rabbits', [
+    [1, 'First Rabbit on Record', 'Golden, briefly, and gone. The ink still shimmers.'],
+    [10, 'A Warren of Ten', 'They compare notes on being caught.'],
+    [100, 'The Hundredth Guest', 'It signed the noticeboard on its way out.'],
+    [1e3, 'A Thousand Visits', 'The hedge has a turnstile now.'],
+    [1e4, 'Ten Thousand Golden Hours', 'The Almanac smells faintly of luck.'],
+  ]);
+  ladder('ck', 'clicks', [
+    [1e3, 'A Thousand Pulls', 'Blisters, then calluses, then legend.'],
+    [1e4, 'Ten Thousand Pulls', 'The soil learned your handshake.'],
+    [1e5, 'The Hundred-Thousandth', 'Somewhere, a glove union forms.'],
+    [1e6, 'The Million-Pull Page', 'Hands, plural. Planet, singular.'],
+    [1e7, 'Ten Million Tugs', 'The carrots started meeting you halfway.'],
+    [1e8, 'The Great Heave', 'Recorded in every time zone at once.'],
+    [1e9, 'A Billion Harvest Hands', 'The page is written in callus braille.'],
+    [1e10, 'Ten Billion', 'The ground hums back now.'],
+    [1e11, 'The Hundred-Billionth', 'Archaeologists will find thumbprints in the bedrock.'],
+    [1e12, 'The Trillionth Pull', 'One planet, pulling together. Literally.'],
+  ]);
+  ladder('ss', 'sproutsSpent', [
+    [1e6, 'The First Million Planted', 'The shed doors never quite close anymore.'],
+    [5e7, 'Fifty Million Furrows', 'The grounds crew requests a bigger wheelbarrow.'],
+    [2.5e8, 'The Great Planting', 'A quarter-billion sprouts. The map needed reprinting.'],
+    [1e9, 'A Billion Sprouts Deep', 'The Potting Shed is, legally, a region.'],
+  ]);
+  /* deeds of a single spring — prestige resets the deed, never the page */
+  page('rn0', 'Sill City', 'Four hundred window boxes in one spring. The town is mostly trough.', { owned: 0, n: 400 });
+  page('rn1', 'The Quilted County', 'Four hundred plots, stitched with paths.', { owned: 1, n: 400 });
+  page('rn2', 'Committee of Committees', 'Three hundred allotments; the parsnip man abstains 300 times.', { owned: 2, n: 300 });
+  page('rn3', 'Market Saturation', 'Every corner a stall, every stall sold out by nine.', { owned: 3, n: 300 });
+  page('rn4', 'The Glass District', 'Two hundred fifty greenhouses. Sunset takes twenty minutes longer here.', { owned: 4, n: 250 });
+  page('rn5', 'General Assembly', 'Two hundred locals. One demand: carrots.', { owned: 5, n: 200 });
+  page('rn6', 'The Harvest Fleet', 'A hundred and fifty combines in formation. Tidy. Slightly haunted.', { owned: 6, n: 150 });
+  page('rn7', 'One Hundred Everythings', 'All carrots, everywhere, all at once — a hundred times over.', { owned: 9, n: 100 });
+  page('tl0', 'A Decent Toolshed', 'Fifteen upgrades on the wall, each with its hook.', { upgradesOwned: 15 });
+  page('tl1', 'The Full Rack', 'Thirty tools. The wall asked for reinforcement.', { upgradesOwned: 30 });
+  page('tl2', 'Every Tool There Is', 'The shed sighs, complete. Somewhere, a new tool is invented.', { upgradesOwned: 56 });
+  page('cr0', 'Ten Turnings', 'The heap steams gently, like a planet rehearsing.', { shedLv: 'l0', n: 10 });
+  page('cr1', 'The Fifty-Turn Heap', 'Fork technique now taught at the university.', { shedLv: 'l0', n: 50 });
+  page('cr2', 'Compost Centennial', 'One hundred turnings. The heap has alumni.', { shedLv: 'l0', n: 100 });
+  page('cr3', 'All Six Valves', 'The sprinklers play in key. The key is damp.', { shedLv: 'l1', n: 6 });
+  page('he0', 'One of Each', 'Every strain, started. The catalogue clears its throat.', { heirloomEvery: 1 });
+  page('he1', 'Five Generations Deep', 'The strains remember their grandmothers.', { heirloomEvery: 5 });
+  page('he2', 'Ten Deep, All Rows', 'Pedigrees thicker than the soil.', { heirloomEvery: 10 });
+  page('he3', 'Deep Roots Everywhere', 'Twenty-five generations, every variety. The fair judges retire, weeping.', { heirloomEvery: 25 });
+  page('he4', 'The Lunar White, Perfected', 'Twenty-five generations of moonlight.', { shedLv: 'h9', n: 25 });
+  page('dz0', 'The Bench That Doubles', 'One cutting becomes two. The Almanac checks the math. It holds.', { shed: 'p9' });
+  page('dz1', 'House of Weather', 'The mist house opens. Every sprout brings a friend.', { shed: 'p10' });
+  page('dz2', 'The Jar That Dreams', 'Tissue culture: thousands of tiny gardens, politely queueing.', { shed: 'p11' });
+  page('dz3', 'Nursery Moonrise', 'A second moon, and it waters things.', { shed: 'p12' });
+  page('dz4', 'The Keystone Arch', 'Five stones, one shed, no gaps.',
+    { shed: 'p4' }, { shed: 'p5' }, { shed: 'p6' }, { shed: 'p7' }, { shed: 'p8' });
+})();
+
 /* Ribbons: permanent multipliers at lifetime-harvest milestones (your trophy shelf). */
 CC.RIBBONS = [
   { at: 1e3, name: 'White Ribbon', color: '#e5e7eb', mult: 1.02,
@@ -966,6 +1081,7 @@ CC.Core = class {
     this.prestiges = 0;           /* world counters (R15): deeds since records began */
     this.rabbits = 0;
     this.sproutsSpent = 0;
+    this.almanac = {};            /* Almanac page id -> true; latches forever (R16) */
     this.buffs = [];              /* {name, mult, left} */
     this.t = 0;
     this._ribbonCount = 0;
@@ -1025,6 +1141,10 @@ CC.Core = class {
     if (c.rabbits !== undefined) return this.rabbits >= c.rabbits;
     if (c.sproutsSpent !== undefined) return this.sproutsSpent >= c.sproutsSpent;
     if (c.shedLv !== undefined) return this.shedLevel(c.shedLv) >= (c.n || 1);
+    if (c.upgradesOwned !== undefined) return Object.keys(this.bought).length >= c.upgradesOwned;
+    if (c.heirloomEvery !== undefined) {
+      return CC.SHED.every(u => !u.resprout || this.shedLevel(u.id) >= c.heirloomEvery);
+    }
     return false;
   }
 
@@ -1087,10 +1207,14 @@ CC.Core = class {
     return m;
   }
 
+  almanacCount() { return Object.keys(this.almanac).length; }
+  almanacMult() { return Math.pow(CC.ALMANAC_MULT, this.almanacCount()); }
+
   globalMult() {
     let m = this.seedMult() * this.ribbonMult();
     for (const u of CC.GLOBAL_UPGRADES) if (this.bought[u.id]) m *= u.mult;
     for (const u of CC.SHED) if (u.mult) m *= Math.pow(u.mult, this.shedLevel(u.id));
+    m *= this.almanacMult();
     m *= Math.pow(CC.MILESTONE_MULT, this.bumperTotal());
     return m;
   }
@@ -1252,6 +1376,15 @@ CC.Core = class {
         this._bumperSeen[i] = n;
       }
     }
+    /* Almanac pages latch the moment their deed is done — forever (R16).
+       Run-scoped deeds (owned-this-spring…) latch too: the page records
+       that it HAPPENED, and prestige cannot unwrite it. */
+    for (const pg of CC.ALMANAC) {
+      if (!this.almanac[pg.id] && pg.unlock.every(c => this.condMet(c))) {
+        this.almanac[pg.id] = true;
+        events.push({ type: 'almanac', id: pg.id });
+      }
+    }
     return events;
   }
 
@@ -1262,6 +1395,7 @@ CC.Core = class {
       clicks: this.clicks, owned: this.owned, bought: this.bought, seeds: this.seeds,
       sprouts: this.sprouts, shed: this.shed,
       prestiges: this.prestiges, rabbits: this.rabbits, sproutsSpent: this.sproutsSpent,
+      almanac: this.almanac,
       buffs: this.buffs.map(b => ({ ...b })), /* a frenzy survives a mid-buff reload */
       last: Date.now(),
     };
@@ -1283,6 +1417,12 @@ CC.Core = class {
     this.prestiges = s.prestiges || 0;   /* R15 counters: absent = records begin now */
     this.rabbits = s.rabbits || 0;
     this.sproutsSpent = s.sproutsSpent || 0;
+    this.almanac = s.almanac || {};
+    /* pages already satisfied by an older save latch silently — the load
+       is not the deed, so it gets no toast storm (R16, same as ribbons) */
+    for (const pg of CC.ALMANAC) {
+      if (!this.almanac[pg.id] && pg.unlock.every(c => this.condMet(c))) this.almanac[pg.id] = true;
+    }
     this.buffs = (s.buffs || []).map(b => ({ ...b }));
     if (s.last) { /* buffs kept ticking while the tab was closed */
       const gone = Math.max(0, (Date.now() - s.last) / 1000);
@@ -1430,6 +1570,7 @@ CC.Patch = class {
       c.prestiges = s.prestiges || 0;   /* R15 counters gate keystone visibility */
       c.rabbits = s.rabbits || 0;
       c.sproutsSpent = s.sproutsSpent || 0;
+      c.almanac = s.almanac || {};      /* R16: the server's book is the book */
       c.buffs = s.buffs.map(b => ({ ...b }));
       c._ribbonCount = c.ribbons().length;
       c._bumperSeen = CC.BUILDINGS.map((_, i) => c.bumperCount(i));
@@ -1744,6 +1885,17 @@ CC.UI = class {
       return el;
     });
 
+    /* the Almanac (R16): 72 page-slots, filled as the world's deeds latch */
+    const abox = this.$('almanac-pages');
+    this.almanacEls = CC.ALMANAC.map(pg => {
+      const el = document.createElement('div');
+      el.className = 'a-page locked';
+      el.addEventListener('mouseenter', () => this.tooltip({ kind: 'almanac', pg }));
+      el.addEventListener('mouseleave', () => this.tooltip(null));
+      abox.appendChild(el);
+      return el;
+    });
+
     /* ribbon shelf */
     const shelf = this.$('ribbons');
     this.ribbonEls = CC.RIBBONS.map(r => {
@@ -1982,6 +2134,11 @@ CC.UI = class {
       CC.audio.seed();
       this.toast(`🌱 A sprout was planted: ${u.name}${ev.lv > 1 ? ` → Lv ${ev.lv}` : ''}! ` +
         `${this.shedEffectText(u)}.`);
+    } else if (ev.type === 'almanac') {
+      const pg = CC.ALMANAC.find(p => p.id === ev.id);
+      if (!pg) return;
+      CC.audio.upgrade();
+      this.toast(`📖 A page is written: ${pg.name} — ${pg.flavor}`);
     }
   }
 
@@ -2018,6 +2175,12 @@ CC.UI = class {
       const r = what.r, won = this.core.totalAllTime >= r.at;
       tip.innerHTML = `<b>${r.name}</b> — ${won ? `+${Math.round((r.mult - 1) * 100)}% production` : `awarded at ${CC.fmt(r.at)} lifetime carrots`}` +
         `<br><span class="flavor">${won ? r.flavor : '???'}</span>`;
+    } else if (what.kind === 'almanac') {
+      const pg = what.pg, got = !!this.core.almanac[pg.id];
+      tip.innerHTML = got
+        ? `<b>${pg.name}</b> — +${Math.round((CC.ALMANAC_MULT - 1) * 100)}% production, forever` +
+          `<br><span class="flavor">${pg.flavor}</span>`
+        : `<b>???</b> — an unwritten page<br><span class="flavor">The deed will name itself when it is done.</span>`;
     } else if (what.kind === 'prestige') {
       tip.innerHTML = `<b>Go to Seed</b> — prestige reset<br>` +
         `Seeds so far: earned at √(lifetime ÷ 1M). Each seed = +8% production, permanently.` +
@@ -2167,6 +2330,15 @@ CC.UI = class {
 
     /* ribbons */
     CC.RIBBONS.forEach((r, i) => this.ribbonEls[i].classList.toggle('locked', c.totalAllTime < r.at));
+
+    /* almanac */
+    const an = c.almanacCount();
+    if (an !== this._almanacSeen) {
+      this._almanacSeen = an;
+      this.$('almanac-line').textContent =
+        `${an}/${CC.ALMANAC.length} pages written — ${this.fmtX(c.almanacMult())} production`;
+      CC.ALMANAC.forEach((pg, i) => this.almanacEls[i].classList.toggle('locked', !c.almanac[pg.id]));
+    }
 
     /* stats (re-rendered only when the text actually changes) */
     {

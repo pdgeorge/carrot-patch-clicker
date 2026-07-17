@@ -32,6 +32,7 @@ CC.Core = class {
     this.prestiges = 0;           /* world counters (R15): deeds since records began */
     this.rabbits = 0;
     this.sproutsSpent = 0;
+    this.almanac = {};            /* Almanac page id -> true; latches forever (R16) */
     this.buffs = [];              /* {name, mult, left} */
     this.t = 0;
     this._ribbonCount = 0;
@@ -91,6 +92,10 @@ CC.Core = class {
     if (c.rabbits !== undefined) return this.rabbits >= c.rabbits;
     if (c.sproutsSpent !== undefined) return this.sproutsSpent >= c.sproutsSpent;
     if (c.shedLv !== undefined) return this.shedLevel(c.shedLv) >= (c.n || 1);
+    if (c.upgradesOwned !== undefined) return Object.keys(this.bought).length >= c.upgradesOwned;
+    if (c.heirloomEvery !== undefined) {
+      return CC.SHED.every(u => !u.resprout || this.shedLevel(u.id) >= c.heirloomEvery);
+    }
     return false;
   }
 
@@ -153,10 +158,14 @@ CC.Core = class {
     return m;
   }
 
+  almanacCount() { return Object.keys(this.almanac).length; }
+  almanacMult() { return Math.pow(CC.ALMANAC_MULT, this.almanacCount()); }
+
   globalMult() {
     let m = this.seedMult() * this.ribbonMult();
     for (const u of CC.GLOBAL_UPGRADES) if (this.bought[u.id]) m *= u.mult;
     for (const u of CC.SHED) if (u.mult) m *= Math.pow(u.mult, this.shedLevel(u.id));
+    m *= this.almanacMult();
     m *= Math.pow(CC.MILESTONE_MULT, this.bumperTotal());
     return m;
   }
@@ -318,6 +327,15 @@ CC.Core = class {
         this._bumperSeen[i] = n;
       }
     }
+    /* Almanac pages latch the moment their deed is done — forever (R16).
+       Run-scoped deeds (owned-this-spring…) latch too: the page records
+       that it HAPPENED, and prestige cannot unwrite it. */
+    for (const pg of CC.ALMANAC) {
+      if (!this.almanac[pg.id] && pg.unlock.every(c => this.condMet(c))) {
+        this.almanac[pg.id] = true;
+        events.push({ type: 'almanac', id: pg.id });
+      }
+    }
     return events;
   }
 
@@ -328,6 +346,7 @@ CC.Core = class {
       clicks: this.clicks, owned: this.owned, bought: this.bought, seeds: this.seeds,
       sprouts: this.sprouts, shed: this.shed,
       prestiges: this.prestiges, rabbits: this.rabbits, sproutsSpent: this.sproutsSpent,
+      almanac: this.almanac,
       buffs: this.buffs.map(b => ({ ...b })), /* a frenzy survives a mid-buff reload */
       last: Date.now(),
     };
@@ -349,6 +368,12 @@ CC.Core = class {
     this.prestiges = s.prestiges || 0;   /* R15 counters: absent = records begin now */
     this.rabbits = s.rabbits || 0;
     this.sproutsSpent = s.sproutsSpent || 0;
+    this.almanac = s.almanac || {};
+    /* pages already satisfied by an older save latch silently — the load
+       is not the deed, so it gets no toast storm (R16, same as ribbons) */
+    for (const pg of CC.ALMANAC) {
+      if (!this.almanac[pg.id] && pg.unlock.every(c => this.condMet(c))) this.almanac[pg.id] = true;
+    }
     this.buffs = (s.buffs || []).map(b => ({ ...b }));
     if (s.last) { /* buffs kept ticking while the tab was closed */
       const gone = Math.max(0, (Date.now() - s.last) / 1000);

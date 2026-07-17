@@ -770,5 +770,753 @@
    "resprout": true,
    "flavor": "Pale as moonlight. All carrots, eventually, are a little bit this one."
   }
- ]
+ ],
+ "almanac": [
+  {
+   "id": "sd0",
+   "name": "The First Seed",
+   "flavor": "It weighed nothing. It changed everything.",
+   "unlock": [
+    {
+     "seeds": 1
+    }
+   ]
+  },
+  {
+   "id": "sd1",
+   "name": "A Pocketful",
+   "flavor": "Ten futures, rattling softly.",
+   "unlock": [
+    {
+     "seeds": 10
+    }
+   ]
+  },
+  {
+   "id": "sd2",
+   "name": "The Seed Jar",
+   "flavor": "Kept on the highest shelf, away from optimists.",
+   "unlock": [
+    {
+     "seeds": 100
+    }
+   ]
+  },
+  {
+   "id": "sd3",
+   "name": "The Seed Drawer",
+   "flavor": "Labelled twice. Trusted once.",
+   "unlock": [
+    {
+     "seeds": 1000
+    }
+   ]
+  },
+  {
+   "id": "sd4",
+   "name": "The Seed Chest",
+   "flavor": "The hinges creak in springtime keys.",
+   "unlock": [
+    {
+     "seeds": 10000
+    }
+   ]
+  },
+  {
+   "id": "sd5",
+   "name": "The Seed Cellar",
+   "flavor": "Cool, dark, impossibly patient.",
+   "unlock": [
+    {
+     "seeds": 100000
+    }
+   ]
+  },
+  {
+   "id": "sd6",
+   "name": "The Millionth Seed",
+   "flavor": "Indistinguishable from the first. That is the point.",
+   "unlock": [
+    {
+     "seeds": 1000000
+    }
+   ]
+  },
+  {
+   "id": "sd7",
+   "name": "The Seed Silo",
+   "flavor": "Visible from the next county. Audible in dreams.",
+   "unlock": [
+    {
+     "seeds": 10000000
+    }
+   ]
+  },
+  {
+   "id": "sd8",
+   "name": "A Nation of Seeds",
+   "flavor": "They have not voted yet. They are waiting.",
+   "unlock": [
+    {
+     "seeds": 100000000
+    }
+   ]
+  },
+  {
+   "id": "sd9",
+   "name": "The Seed Billion",
+   "flavor": "Astronomers ask to borrow the number.",
+   "unlock": [
+    {
+     "seeds": 1000000000
+    }
+   ]
+  },
+  {
+   "id": "sd10",
+   "name": "The Seed Ocean",
+   "flavor": "Tides of potential. Do not swim after eating.",
+   "unlock": [
+    {
+     "seeds": 10000000000
+    }
+   ]
+  },
+  {
+   "id": "sd11",
+   "name": "Seeds Beyond Counting",
+   "flavor": "The abacus retired. The seeds did not.",
+   "unlock": [
+    {
+     "seeds": 100000000000
+    }
+   ]
+  },
+  {
+   "id": "sd12",
+   "name": "The Trillionth",
+   "flavor": "A page that is mostly zeroes, and proud of every one.",
+   "unlock": [
+    {
+     "seeds": 1000000000000
+    }
+   ]
+  },
+  {
+   "id": "lf0",
+   "name": "The First Million",
+   "flavor": "Pulled, weighed, recorded, eaten.",
+   "unlock": [
+    {
+     "lifetime": 1000000
+    }
+   ]
+  },
+  {
+   "id": "lf1",
+   "name": "The First Billion",
+   "flavor": "The scale asked for a holiday.",
+   "unlock": [
+    {
+     "lifetime": 1000000000
+    }
+   ]
+  },
+  {
+   "id": "lf2",
+   "name": "A Trillion Carrots",
+   "flavor": "Laid end to end: a bad idea, gorgeous from orbit.",
+   "unlock": [
+    {
+     "lifetime": 1000000000000
+    }
+   ]
+  },
+  {
+   "id": "lf3",
+   "name": "The Quadrillion Harvest",
+   "flavor": "The word \"bumper\" files for early retirement.",
+   "unlock": [
+    {
+     "lifetime": 1000000000000000
+    }
+   ]
+  },
+  {
+   "id": "lf4",
+   "name": "Quintillion",
+   "flavor": "The ledger switches to scientific notation and sighs.",
+   "unlock": [
+    {
+     "lifetime": 1000000000000000000
+    }
+   ]
+  },
+  {
+   "id": "lf5",
+   "name": "Sextillion Summers",
+   "flavor": "Each carrot got one perfect afternoon.",
+   "unlock": [
+    {
+     "lifetime": 1e+21
+    }
+   ]
+  },
+  {
+   "id": "lf6",
+   "name": "The Septillion Row",
+   "flavor": "It bends with the planet now.",
+   "unlock": [
+    {
+     "lifetime": 1e+24
+    }
+   ]
+  },
+  {
+   "id": "lf7",
+   "name": "Octillion",
+   "flavor": "Other gardens send pilgrims.",
+   "unlock": [
+    {
+     "lifetime": 1e+27
+    }
+   ]
+  },
+  {
+   "id": "lf8",
+   "name": "The Nonillion Garden",
+   "flavor": "The soil remembers everything. So does this page.",
+   "unlock": [
+    {
+     "lifetime": 1e+30
+    }
+   ]
+  },
+  {
+   "id": "sp0",
+   "name": "The First Recorded Spring",
+   "flavor": "Everything before this page is folklore.",
+   "unlock": [
+    {
+     "prestiges": 1
+    }
+   ]
+  },
+  {
+   "id": "sp1",
+   "name": "Ten Springs",
+   "flavor": "The rhythm settles in: bloom, seed, begin.",
+   "unlock": [
+    {
+     "prestiges": 10
+    }
+   ]
+  },
+  {
+   "id": "sp2",
+   "name": "Fifty Springs",
+   "flavor": "The Almanac develops opinions about frost.",
+   "unlock": [
+    {
+     "prestiges": 50
+    }
+   ]
+  },
+  {
+   "id": "sp3",
+   "name": "The 250th Spring",
+   "flavor": "Some pages are just the word \"again\", written warmly.",
+   "unlock": [
+    {
+     "prestiges": 250
+    }
+   ]
+  },
+  {
+   "id": "sp4",
+   "name": "A Thousand Springs",
+   "flavor": "The book grows a second spine.",
+   "unlock": [
+    {
+     "prestiges": 1000
+    }
+   ]
+  },
+  {
+   "id": "sp5",
+   "name": "Springs Uncountable",
+   "flavor": "The margin notes have margin notes.",
+   "unlock": [
+    {
+     "prestiges": 2500
+    }
+   ]
+  },
+  {
+   "id": "rb0",
+   "name": "First Rabbit on Record",
+   "flavor": "Golden, briefly, and gone. The ink still shimmers.",
+   "unlock": [
+    {
+     "rabbits": 1
+    }
+   ]
+  },
+  {
+   "id": "rb1",
+   "name": "A Warren of Ten",
+   "flavor": "They compare notes on being caught.",
+   "unlock": [
+    {
+     "rabbits": 10
+    }
+   ]
+  },
+  {
+   "id": "rb2",
+   "name": "The Hundredth Guest",
+   "flavor": "It signed the noticeboard on its way out.",
+   "unlock": [
+    {
+     "rabbits": 100
+    }
+   ]
+  },
+  {
+   "id": "rb3",
+   "name": "A Thousand Visits",
+   "flavor": "The hedge has a turnstile now.",
+   "unlock": [
+    {
+     "rabbits": 1000
+    }
+   ]
+  },
+  {
+   "id": "rb4",
+   "name": "Ten Thousand Golden Hours",
+   "flavor": "The Almanac smells faintly of luck.",
+   "unlock": [
+    {
+     "rabbits": 10000
+    }
+   ]
+  },
+  {
+   "id": "ck0",
+   "name": "A Thousand Pulls",
+   "flavor": "Blisters, then calluses, then legend.",
+   "unlock": [
+    {
+     "clicks": 1000
+    }
+   ]
+  },
+  {
+   "id": "ck1",
+   "name": "Ten Thousand Pulls",
+   "flavor": "The soil learned your handshake.",
+   "unlock": [
+    {
+     "clicks": 10000
+    }
+   ]
+  },
+  {
+   "id": "ck2",
+   "name": "The Hundred-Thousandth",
+   "flavor": "Somewhere, a glove union forms.",
+   "unlock": [
+    {
+     "clicks": 100000
+    }
+   ]
+  },
+  {
+   "id": "ck3",
+   "name": "The Million-Pull Page",
+   "flavor": "Hands, plural. Planet, singular.",
+   "unlock": [
+    {
+     "clicks": 1000000
+    }
+   ]
+  },
+  {
+   "id": "ck4",
+   "name": "Ten Million Tugs",
+   "flavor": "The carrots started meeting you halfway.",
+   "unlock": [
+    {
+     "clicks": 10000000
+    }
+   ]
+  },
+  {
+   "id": "ck5",
+   "name": "The Great Heave",
+   "flavor": "Recorded in every time zone at once.",
+   "unlock": [
+    {
+     "clicks": 100000000
+    }
+   ]
+  },
+  {
+   "id": "ck6",
+   "name": "A Billion Harvest Hands",
+   "flavor": "The page is written in callus braille.",
+   "unlock": [
+    {
+     "clicks": 1000000000
+    }
+   ]
+  },
+  {
+   "id": "ck7",
+   "name": "Ten Billion",
+   "flavor": "The ground hums back now.",
+   "unlock": [
+    {
+     "clicks": 10000000000
+    }
+   ]
+  },
+  {
+   "id": "ck8",
+   "name": "The Hundred-Billionth",
+   "flavor": "Archaeologists will find thumbprints in the bedrock.",
+   "unlock": [
+    {
+     "clicks": 100000000000
+    }
+   ]
+  },
+  {
+   "id": "ck9",
+   "name": "The Trillionth Pull",
+   "flavor": "One planet, pulling together. Literally.",
+   "unlock": [
+    {
+     "clicks": 1000000000000
+    }
+   ]
+  },
+  {
+   "id": "ss0",
+   "name": "The First Million Planted",
+   "flavor": "The shed doors never quite close anymore.",
+   "unlock": [
+    {
+     "sproutsSpent": 1000000
+    }
+   ]
+  },
+  {
+   "id": "ss1",
+   "name": "Fifty Million Furrows",
+   "flavor": "The grounds crew requests a bigger wheelbarrow.",
+   "unlock": [
+    {
+     "sproutsSpent": 50000000
+    }
+   ]
+  },
+  {
+   "id": "ss2",
+   "name": "The Great Planting",
+   "flavor": "A quarter-billion sprouts. The map needed reprinting.",
+   "unlock": [
+    {
+     "sproutsSpent": 250000000
+    }
+   ]
+  },
+  {
+   "id": "ss3",
+   "name": "A Billion Sprouts Deep",
+   "flavor": "The Potting Shed is, legally, a region.",
+   "unlock": [
+    {
+     "sproutsSpent": 1000000000
+    }
+   ]
+  },
+  {
+   "id": "rn0",
+   "name": "Sill City",
+   "flavor": "Four hundred window boxes in one spring. The town is mostly trough.",
+   "unlock": [
+    {
+     "owned": 0,
+     "n": 400
+    }
+   ]
+  },
+  {
+   "id": "rn1",
+   "name": "The Quilted County",
+   "flavor": "Four hundred plots, stitched with paths.",
+   "unlock": [
+    {
+     "owned": 1,
+     "n": 400
+    }
+   ]
+  },
+  {
+   "id": "rn2",
+   "name": "Committee of Committees",
+   "flavor": "Three hundred allotments; the parsnip man abstains 300 times.",
+   "unlock": [
+    {
+     "owned": 2,
+     "n": 300
+    }
+   ]
+  },
+  {
+   "id": "rn3",
+   "name": "Market Saturation",
+   "flavor": "Every corner a stall, every stall sold out by nine.",
+   "unlock": [
+    {
+     "owned": 3,
+     "n": 300
+    }
+   ]
+  },
+  {
+   "id": "rn4",
+   "name": "The Glass District",
+   "flavor": "Two hundred fifty greenhouses. Sunset takes twenty minutes longer here.",
+   "unlock": [
+    {
+     "owned": 4,
+     "n": 250
+    }
+   ]
+  },
+  {
+   "id": "rn5",
+   "name": "General Assembly",
+   "flavor": "Two hundred locals. One demand: carrots.",
+   "unlock": [
+    {
+     "owned": 5,
+     "n": 200
+    }
+   ]
+  },
+  {
+   "id": "rn6",
+   "name": "The Harvest Fleet",
+   "flavor": "A hundred and fifty combines in formation. Tidy. Slightly haunted.",
+   "unlock": [
+    {
+     "owned": 6,
+     "n": 150
+    }
+   ]
+  },
+  {
+   "id": "rn7",
+   "name": "One Hundred Everythings",
+   "flavor": "All carrots, everywhere, all at once — a hundred times over.",
+   "unlock": [
+    {
+     "owned": 9,
+     "n": 100
+    }
+   ]
+  },
+  {
+   "id": "tl0",
+   "name": "A Decent Toolshed",
+   "flavor": "Fifteen upgrades on the wall, each with its hook.",
+   "unlock": [
+    {
+     "upgradesOwned": 15
+    }
+   ]
+  },
+  {
+   "id": "tl1",
+   "name": "The Full Rack",
+   "flavor": "Thirty tools. The wall asked for reinforcement.",
+   "unlock": [
+    {
+     "upgradesOwned": 30
+    }
+   ]
+  },
+  {
+   "id": "tl2",
+   "name": "Every Tool There Is",
+   "flavor": "The shed sighs, complete. Somewhere, a new tool is invented.",
+   "unlock": [
+    {
+     "upgradesOwned": 56
+    }
+   ]
+  },
+  {
+   "id": "cr0",
+   "name": "Ten Turnings",
+   "flavor": "The heap steams gently, like a planet rehearsing.",
+   "unlock": [
+    {
+     "shedLv": "l0",
+     "n": 10
+    }
+   ]
+  },
+  {
+   "id": "cr1",
+   "name": "The Fifty-Turn Heap",
+   "flavor": "Fork technique now taught at the university.",
+   "unlock": [
+    {
+     "shedLv": "l0",
+     "n": 50
+    }
+   ]
+  },
+  {
+   "id": "cr2",
+   "name": "Compost Centennial",
+   "flavor": "One hundred turnings. The heap has alumni.",
+   "unlock": [
+    {
+     "shedLv": "l0",
+     "n": 100
+    }
+   ]
+  },
+  {
+   "id": "cr3",
+   "name": "All Six Valves",
+   "flavor": "The sprinklers play in key. The key is damp.",
+   "unlock": [
+    {
+     "shedLv": "l1",
+     "n": 6
+    }
+   ]
+  },
+  {
+   "id": "he0",
+   "name": "One of Each",
+   "flavor": "Every strain, started. The catalogue clears its throat.",
+   "unlock": [
+    {
+     "heirloomEvery": 1
+    }
+   ]
+  },
+  {
+   "id": "he1",
+   "name": "Five Generations Deep",
+   "flavor": "The strains remember their grandmothers.",
+   "unlock": [
+    {
+     "heirloomEvery": 5
+    }
+   ]
+  },
+  {
+   "id": "he2",
+   "name": "Ten Deep, All Rows",
+   "flavor": "Pedigrees thicker than the soil.",
+   "unlock": [
+    {
+     "heirloomEvery": 10
+    }
+   ]
+  },
+  {
+   "id": "he3",
+   "name": "Deep Roots Everywhere",
+   "flavor": "Twenty-five generations, every variety. The fair judges retire, weeping.",
+   "unlock": [
+    {
+     "heirloomEvery": 25
+    }
+   ]
+  },
+  {
+   "id": "he4",
+   "name": "The Lunar White, Perfected",
+   "flavor": "Twenty-five generations of moonlight.",
+   "unlock": [
+    {
+     "shedLv": "h9",
+     "n": 25
+    }
+   ]
+  },
+  {
+   "id": "dz0",
+   "name": "The Bench That Doubles",
+   "flavor": "One cutting becomes two. The Almanac checks the math. It holds.",
+   "unlock": [
+    {
+     "shed": "p9"
+    }
+   ]
+  },
+  {
+   "id": "dz1",
+   "name": "House of Weather",
+   "flavor": "The mist house opens. Every sprout brings a friend.",
+   "unlock": [
+    {
+     "shed": "p10"
+    }
+   ]
+  },
+  {
+   "id": "dz2",
+   "name": "The Jar That Dreams",
+   "flavor": "Tissue culture: thousands of tiny gardens, politely queueing.",
+   "unlock": [
+    {
+     "shed": "p11"
+    }
+   ]
+  },
+  {
+   "id": "dz3",
+   "name": "Nursery Moonrise",
+   "flavor": "A second moon, and it waters things.",
+   "unlock": [
+    {
+     "shed": "p12"
+    }
+   ]
+  },
+  {
+   "id": "dz4",
+   "name": "The Keystone Arch",
+   "flavor": "Five stones, one shed, no gaps.",
+   "unlock": [
+    {
+     "shed": "p4"
+    },
+    {
+     "shed": "p5"
+    },
+    {
+     "shed": "p6"
+    },
+    {
+     "shed": "p7"
+    },
+    {
+     "shed": "p8"
+    }
+   ]
+  }
+ ],
+ "almanacMult": 1.02
 }

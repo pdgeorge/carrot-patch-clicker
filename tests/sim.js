@@ -104,6 +104,7 @@ if (p.milestones.postCps) {
 console.log('\n=== bumper crops & synergies ===');
 const bc = new CC.Core();
 bc.earn(1e12);
+bc.tick(0.1); /* latch the almanac's lifetime pages before measuring ratios */
 const before = bc.globalMult();
 bc.buy(0, 10);
 bc.tick(0.1);
@@ -167,6 +168,7 @@ check(g.owned[0] === 2, 'Parisian Round resprouts to its level each spring');
 check(g.tick(0.1).every(e => e.type !== 'bumper'), 'resprout never fires a bumper toast storm');
 g.rabbitReward(() => 0.9);
 check(g.rabbits === 1, 'rabbit catches are counted');
+g.tick(0.1); /* latch the rabbit's almanac page before the save round-trip */
 const g2 = new CC.Core();
 g2.deserialize(JSON.parse(JSON.stringify(g.serialize())));
 check(g2.prestiges === g.prestiges && g2.shedLevel('l0') === 2 && g2.sproutsSpent === g.sproutsSpent
@@ -176,6 +178,30 @@ oldShed.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0,
   owned: [], bought: {}, seeds: 0, sprouts: 0, shed: { p0: true } });
 check(oldShed.shedLevel('p0') === 1 && Math.abs(oldShed.globalMult() - 1.05) < 1e-9,
   'pre-R15 `true` reads as level 1');
+
+/* the Almanac (R16): deeds latch forever, once, and compound */
+console.log('\n=== the Almanac ===');
+check(CC.ALMANAC.length === 72, `72 pages in the catalog (got ${CC.ALMANAC.length})`);
+check(new Set(CC.ALMANAC.map(p => p.id)).size === 72, 'page ids unique');
+const al = new CC.Core();
+al.seeds = 100;
+check(al.almanacCount() === 0, 'nothing latches without a tick');
+let aev = al.tick(0.1).filter(e => e.type === 'almanac');
+check(aev.length === 3 && al.almanacCount() === 3, `seed pages latch on tick (got ${al.almanacCount()})`);
+check(Math.abs(al.almanacMult() - Math.pow(1.02, 3)) < 1e-12, 'each page compounds ×1.02');
+check(Math.abs(al.globalMult() / al.seedMult() - al.almanacMult()) < 1e-9, 'and lands in globalMult');
+aev = al.tick(0.1).filter(e => e.type === 'almanac');
+check(aev.length === 0, 'a page is written once');
+al.owned[0] = 400;
+al.tick(0.1);
+check(al.almanac['rn0'] === true, 'Sill City written at 400 window boxes this spring');
+al.earn(1.1e10); /* seeds=100 held, so pending needs lifetime past (101)²·1e6 */
+al.prestige();
+check(al.owned[0] === 0 && al.almanac['rn0'] === true, 'prestige resets the boxes, never the page');
+const al2 = new CC.Core();
+al2.deserialize(JSON.parse(JSON.stringify(al.serialize())));
+check(al2.almanacCount() >= al.almanacCount(), 'pages survive the save');
+check(al2.tick(0.1).filter(e => e.type === 'almanac').length === 0, 'and a reload announces nothing');
 
 /* growth-budget tripwire: every uncapped ladder's β must fit the budget —
    if a data.js edit trips this, the economy has become super-linear */
@@ -193,6 +219,7 @@ console.log('\n=== save round-trip ===');
 const a = new CC.Core();
 a.earn(5e6); a.buy(0, 10); a.buy(1, 5); a.buyUpgrade('b0t0'); a.seeds = 3;
 a.sprouts = 9; a.shed = { p0: true };
+a.tick(0.01); /* latch almanac pages so both sides of the round-trip hold the same book */
 const b = new CC.Core();
 b.deserialize(JSON.parse(JSON.stringify(a.serialize())));
 check(Math.abs(a.cps() - b.cps()) < 1e-9, 'cps identical after save/load');
@@ -219,8 +246,8 @@ const big = new CC.Core();
 big.deserialize({ v: 1, bank: 0, totalAllTime: 3.4e22, totalRun: 0, clicks: 0,
   owned: [1], bought: {}, seeds: 184711462, sprouts: 0, shed: {} });
 const bcps = big.cps();
-/* post-R14: seeds ×14.78M × 15 ribbons ×4.255 → one box ≈ 6.29M/s */
-check(bcps > 6e6 && bcps < 7e6, `one Window Box at 184.7M seeds makes ~6.29M/s (got ${CC.fmt(bcps)})`);
+/* post-R16: seeds ×14.78M × ribbons ×4.255 × 15 almanac pages ×1.346 ≈ 8.47M/s */
+check(bcps > 8e6 && bcps < 9e6, `one Window Box at 184.7M seeds makes ~8.47M/s (got ${CC.fmt(bcps)})`);
 for (let k = 0; k < 20; k++) big.tick(1);
 const dl = big.totalAllTime - 3.4e22;
 check(Math.abs(dl - 20 * bcps) <= 4194304,

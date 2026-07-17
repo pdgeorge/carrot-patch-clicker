@@ -48,6 +48,7 @@ class Economy:
         self.prestiges: int = 0        # world counters (R15): deeds since records began
         self.rabbits: int = 0
         self.sprouts_spent: int = 0
+        self.almanac: dict = {}        # Almanac page id -> True; latches forever (R16)
         self.buffs: list[dict] = []  # {name, mult, left}
         self._ribbon_seen = 0
         self._bumper_seen = [0] * len(data["buildings"])
@@ -110,6 +111,11 @@ class Economy:
             return self.sprouts_spent >= c["sproutsSpent"]
         if "shedLv" in c:
             return self.shed_level(c["shedLv"]) >= c.get("n", 1)
+        if "upgradesOwned" in c:
+            return len(self.bought) >= c["upgradesOwned"]
+        if "heirloomEvery" in c:
+            return all(self.shed_level(u["id"]) >= c["heirloomEvery"]
+                       for u in self.d["shed"] if u.get("resprout"))
         return False
 
     def upgrade_visible(self, u: dict) -> bool:
@@ -172,8 +178,15 @@ class Economy:
         for u in self.d["shed"]:
             if u.get("mult"):
                 m *= u["mult"] ** self.shed_level(u["id"])
+        m *= self.almanac_mult()
         m *= self.d["milestoneMult"] ** self.bumper_total()
         return m
+
+    def almanac_count(self) -> int:
+        return len(self.almanac)
+
+    def almanac_mult(self) -> float:
+        return self.d["almanacMult"] ** self.almanac_count()
 
     def buff_mult(self) -> float:
         m = 1.0
@@ -340,6 +353,11 @@ class Economy:
                 events.append({"type": "bumper", "b": i, "owned": self.owned[i],
                                "at": self.d["milestones"][n - 1]})
                 self._bumper_seen[i] = n
+        # Almanac pages latch the moment their deed is done — forever (R16)
+        for pg in self.d["almanac"]:
+            if not self.almanac.get(pg["id"]) and all(self.cond_met(c) for c in pg["unlock"]):
+                self.almanac[pg["id"]] = True
+                events.append({"type": "almanac", "id": pg["id"]})
         return events
 
     # ---------- persistence ----------
@@ -350,7 +368,7 @@ class Economy:
             "bought": self.bought, "seeds": self.seeds, "buffs": self.buffs,
             "sprouts": self.sprouts, "shed": self.shed,
             "prestiges": self.prestiges, "rabbits": self.rabbits,
-            "sproutsSpent": self.sprouts_spent,
+            "sproutsSpent": self.sprouts_spent, "almanac": self.almanac,
             "saved": time.time(),
         }
 
@@ -372,6 +390,12 @@ class Economy:
         self.prestiges = s.get("prestiges", 0)   # R15 counters: absent = records begin now
         self.rabbits = s.get("rabbits", 0)
         self.sprouts_spent = s.get("sproutsSpent", 0)
+        self.almanac = s.get("almanac", {})
+        # pages already satisfied by an older save latch silently (R16):
+        # the load is not the deed, so it gets no toast storm
+        for pg in self.d["almanac"]:
+            if not self.almanac.get(pg["id"]) and all(self.cond_met(c) for c in pg["unlock"]):
+                self.almanac[pg["id"]] = True
         self.buffs = s.get("buffs", [])
         self._ribbon_seen = len(self.ribbons())
         self._bumper_seen = [self.bumper_count(i) for i in range(len(self.owned))]
@@ -392,6 +416,7 @@ class Economy:
             "sprouts": self.sprouts, "shed": self.shed,
             "prestiges": self.prestiges, "rabbits": self.rabbits,
             "sproutsSpent": self.sprouts_spent,  # clients gate keystone visibility on these
+            "almanac": self.almanac,
             "buffs": [{"name": b["name"], "mult": b["mult"], "left": b["left"]} for b in self.buffs],
         }
 

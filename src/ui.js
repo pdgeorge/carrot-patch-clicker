@@ -272,6 +272,17 @@ CC.UI = class {
       return el;
     });
 
+    /* the Almanac (R16): 72 page-slots, filled as the world's deeds latch */
+    const abox = this.$('almanac-pages');
+    this.almanacEls = CC.ALMANAC.map(pg => {
+      const el = document.createElement('div');
+      el.className = 'a-page locked';
+      el.addEventListener('mouseenter', () => this.tooltip({ kind: 'almanac', pg }));
+      el.addEventListener('mouseleave', () => this.tooltip(null));
+      abox.appendChild(el);
+      return el;
+    });
+
     /* ribbon shelf */
     const shelf = this.$('ribbons');
     this.ribbonEls = CC.RIBBONS.map(r => {
@@ -510,6 +521,11 @@ CC.UI = class {
       CC.audio.seed();
       this.toast(`🌱 A sprout was planted: ${u.name}${ev.lv > 1 ? ` → Lv ${ev.lv}` : ''}! ` +
         `${this.shedEffectText(u)}.`);
+    } else if (ev.type === 'almanac') {
+      const pg = CC.ALMANAC.find(p => p.id === ev.id);
+      if (!pg) return;
+      CC.audio.upgrade();
+      this.toast(`📖 A page is written: ${pg.name} — ${pg.flavor}`);
     }
   }
 
@@ -546,6 +562,12 @@ CC.UI = class {
       const r = what.r, won = this.core.totalAllTime >= r.at;
       tip.innerHTML = `<b>${r.name}</b> — ${won ? `+${Math.round((r.mult - 1) * 100)}% production` : `awarded at ${CC.fmt(r.at)} lifetime carrots`}` +
         `<br><span class="flavor">${won ? r.flavor : '???'}</span>`;
+    } else if (what.kind === 'almanac') {
+      const pg = what.pg, got = !!this.core.almanac[pg.id];
+      tip.innerHTML = got
+        ? `<b>${pg.name}</b> — +${Math.round((CC.ALMANAC_MULT - 1) * 100)}% production, forever` +
+          `<br><span class="flavor">${pg.flavor}</span>`
+        : `<b>???</b> — an unwritten page<br><span class="flavor">The deed will name itself when it is done.</span>`;
     } else if (what.kind === 'prestige') {
       tip.innerHTML = `<b>Go to Seed</b> — prestige reset<br>` +
         `Seeds so far: earned at √(lifetime ÷ 1M). Each seed = +8% production, permanently.` +
@@ -695,6 +717,15 @@ CC.UI = class {
 
     /* ribbons */
     CC.RIBBONS.forEach((r, i) => this.ribbonEls[i].classList.toggle('locked', c.totalAllTime < r.at));
+
+    /* almanac */
+    const an = c.almanacCount();
+    if (an !== this._almanacSeen) {
+      this._almanacSeen = an;
+      this.$('almanac-line').textContent =
+        `${an}/${CC.ALMANAC.length} pages written — ${this.fmtX(c.almanacMult())} production`;
+      CC.ALMANAC.forEach((pg, i) => this.almanacEls[i].classList.toggle('locked', !c.almanac[pg.id]));
+    }
 
     /* stats (re-rendered only when the text actually changes) */
     {

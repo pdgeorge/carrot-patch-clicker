@@ -201,6 +201,106 @@ CC.SHED = [
     flavor: 'Pale as moonlight. All carrots, eventually, are a little bit this one.' },
 ];
 
+/* The Almanac (R16): the world's book of deeds. Each page latches FOREVER
+   the moment its deed is done — prestige cannot unwrite history — and every
+   written page compounds ×1.02 production. Earn-conditions are ordinary R8
+   unlock conditions, so new pages are data-only. Counters (springs, rabbits,
+   sprouts spent) began at zero when R15 shipped: records begin today. */
+CC.ALMANAC_MULT = 1.02;
+CC.ALMANAC = [];
+(() => {
+  const page = (id, name, flavor, ...unlock) => CC.ALMANAC.push({ id, name, flavor, unlock });
+  const ladder = (prefix, key, rows) =>
+    rows.forEach(([n, name, flavor], i) => page(`${prefix}${i}`, name, flavor, { [key]: n }));
+
+  ladder('sd', 'seeds', [
+    [1, 'The First Seed', 'It weighed nothing. It changed everything.'],
+    [10, 'A Pocketful', 'Ten futures, rattling softly.'],
+    [100, 'The Seed Jar', 'Kept on the highest shelf, away from optimists.'],
+    [1e3, 'The Seed Drawer', 'Labelled twice. Trusted once.'],
+    [1e4, 'The Seed Chest', 'The hinges creak in springtime keys.'],
+    [1e5, 'The Seed Cellar', 'Cool, dark, impossibly patient.'],
+    [1e6, 'The Millionth Seed', 'Indistinguishable from the first. That is the point.'],
+    [1e7, 'The Seed Silo', 'Visible from the next county. Audible in dreams.'],
+    [1e8, 'A Nation of Seeds', 'They have not voted yet. They are waiting.'],
+    [1e9, 'The Seed Billion', 'Astronomers ask to borrow the number.'],
+    [1e10, 'The Seed Ocean', 'Tides of potential. Do not swim after eating.'],
+    [1e11, 'Seeds Beyond Counting', 'The abacus retired. The seeds did not.'],
+    [1e12, 'The Trillionth', 'A page that is mostly zeroes, and proud of every one.'],
+  ]);
+  ladder('lf', 'lifetime', [
+    [1e6, 'The First Million', 'Pulled, weighed, recorded, eaten.'],
+    [1e9, 'The First Billion', 'The scale asked for a holiday.'],
+    [1e12, 'A Trillion Carrots', 'Laid end to end: a bad idea, gorgeous from orbit.'],
+    [1e15, 'The Quadrillion Harvest', 'The word "bumper" files for early retirement.'],
+    [1e18, 'Quintillion', 'The ledger switches to scientific notation and sighs.'],
+    [1e21, 'Sextillion Summers', 'Each carrot got one perfect afternoon.'],
+    [1e24, 'The Septillion Row', 'It bends with the planet now.'],
+    [1e27, 'Octillion', 'Other gardens send pilgrims.'],
+    [1e30, 'The Nonillion Garden', 'The soil remembers everything. So does this page.'],
+  ]);
+  ladder('sp', 'prestiges', [
+    [1, 'The First Recorded Spring', 'Everything before this page is folklore.'],
+    [10, 'Ten Springs', 'The rhythm settles in: bloom, seed, begin.'],
+    [50, 'Fifty Springs', 'The Almanac develops opinions about frost.'],
+    [250, 'The 250th Spring', 'Some pages are just the word "again", written warmly.'],
+    [1000, 'A Thousand Springs', 'The book grows a second spine.'],
+    [2500, 'Springs Uncountable', 'The margin notes have margin notes.'],
+  ]);
+  ladder('rb', 'rabbits', [
+    [1, 'First Rabbit on Record', 'Golden, briefly, and gone. The ink still shimmers.'],
+    [10, 'A Warren of Ten', 'They compare notes on being caught.'],
+    [100, 'The Hundredth Guest', 'It signed the noticeboard on its way out.'],
+    [1e3, 'A Thousand Visits', 'The hedge has a turnstile now.'],
+    [1e4, 'Ten Thousand Golden Hours', 'The Almanac smells faintly of luck.'],
+  ]);
+  ladder('ck', 'clicks', [
+    [1e3, 'A Thousand Pulls', 'Blisters, then calluses, then legend.'],
+    [1e4, 'Ten Thousand Pulls', 'The soil learned your handshake.'],
+    [1e5, 'The Hundred-Thousandth', 'Somewhere, a glove union forms.'],
+    [1e6, 'The Million-Pull Page', 'Hands, plural. Planet, singular.'],
+    [1e7, 'Ten Million Tugs', 'The carrots started meeting you halfway.'],
+    [1e8, 'The Great Heave', 'Recorded in every time zone at once.'],
+    [1e9, 'A Billion Harvest Hands', 'The page is written in callus braille.'],
+    [1e10, 'Ten Billion', 'The ground hums back now.'],
+    [1e11, 'The Hundred-Billionth', 'Archaeologists will find thumbprints in the bedrock.'],
+    [1e12, 'The Trillionth Pull', 'One planet, pulling together. Literally.'],
+  ]);
+  ladder('ss', 'sproutsSpent', [
+    [1e6, 'The First Million Planted', 'The shed doors never quite close anymore.'],
+    [5e7, 'Fifty Million Furrows', 'The grounds crew requests a bigger wheelbarrow.'],
+    [2.5e8, 'The Great Planting', 'A quarter-billion sprouts. The map needed reprinting.'],
+    [1e9, 'A Billion Sprouts Deep', 'The Potting Shed is, legally, a region.'],
+  ]);
+  /* deeds of a single spring — prestige resets the deed, never the page */
+  page('rn0', 'Sill City', 'Four hundred window boxes in one spring. The town is mostly trough.', { owned: 0, n: 400 });
+  page('rn1', 'The Quilted County', 'Four hundred plots, stitched with paths.', { owned: 1, n: 400 });
+  page('rn2', 'Committee of Committees', 'Three hundred allotments; the parsnip man abstains 300 times.', { owned: 2, n: 300 });
+  page('rn3', 'Market Saturation', 'Every corner a stall, every stall sold out by nine.', { owned: 3, n: 300 });
+  page('rn4', 'The Glass District', 'Two hundred fifty greenhouses. Sunset takes twenty minutes longer here.', { owned: 4, n: 250 });
+  page('rn5', 'General Assembly', 'Two hundred locals. One demand: carrots.', { owned: 5, n: 200 });
+  page('rn6', 'The Harvest Fleet', 'A hundred and fifty combines in formation. Tidy. Slightly haunted.', { owned: 6, n: 150 });
+  page('rn7', 'One Hundred Everythings', 'All carrots, everywhere, all at once — a hundred times over.', { owned: 9, n: 100 });
+  page('tl0', 'A Decent Toolshed', 'Fifteen upgrades on the wall, each with its hook.', { upgradesOwned: 15 });
+  page('tl1', 'The Full Rack', 'Thirty tools. The wall asked for reinforcement.', { upgradesOwned: 30 });
+  page('tl2', 'Every Tool There Is', 'The shed sighs, complete. Somewhere, a new tool is invented.', { upgradesOwned: 56 });
+  page('cr0', 'Ten Turnings', 'The heap steams gently, like a planet rehearsing.', { shedLv: 'l0', n: 10 });
+  page('cr1', 'The Fifty-Turn Heap', 'Fork technique now taught at the university.', { shedLv: 'l0', n: 50 });
+  page('cr2', 'Compost Centennial', 'One hundred turnings. The heap has alumni.', { shedLv: 'l0', n: 100 });
+  page('cr3', 'All Six Valves', 'The sprinklers play in key. The key is damp.', { shedLv: 'l1', n: 6 });
+  page('he0', 'One of Each', 'Every strain, started. The catalogue clears its throat.', { heirloomEvery: 1 });
+  page('he1', 'Five Generations Deep', 'The strains remember their grandmothers.', { heirloomEvery: 5 });
+  page('he2', 'Ten Deep, All Rows', 'Pedigrees thicker than the soil.', { heirloomEvery: 10 });
+  page('he3', 'Deep Roots Everywhere', 'Twenty-five generations, every variety. The fair judges retire, weeping.', { heirloomEvery: 25 });
+  page('he4', 'The Lunar White, Perfected', 'Twenty-five generations of moonlight.', { shedLv: 'h9', n: 25 });
+  page('dz0', 'The Bench That Doubles', 'One cutting becomes two. The Almanac checks the math. It holds.', { shed: 'p9' });
+  page('dz1', 'House of Weather', 'The mist house opens. Every sprout brings a friend.', { shed: 'p10' });
+  page('dz2', 'The Jar That Dreams', 'Tissue culture: thousands of tiny gardens, politely queueing.', { shed: 'p11' });
+  page('dz3', 'Nursery Moonrise', 'A second moon, and it waters things.', { shed: 'p12' });
+  page('dz4', 'The Keystone Arch', 'Five stones, one shed, no gaps.',
+    { shed: 'p4' }, { shed: 'p5' }, { shed: 'p6' }, { shed: 'p7' }, { shed: 'p8' });
+})();
+
 /* Ribbons: permanent multipliers at lifetime-harvest milestones (your trophy shelf). */
 CC.RIBBONS = [
   { at: 1e3, name: 'White Ribbon', color: '#e5e7eb', mult: 1.02,

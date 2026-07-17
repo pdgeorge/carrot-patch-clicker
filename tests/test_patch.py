@@ -186,6 +186,36 @@ for name, pv in pairs15:
     jv = js15[name]
     check(abs(pv - jv) <= 1e-9 * max(1.0, abs(jv)), f"R15 {name}: py {pv:.6g} == js {jv:.6g}")
 
+# ---------- 1e. R16: Almanac latch parity ----------
+print("\n=== the Almanac (R16) ===")
+JS_R16 = r"""
+const fs = require('fs'), path = require('path'), vm = require('vm');
+for (const f of ['data.js', 'core.js']) {
+  vm.runInThisContext(fs.readFileSync(path.join(process.argv[1], 'src', f), 'utf8'));
+}
+const c = new CC.Core();
+c.seeds = 1000; c.clicks = 50000; c.prestiges = 12; c.sprouts = 1e6;
+c.buyShed('p4'); c.earn(2e9); c.owned[0] = 400;
+const ids = c.tick(1).filter(e => e.type === 'almanac').map(e => e.id).sort();
+console.log(JSON.stringify({ ids, n: c.almanacCount(), amult: c.almanacMult(), gmult: c.globalMult() }));
+"""
+js16 = json.loads(subprocess.run(
+    ["node", "-e", JS_R16, str(ROOT)], capture_output=True, text=True, check=True).stdout)
+p16 = Economy(load_data())
+p16.seeds = 1000
+p16.clicks = 50000
+p16.prestiges = 12
+p16.sprouts = int(1e6)
+p16.buy_shed("p4")
+p16.earn(2e9)
+p16.owned[0] = 400
+ids16 = sorted(e["id"] for e in p16.tick(1.0) if e["type"] == "almanac")
+check(ids16 == js16["ids"] and len(ids16) > 0,
+      f"both engines latch the identical page set ({len(ids16)} pages)")
+check(p16.almanac_count() == js16["n"], "page counts match")
+check(abs(p16.almanac_mult() - js16["amult"]) <= 1e-12 * js16["amult"], "almanac_mult parity")
+check(abs(p16.global_mult() - js16["gmult"]) <= 1e-9 * js16["gmult"], "global_mult parity with pages")
+
 # ---------- 1a'. bulk buys all-or-nothing in both engines (audit f9) ----------
 print("\n=== bulk buys all-or-nothing parity ===")
 JS_AO = r"""
@@ -463,6 +493,10 @@ with TestClient(app) as client:
         check(got is not None and abs(got.get("boost", 0) - 1.16) < 1e-9,
               f"and the real boost ×1.16, not '+16% of nothing' ({got})")
 
+        # R16: the world's tick loop writes the Almanac and tells everyone
+        time.sleep(1.3)  # one server tick after the prestige above
+        check(patch.eco.almanac.get("sd0"), "the Almanac records the world's first seed")
+
     # persistence round-trip
     patch.eco.earn(12345)
     patch.save()
@@ -473,6 +507,7 @@ with TestClient(app) as client:
           "shed levels and sprouts survive a save/load (9602 left + 2 minted by the prestige above)")
     check(fresh.prestiges == 1 and fresh.sprouts_spent == 20405,
           "world counters survive a save/load")
+    check(fresh.almanac.get("sd0"), "the Almanac survives a save/load")
 
     # pre-R13 save migration: sprouts backlog = seeds (none were ever spendable)
     legacy = json.loads(state_path.read_text())

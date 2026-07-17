@@ -73,6 +73,7 @@ const data = JSON.stringify({
   synergyUpgrades: CC.SYNERGY_UPGRADES,
   milestones: CC.MILESTONES, milestoneMult: CC.MILESTONE_MULT,
   ribbons: CC.RIBBONS, shed: CC.SHED,
+  almanac: CC.ALMANAC, almanacMult: CC.ALMANAC_MULT,
 }, null, 1);
 
 fs.mkdirSync(OUT, { recursive: true });

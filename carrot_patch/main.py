@@ -134,6 +134,10 @@ class Patch:
                 what = f"seed bonus ×{fmt(boost)}"
             return (f"🌸 SOMEONE SENT THE WHOLE GARDEN TO SEED. +{fmt(ev['gained'])} seeds "
                     f"({what}) for everyone. A new spring begins.")
+        if ev["type"] == "almanac":
+            pg = next((p for p in d["almanac"] if p["id"] == ev["id"]), None)
+            return (f"📖 A page is written in the Almanac: {pg['name']}. "
+                    f"(+{round((d['almanacMult'] - 1) * 100)}% production, forever)") if pg else None
         if ev["type"] == "shed":
             u = next((u for u in d["shed"] if u["id"] == ev["id"]), None)
             if not u:

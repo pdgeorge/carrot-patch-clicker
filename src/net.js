@@ -125,6 +125,7 @@ CC.Patch = class {
       c.prestiges = s.prestiges || 0;   /* R15 counters gate keystone visibility */
       c.rabbits = s.rabbits || 0;
       c.sproutsSpent = s.sproutsSpent || 0;
+      c.almanac = s.almanac || {};      /* R16: the server's book is the book */
       c.buffs = s.buffs.map(b => ({ ...b }));
       c._ribbonCount = c.ribbons().length;
       c._bumperSeen = CC.BUILDINGS.map((_, i) => c.bumperCount(i));
