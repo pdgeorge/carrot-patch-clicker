@@ -244,6 +244,34 @@ check(p16.almanac_count() == js16["n"], "page counts match")
 check(abs(p16.almanac_mult() - js16["amult"]) <= 1e-12 * js16["amult"], "almanac_mult parity")
 check(abs(p16.global_mult() - js16["gmult"]) <= 1e-9 * js16["gmult"], "global_mult parity with pages")
 
+# ---------- 1f. R17: season parity ----------
+print("\n=== seasons (R17) ===")
+JS_SEA = r"""
+const fs = require('fs'), path = require('path'), vm = require('vm');
+for (const f of ['data.js', 'core.js']) {
+  vm.runInThisContext(fs.readFileSync(path.join(process.argv[1], 'src', f), 'utf8'));
+}
+const c = new CC.Core();
+c.earn(5e4); c.buy(0, 10);
+c.season = 'fair';
+const fairCps = c.cps(), fairClick = c.clickPower();
+c.season = 'market';
+const marketCost = c.costOf(0, 10);
+console.log(JSON.stringify({ fairCps, fairClick, marketCost }));
+"""
+js_sea = json.loads(subprocess.run(
+    ["node", "-e", JS_SEA, str(ROOT)], capture_output=True, text=True, check=True).stdout)
+psea = Economy(load_data())
+psea.earn(5e4)
+psea.buy(0, 10)
+psea.season = "fair"
+check(abs(psea.cps() - js_sea["fairCps"]) <= 1e-9 * js_sea["fairCps"], "fair-season cps parity")
+check(abs(psea.click_power() - js_sea["fairClick"]) <= 1e-9 * js_sea["fairClick"],
+      "fair-season click parity")
+psea.season = "market"
+check(abs(psea.cost_of(0, 10) - js_sea["marketCost"]) <= 1e-9 * js_sea["marketCost"],
+      "market-season price parity")
+
 # ---------- 1a'. bulk buys all-or-nothing in both engines (audit f9) ----------
 print("\n=== bulk buys all-or-nothing parity ===")
 JS_AO = r"""
@@ -367,6 +395,8 @@ with TestClient(app) as client:
         snap = ws.receive_json()
         check(snap["type"] == "snapshot", "greeted with a snapshot")
         check(snap["online"] == 1, "presence counts one gardener")
+        check(snap["state"].get("season") == "homestead" and snap["state"].get("seasonEnds", 0) > 0,
+              "snapshot carries the season and its clock")
 
         # click batching: an absurd batch is clamped to the anti-flood
         # ceiling (1000 — anti-flood only, never game balance; DESIGN R2)
@@ -536,6 +566,14 @@ with TestClient(app) as client:
         check(patch.eco.shed_level("l0") == 5 and not noisy,
               "ladder levels 3-5 climb silently — milestones only on the wire")
 
+        # R17: the calendar turns (age the current season 15 days)
+        patch.eco.season_start = time.time() - 15 * 86400
+        time.sleep(1.3)
+        check(patch.eco.season == "fair",
+              f"the calendar turns to the County Fair (got {patch.eco.season})")
+        check(time.time() - patch.eco.season_start < 2 * 86400,
+              "and the new season's clock starts roughly now")
+
     # persistence round-trip
     patch.eco.earn(12345)
     patch.save()
@@ -549,6 +587,8 @@ with TestClient(app) as client:
           and fresh.sprouts_spent == patch.eco.sprouts_spent,
           "world counters survive a save/load")
     check(fresh.almanac.get("sd0"), "the Almanac survives a save/load")
+    check(fresh.season == patch.eco.season and fresh.season_start > 0,
+          "the season and its clock survive a save/load")
 
     # pre-R13 save migration: sprouts backlog = seeds (none were ever spendable)
     legacy = json.loads(state_path.read_text())

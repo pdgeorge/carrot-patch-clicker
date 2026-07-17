@@ -126,6 +126,8 @@ CC.Patch = class {
       c.rabbits = s.rabbits || 0;
       c.sproutsSpent = s.sproutsSpent || 0;
       c.almanac = s.almanac || {};      /* R16: the server's book is the book */
+      c.season = s.season || 'homestead'; /* R17: one world, one season */
+      this.seasonEnds = s.seasonEnds || 0;
       c.buffs = s.buffs.map(b => ({ ...b }));
       c._ribbonCount = c.ribbons().length;
       c._bumperSeen = CC.BUILDINGS.map((_, i) => c.bumperCount(i));

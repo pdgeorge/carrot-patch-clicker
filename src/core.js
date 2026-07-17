@@ -35,6 +35,7 @@ CC.Core = class {
     this.almanac = {};            /* Almanac page id -> true; latches forever (R16) */
     this.mirrorBook = false;      /* world mode: the server's almanac is the book —
                                      a mirroring client must never latch its own */
+    this.season = 'homestead';    /* R17: server-owned; the dev garden stays homestead */
     this.buffs = [];              /* {name, mult, left} */
     this.t = 0;
     this._ribbonCount = 0;
@@ -178,6 +179,10 @@ CC.Core = class {
     return m;
   }
 
+  /* seasons (R17): time-boxed world modifiers; unknown ids are homestead */
+  seasonData() { return CC.SEASONS.find(s => s.id === this.season) || null; }
+  seasonMult() { const s = this.seasonData(); return (s && s.mult) || 1; }
+
   baseCps() {
     let c = 0;
     for (let i = 0; i < CC.BUILDINGS.length; i++) {
@@ -186,7 +191,7 @@ CC.Core = class {
     return c * this.globalMult();
   }
 
-  cps() { return this.baseCps() * this.buffMult(); }
+  cps() { return this.baseCps() * this.buffMult() * this.seasonMult(); }
 
   clickPower() {
     let base = 1, pct = 0;
@@ -196,7 +201,7 @@ CC.Core = class {
       if (u.cpsPct) pct += u.cpsPct;
     }
     for (const u of CC.SHED) if (u.cpsPct) pct += u.cpsPct * this.shedLevel(u.id);
-    return (base + pct * this.baseCps()) * this.buffMult();
+    return (base + pct * this.baseCps()) * this.buffMult() * this.seasonMult();
   }
 
   /* ---------- actions ---------- */
@@ -210,9 +215,11 @@ CC.Core = class {
   }
 
   costOf(i, count = 1) {
-    /* geometric sum: cost * 1.15^owned * (1.15^count - 1) / 0.15 */
+    /* geometric sum: cost * 1.15^owned * (1.15^count - 1) / 0.15,
+       discounted while a priceOff season runs (R17) */
     const r = 1.15, c0 = CC.BUILDINGS[i].cost * Math.pow(r, this.owned[i]);
-    return c0 * (Math.pow(r, count) - 1) / (r - 1);
+    const s = this.seasonData();
+    return c0 * (Math.pow(r, count) - 1) / (r - 1) * (1 - ((s && s.priceOff) || 0));
   }
 
   buy(i, count = 1) {
@@ -355,7 +362,7 @@ CC.Core = class {
       clicks: this.clicks, owned: this.owned, bought: this.bought, seeds: this.seeds,
       sprouts: this.sprouts, shed: this.shed,
       prestiges: this.prestiges, rabbits: this.rabbits, sproutsSpent: this.sproutsSpent,
-      almanac: this.almanac,
+      almanac: this.almanac, season: this.season,
       buffs: this.buffs.map(b => ({ ...b })), /* a frenzy survives a mid-buff reload */
       last: Date.now(),
     };
@@ -389,6 +396,7 @@ CC.Core = class {
        mint ×1.02 each forever — dropped */
     this.almanac = {};
     for (const pg of CC.ALMANAC) if ((s.almanac || {})[pg.id]) this.almanac[pg.id] = true;
+    this.season = CC.SEASONS.some(x => x.id === s.season) ? s.season : 'homestead';
     /* pages already satisfied by an older save latch silently — the load
        is not the deed, so it gets no toast storm (R16, same as ribbons) */
     this.latchPages();

@@ -232,6 +232,26 @@ check(proto.plural('Window Box') === 'Window Boxes'
 const h0txt = proto.shedEffectText.call({ plural: proto.plural }, CC.SHED.find(u => u.id === 'h0'));
 check(h0txt.includes('Window Boxes'), `heirloom effect text pluralizes (${h0txt})`);
 
+/* seasons (R17): data-driven, time-boxed, engine-predictable */
+console.log('\n=== seasons ===');
+const se = new CC.Core();
+se.earn(1000); se.buy(0, 5);
+const seCps = se.cps(), seClick = se.clickPower(), seCost = se.costOf(0, 1);
+se.season = 'fair';
+check(Math.abs(se.cps() / seCps - 1.05) < 1e-9, 'the County Fair: +5% production');
+check(Math.abs(se.clickPower() / seClick - 1.05) < 1e-9, 'and +5% clicks');
+se.season = 'market';
+check(Math.abs(se.costOf(0, 1) / seCost - 0.9) < 1e-9, 'Market Days: buildings 10% off');
+check(se.cps() === seCps, 'and production unchanged');
+se.season = 'endless-winter';
+check(se.cps() === seCps && se.costOf(0, 1) === seCost, 'unknown seasons behave as homestead (fail-safe)');
+se.season = 'fair';
+const se2 = new CC.Core();
+se2.deserialize(JSON.parse(JSON.stringify(se.serialize())));
+check(se2.season === 'fair', 'the season survives the save');
+se2.deserialize({ ...JSON.parse(JSON.stringify(se.serialize())), season: 'hax' });
+check(se2.season === 'homestead', 'junk seasons sanitize to homestead');
+
 /* growth-budget tripwire: every growth term is DERIVED FROM DATA (review
    f2 — a hardcoded term can never trip), so any data.js edit that makes
    the economy super-linear fails here */

@@ -538,6 +538,13 @@ CC.UI = class {
       if (!pg) return;
       CC.audio.upgrade();
       this.toast(`📖 A page is written: ${pg.name} — ${pg.flavor}`);
+    } else if (ev.type === 'season') {
+      const s = CC.SEASONS.find(x => x.id === ev.id);
+      if (!s) return;
+      CC.audio.fanfare();
+      this.toast(`🎪 A new season begins: ${s.name}! ${s.bonus}.`);
+      this.$('ticker-text').textContent = s.line;
+      this.tickerT = -6;
     }
   }
 
@@ -641,6 +648,18 @@ CC.UI = class {
 
     const buff = c.buffs[0];
     this.$('buff-line').textContent = buff ? `⚡ ${buff.name} ×${buff.mult} — ${Math.ceil(buff.left)}s` : '';
+
+    /* season (R17): the world's shared festival, clock always visible */
+    if (this.worldMode && this.patch && this.patch.everSynced) {
+      const sd = c.seasonData();
+      const sl = this.$('season-line');
+      if (sd) {
+        const days = this.patch.seasonEnds
+          ? Math.max(0, Math.ceil((this.patch.seasonEnds - Date.now() / 1000) / 86400)) : 0;
+        sl.classList.remove('hidden');
+        sl.textContent = `🎪 ${sd.name} — ${days} day${days === 1 ? '' : 's'} left · ${sd.bonus}`;
+      }
+    }
 
     this.$('seed-line').textContent = c.seeds > 0
       ? `🌸 ${CC.fmt(c.seeds)} seeds — ${this.fmtX(c.seedMult())} production, forever` : '';
@@ -752,7 +771,7 @@ CC.UI = class {
         `<div>Rabbits caught 🐇 <b>${CC.fmt(c.rabbits)}</b></div>` +
         `<div>Plots &amp; contraptions <b>${CC.fmt(totalBuildings)}</b></div>` +
         `<div>Bumper crops 🌾 <b>${bumpers} (+${Math.round((Math.pow(CC.MILESTONE_MULT, bumpers) - 1) * 100)}%)</b></div>` +
-        `<div>Production bonus <b>${this.fmtX(c.globalMult())}${c.buffMult() > 1 ? ` · ⚡${this.fmtX(c.buffMult())}` : ''}</b></div>` +
+        `<div>Production bonus <b>${this.fmtX(c.globalMult())}${c.buffMult() > 1 ? ` · ⚡${this.fmtX(c.buffMult())}` : ''}${c.seasonMult() > 1 ? ` · 🎪${this.fmtX(c.seasonMult())}` : ''}</b></div>` +
         `<div class="stat-sub">seeds ${this.fmtX(c.seedMult())} · ribbons ${this.fmtX(c.ribbonMult())} · rest ${this.fmtX(c.globalMult() / (c.seedMult() * c.ribbonMult()))}</div>` +
         `<div>Next seed in <b>${CC.fmt(Math.max(0, c.nextSeedAt() - c.totalAllTime))} 🥕</b></div>` +
         (() => { /* the tail must never fade into fog: name the next rung */
@@ -897,5 +916,7 @@ if (typeof document !== 'undefined') {
     if (grant) game.core.earn(+grant); /* debug/testing */
     const sprouts = params.get('sprouts');
     if (sprouts) game.core.sprouts += +sprouts; /* debug/testing (dev garden; the server ignores predictions) */
+    const season = params.get('season');
+    if (season) game.core.season = season; /* dev garden theme/bonus testing (R17) */
   });
 }

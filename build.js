@@ -74,6 +74,7 @@ const data = JSON.stringify({
   milestones: CC.MILESTONES, milestoneMult: CC.MILESTONE_MULT,
   ribbons: CC.RIBBONS, shed: CC.SHED,
   almanac: CC.ALMANAC, almanacMult: CC.ALMANAC_MULT,
+  seasons: CC.SEASONS, seasonDays: CC.SEASON_DAYS,
 }, null, 1);
 
 fs.mkdirSync(OUT, { recursive: true });

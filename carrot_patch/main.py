@@ -74,8 +74,15 @@ class Patch:
         self.click_window = 0          # clicks landed in the current snapshot window
         self.click_rate = 0            # last window's global clicks/sec, for display
         self.rabbit: dict | None = None
-        self.next_rabbit = time.monotonic() + random.uniform(60, 150)
+        self.next_rabbit = time.monotonic() + self.rabbit_wait(60, 150)
         self._pending: list[dict] = []  # extra events to broadcast with next snapshot
+        if not self.eco.season_start:  # R17: the calendar starts the day it ships
+            self.eco.season_start = time.time()
+
+    def rabbit_wait(self, lo: float, hi: float) -> float:
+        """Seconds until the next golden rabbit — Fair season doubles the visits."""
+        rate = (self.eco.season_data() or {}).get("rabbitRate", 1)
+        return random.uniform(lo, hi) / rate
 
     # ---------- persistence ----------
     def save(self) -> None:
@@ -144,6 +151,9 @@ class Patch:
                 what = f"seed bonus ×{fmt(boost)}"
             return (f"🌸 SOMEONE SENT THE WHOLE GARDEN TO SEED. +{fmt(ev['gained'])} seeds "
                     f"({what}) for everyone. A new spring begins.")
+        if ev["type"] == "season":
+            s = next((x for x in d.get("seasons", []) if x["id"] == ev["id"]), None)
+            return f"🎪 A new season begins: {s['name']}! {s['bonus']}." if s else None
         if ev["type"] == "almanac":
             pg = next((p for p in d["almanac"] if p["id"] == ev["id"]), None)
             return (f"📖 A page is written in the Almanac: {pg['name']}. "
@@ -172,10 +182,24 @@ class Patch:
             for ev in self.eco.tick(dt):
                 self.emit(ev)
 
+            # seasons rotate on real time (R17); the server owns the calendar
+            period = self.eco.d.get("seasonDays", 14) * 86400.0
+            wall = time.time()
+            if self.eco.season_start and wall - self.eco.season_start >= period:
+                steps = int((wall - self.eco.season_start) // period)
+                seasons = self.eco.d.get("seasons", [])
+                if seasons:
+                    idx = next((i for i, s in enumerate(seasons)
+                                if s["id"] == self.eco.season), 0)
+                    self.eco.season = seasons[(idx + steps) % len(seasons)]["id"]
+                    self.eco.season_start += steps * period
+                    self.emit({"type": "season", "id": self.eco.season})
+                    self.save()
+
             # golden rabbit lifecycle (global!)
             if self.rabbit and now > self.rabbit["until"]:
                 self.rabbit = None
-                self.next_rabbit = now + random.uniform(90, 240)
+                self.next_rabbit = now + self.rabbit_wait(90, 240)
             if not self.rabbit and now >= self.next_rabbit:
                 self.rabbit = {"id": random.randrange(1 << 30), "until": now + 12.0}
                 self._pending.append({"type": "rabbit", "ttl": 12.0})
@@ -254,7 +278,7 @@ class Patch:
         elif kind == "catch":
             if self.rabbit and now <= self.rabbit["until"]:
                 self.rabbit = None
-                self.next_rabbit = now + random.uniform(90, 240)
+                self.next_rabbit = now + self.rabbit_wait(90, 240)
                 r = eco.rabbit_reward()
                 self.emit({"type": "rabbitCaught", "kind": r["kind"], "gain": r.get("gain", 0)})
 

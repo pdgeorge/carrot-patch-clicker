@@ -162,6 +162,14 @@ html, body { margin: 0; padding: 0; }
   margin-top: 4px;
   font-variant-numeric: tabular-nums;
 }
+#season-line {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #e8c86a;
+  margin-top: 3px;
+  min-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
 #hero {
   display: block;
   width: 100%;
@@ -536,6 +544,7 @@ html, body { margin: 0; padding: 0; }
       <div id="bank-label">carrots</div>
       <div id="cps">0 per second</div>
       <div id="patch-line" class="hidden"></div>
+      <div id="season-line" class="hidden"></div>
       <div id="buff-line"></div>
       <canvas id="hero" width="320" height="360"></canvas>
       <div id="seed-line"></div>
@@ -614,7 +623,7 @@ html, body { margin: 0; padding: 0; }
 </div>
 
 <script>
-globalThis.CC = globalThis.CC || {}; CC.BUILD = '953a1c5'; CC.GARDENERS = ["pdgeorge","Claude Fable 5"];
+globalThis.CC = globalThis.CC || {}; CC.BUILD = 'd6d5946'; CC.GARDENERS = ["pdgeorge","Claude Fable 5"];
 /* ==== data.js ==== */
 /* Carrot Clicker — content: buildings, upgrades, ribbons, news. */
 globalThis.CC = globalThis.CC || {};
@@ -817,6 +826,29 @@ CC.SHED = [
   { id: 'h9', name: 'Lunar White', building: 9, bmult: 1.10, cost: 381000, costGrowth: 1.45,
     repeat: true, resprout: true,
     flavor: 'Pale as moonlight. All carrots, eventually, are a little bit this one.' },
+];
+
+/* Seasons (R17): the world's rotating festival calendar. The SERVER owns
+   the season — one world, one season — and clients mirror it. Each season
+   carries a data-driven bonus; bonuses are time-boxed, so they live outside
+   the β-budget (generosity without inflation). Rotation: every
+   CC.SEASON_DAYS real days, in listed order. Effect vocabulary:
+     mult        global production while the season runs
+     priceOff    building prices reduced by this fraction
+     rabbitRate  golden rabbits spawn this many times as often (server-side)
+   Season theme packs (a day/night skin per season) ship with the visual
+   uplift; this layer is the calendar, the bonuses, and the wire. */
+CC.SEASON_DAYS = 14;
+CC.SEASONS = [
+  { id: 'homestead', name: 'Homestead Days',
+    line: 'The garden at its own pace.',
+    bonus: 'the classic garden — pure growing' },
+  { id: 'fair', name: 'the County Fair', mult: 1.05, rabbitRate: 2,
+    line: 'Bunting up, judges out, rabbits everywhere.',
+    bonus: 'golden rabbits visit twice as often · +5% production' },
+  { id: 'market', name: 'Market Days', priceOff: 0.10,
+    line: 'Stalls at dawn, prices chalked before sunrise.',
+    bonus: 'every building 10% off' },
 ];
 
 /* The Almanac (R16): the world's book of deeds. Each page latches FOREVER
@@ -1088,6 +1120,7 @@ CC.Core = class {
     this.almanac = {};            /* Almanac page id -> true; latches forever (R16) */
     this.mirrorBook = false;      /* world mode: the server's almanac is the book —
                                      a mirroring client must never latch its own */
+    this.season = 'homestead';    /* R17: server-owned; the dev garden stays homestead */
     this.buffs = [];              /* {name, mult, left} */
     this.t = 0;
     this._ribbonCount = 0;
@@ -1231,6 +1264,10 @@ CC.Core = class {
     return m;
   }
 
+  /* seasons (R17): time-boxed world modifiers; unknown ids are homestead */
+  seasonData() { return CC.SEASONS.find(s => s.id === this.season) || null; }
+  seasonMult() { const s = this.seasonData(); return (s && s.mult) || 1; }
+
   baseCps() {
     let c = 0;
     for (let i = 0; i < CC.BUILDINGS.length; i++) {
@@ -1239,7 +1276,7 @@ CC.Core = class {
     return c * this.globalMult();
   }
 
-  cps() { return this.baseCps() * this.buffMult(); }
+  cps() { return this.baseCps() * this.buffMult() * this.seasonMult(); }
 
   clickPower() {
     let base = 1, pct = 0;
@@ -1249,7 +1286,7 @@ CC.Core = class {
       if (u.cpsPct) pct += u.cpsPct;
     }
     for (const u of CC.SHED) if (u.cpsPct) pct += u.cpsPct * this.shedLevel(u.id);
-    return (base + pct * this.baseCps()) * this.buffMult();
+    return (base + pct * this.baseCps()) * this.buffMult() * this.seasonMult();
   }
 
   /* ---------- actions ---------- */
@@ -1263,9 +1300,11 @@ CC.Core = class {
   }
 
   costOf(i, count = 1) {
-    /* geometric sum: cost * 1.15^owned * (1.15^count - 1) / 0.15 */
+    /* geometric sum: cost * 1.15^owned * (1.15^count - 1) / 0.15,
+       discounted while a priceOff season runs (R17) */
     const r = 1.15, c0 = CC.BUILDINGS[i].cost * Math.pow(r, this.owned[i]);
-    return c0 * (Math.pow(r, count) - 1) / (r - 1);
+    const s = this.seasonData();
+    return c0 * (Math.pow(r, count) - 1) / (r - 1) * (1 - ((s && s.priceOff) || 0));
   }
 
   buy(i, count = 1) {
@@ -1408,7 +1447,7 @@ CC.Core = class {
       clicks: this.clicks, owned: this.owned, bought: this.bought, seeds: this.seeds,
       sprouts: this.sprouts, shed: this.shed,
       prestiges: this.prestiges, rabbits: this.rabbits, sproutsSpent: this.sproutsSpent,
-      almanac: this.almanac,
+      almanac: this.almanac, season: this.season,
       buffs: this.buffs.map(b => ({ ...b })), /* a frenzy survives a mid-buff reload */
       last: Date.now(),
     };
@@ -1442,6 +1481,7 @@ CC.Core = class {
        mint ×1.02 each forever — dropped */
     this.almanac = {};
     for (const pg of CC.ALMANAC) if ((s.almanac || {})[pg.id]) this.almanac[pg.id] = true;
+    this.season = CC.SEASONS.some(x => x.id === s.season) ? s.season : 'homestead';
     /* pages already satisfied by an older save latch silently — the load
        is not the deed, so it gets no toast storm (R16, same as ribbons) */
     this.latchPages();
@@ -1593,6 +1633,8 @@ CC.Patch = class {
       c.rabbits = s.rabbits || 0;
       c.sproutsSpent = s.sproutsSpent || 0;
       c.almanac = s.almanac || {};      /* R16: the server's book is the book */
+      c.season = s.season || 'homestead'; /* R17: one world, one season */
+      this.seasonEnds = s.seasonEnds || 0;
       c.buffs = s.buffs.map(b => ({ ...b }));
       c._ribbonCount = c.ribbons().length;
       c._bumperSeen = CC.BUILDINGS.map((_, i) => c.bumperCount(i));
@@ -2173,6 +2215,13 @@ CC.UI = class {
       if (!pg) return;
       CC.audio.upgrade();
       this.toast(`📖 A page is written: ${pg.name} — ${pg.flavor}`);
+    } else if (ev.type === 'season') {
+      const s = CC.SEASONS.find(x => x.id === ev.id);
+      if (!s) return;
+      CC.audio.fanfare();
+      this.toast(`🎪 A new season begins: ${s.name}! ${s.bonus}.`);
+      this.$('ticker-text').textContent = s.line;
+      this.tickerT = -6;
     }
   }
 
@@ -2276,6 +2325,18 @@ CC.UI = class {
 
     const buff = c.buffs[0];
     this.$('buff-line').textContent = buff ? `⚡ ${buff.name} ×${buff.mult} — ${Math.ceil(buff.left)}s` : '';
+
+    /* season (R17): the world's shared festival, clock always visible */
+    if (this.worldMode && this.patch && this.patch.everSynced) {
+      const sd = c.seasonData();
+      const sl = this.$('season-line');
+      if (sd) {
+        const days = this.patch.seasonEnds
+          ? Math.max(0, Math.ceil((this.patch.seasonEnds - Date.now() / 1000) / 86400)) : 0;
+        sl.classList.remove('hidden');
+        sl.textContent = `🎪 ${sd.name} — ${days} day${days === 1 ? '' : 's'} left · ${sd.bonus}`;
+      }
+    }
 
     this.$('seed-line').textContent = c.seeds > 0
       ? `🌸 ${CC.fmt(c.seeds)} seeds — ${this.fmtX(c.seedMult())} production, forever` : '';
@@ -2387,7 +2448,7 @@ CC.UI = class {
         `<div>Rabbits caught 🐇 <b>${CC.fmt(c.rabbits)}</b></div>` +
         `<div>Plots &amp; contraptions <b>${CC.fmt(totalBuildings)}</b></div>` +
         `<div>Bumper crops 🌾 <b>${bumpers} (+${Math.round((Math.pow(CC.MILESTONE_MULT, bumpers) - 1) * 100)}%)</b></div>` +
-        `<div>Production bonus <b>${this.fmtX(c.globalMult())}${c.buffMult() > 1 ? ` · ⚡${this.fmtX(c.buffMult())}` : ''}</b></div>` +
+        `<div>Production bonus <b>${this.fmtX(c.globalMult())}${c.buffMult() > 1 ? ` · ⚡${this.fmtX(c.buffMult())}` : ''}${c.seasonMult() > 1 ? ` · 🎪${this.fmtX(c.seasonMult())}` : ''}</b></div>` +
         `<div class="stat-sub">seeds ${this.fmtX(c.seedMult())} · ribbons ${this.fmtX(c.ribbonMult())} · rest ${this.fmtX(c.globalMult() / (c.seedMult() * c.ribbonMult()))}</div>` +
         `<div>Next seed in <b>${CC.fmt(Math.max(0, c.nextSeedAt() - c.totalAllTime))} 🥕</b></div>` +
         (() => { /* the tail must never fade into fog: name the next rung */
@@ -2532,6 +2593,8 @@ if (typeof document !== 'undefined') {
     if (grant) game.core.earn(+grant); /* debug/testing */
     const sprouts = params.get('sprouts');
     if (sprouts) game.core.sprouts += +sprouts; /* debug/testing (dev garden; the server ignores predictions) */
+    const season = params.get('season');
+    if (season) game.core.season = season; /* dev garden theme/bonus testing (R17) */
   });
 }
 

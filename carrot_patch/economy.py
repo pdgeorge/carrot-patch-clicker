@@ -50,6 +50,8 @@ class Economy:
         self.rabbits: int = 0
         self.sprouts_spent: int = 0
         self.almanac: dict = {}        # Almanac page id -> True; latches forever (R16)
+        self.season: str = "homestead"  # R17: the server owns the calendar
+        self.season_start: float = 0.0  # epoch of the current season's dawn
         self.buffs: list[dict] = []  # {name, mult, left}
         self._ribbon_seen = 0
         self._bumper_seen = [0] * len(data["buildings"])
@@ -195,13 +197,21 @@ class Economy:
             m *= b["mult"]
         return m
 
+    # seasons (R17): time-boxed world modifiers; unknown ids are homestead
+    def season_data(self) -> dict | None:
+        return next((s for s in self.d.get("seasons", []) if s["id"] == self.season), None)
+
+    def season_mult(self) -> float:
+        s = self.season_data()
+        return (s or {}).get("mult") or 1
+
     def base_cps(self) -> float:
         c = sum(self.owned[i] * b["cps"] * self.building_mult(i)
                 for i, b in enumerate(self.d["buildings"]))
         return c * self.global_mult()
 
     def cps(self) -> float:
-        return self.base_cps() * self.buff_mult()
+        return self.base_cps() * self.buff_mult() * self.season_mult()
 
     def click_power(self) -> float:
         base, pct = 1.0, 0.0
@@ -215,7 +225,7 @@ class Economy:
         for u in self.d["shed"]:
             if u.get("cpsPct"):
                 pct += u["cpsPct"] * self.shed_level(u["id"])
-        return (base + pct * self.base_cps()) * self.buff_mult()
+        return (base + pct * self.base_cps()) * self.buff_mult() * self.season_mult()
 
     # ---------- actions ----------
     def earn(self, n: float) -> None:
@@ -231,7 +241,8 @@ class Economy:
     def cost_of(self, i: int, count: int = 1) -> float:
         r = 1.15
         c0 = self.d["buildings"][i]["cost"] * (r ** self.owned[i])
-        return c0 * (r ** count - 1) / (r - 1)
+        s = self.season_data()
+        return c0 * (r ** count - 1) / (r - 1) * (1 - ((s or {}).get("priceOff") or 0))
 
     def buy(self, i: int, count: int = 1) -> int:
         """Buy exactly `count` or nothing, at the summed geometric price —
@@ -378,6 +389,7 @@ class Economy:
             "sprouts": self.sprouts, "shed": self.shed,
             "prestiges": self.prestiges, "rabbits": self.rabbits,
             "sproutsSpent": self.sprouts_spent, "almanac": self.almanac,
+            "season": self.season, "seasonStart": self.season_start,
             "saved": time.time(),
         }
 
@@ -420,6 +432,12 @@ class Economy:
         for pg in self.d["almanac"]:
             if raw_al.get(pg["id"]):
                 self.almanac[pg["id"]] = True
+        known_seasons = {x["id"] for x in self.d.get("seasons", [])}
+        self.season = s.get("season") if s.get("season") in known_seasons else "homestead"
+        raw_ss = s.get("seasonStart", 0)
+        self.season_start = (min(float(raw_ss), time.time())
+                             if isinstance(raw_ss, (int, float)) and not isinstance(raw_ss, bool)
+                             and math.isfinite(raw_ss) and raw_ss > 0 else 0.0)
         # pages already satisfied by an older save latch silently (R16):
         # the load is not the deed, so it gets no toast storm
         self._latch_pages()
@@ -444,6 +462,9 @@ class Economy:
             "prestiges": self.prestiges, "rabbits": self.rabbits,
             "sproutsSpent": self.sprouts_spent,  # clients gate keystone visibility on these
             "almanac": self.almanac,
+            "season": self.season,
+            "seasonEnds": (self.season_start + self.d.get("seasonDays", 14) * 86400.0
+                           if self.season_start else 0),
             "buffs": [{"name": b["name"], "mult": b["mult"], "left": b["left"]} for b in self.buffs],
         }
 

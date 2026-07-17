@@ -201,6 +201,29 @@ CC.SHED = [
     flavor: 'Pale as moonlight. All carrots, eventually, are a little bit this one.' },
 ];
 
+/* Seasons (R17): the world's rotating festival calendar. The SERVER owns
+   the season — one world, one season — and clients mirror it. Each season
+   carries a data-driven bonus; bonuses are time-boxed, so they live outside
+   the β-budget (generosity without inflation). Rotation: every
+   CC.SEASON_DAYS real days, in listed order. Effect vocabulary:
+     mult        global production while the season runs
+     priceOff    building prices reduced by this fraction
+     rabbitRate  golden rabbits spawn this many times as often (server-side)
+   Season theme packs (a day/night skin per season) ship with the visual
+   uplift; this layer is the calendar, the bonuses, and the wire. */
+CC.SEASON_DAYS = 14;
+CC.SEASONS = [
+  { id: 'homestead', name: 'Homestead Days',
+    line: 'The garden at its own pace.',
+    bonus: 'the classic garden — pure growing' },
+  { id: 'fair', name: 'the County Fair', mult: 1.05, rabbitRate: 2,
+    line: 'Bunting up, judges out, rabbits everywhere.',
+    bonus: 'golden rabbits visit twice as often · +5% production' },
+  { id: 'market', name: 'Market Days', priceOff: 0.10,
+    line: 'Stalls at dawn, prices chalked before sunrise.',
+    bonus: 'every building 10% off' },
+];
+
 /* The Almanac (R16): the world's book of deeds. Each page latches FOREVER
    the moment its deed is done — prestige cannot unwrite history — and every
    written page compounds ×1.02 production. Earn-conditions are ordinary R8
