@@ -557,6 +557,218 @@
    "cost": 625,
    "mult": 1.12,
    "flavor": "Two gardens, one stem. The judges have questions; the carrots have answers."
+  },
+  {
+   "id": "p4",
+   "name": "Rainwater Cistern",
+   "cost": 5000,
+   "mult": 1.15,
+   "flavor": "Every storm, banked. The garden drinks on schedule now."
+  },
+  {
+   "id": "p5",
+   "name": "Bee Cooperative",
+   "cost": 50000,
+   "mult": 1.15,
+   "unlock": [
+    {
+     "sproutsSpent": 1000000
+    }
+   ],
+   "flavor": "Unionized pollination. The rabbits sent organizers."
+  },
+  {
+   "id": "p6",
+   "name": "Seed Vault",
+   "cost": 500000,
+   "mult": 1.2,
+   "unlock": [
+    {
+     "prestiges": 10
+    }
+   ],
+   "flavor": "Deep in the hillside, every spring that ever was, waiting."
+  },
+  {
+   "id": "p7",
+   "name": "Orrery of Junes",
+   "cost": 5000000,
+   "mult": 1.25,
+   "unlock": [
+    {
+     "sproutsSpent": 25000000
+    }
+   ],
+   "flavor": "Brass rings, tiny suns. It is always the best week of June somewhere in it."
+  },
+  {
+   "id": "p8",
+   "name": "The Perennial Engine",
+   "cost": 50000000,
+   "mult": 1.3,
+   "unlock": [
+    {
+     "prestiges": 40
+    }
+   ],
+   "flavor": "It runs on continuity. Nobody remembers starting it."
+  },
+  {
+   "id": "p9",
+   "name": "Propagation Bench",
+   "cost": 25000000,
+   "mintMult": 2,
+   "flavor": "One cutting becomes two. The mathematics of generosity."
+  },
+  {
+   "id": "p10",
+   "name": "Mist House",
+   "cost": 2500000000,
+   "mintMult": 2,
+   "flavor": "A building made of weather. Cuttings root out of sheer comfort."
+  },
+  {
+   "id": "p11",
+   "name": "Tissue-Culture Lab",
+   "cost": 250000000000,
+   "mintMult": 2,
+   "flavor": "A carrot in a jar, dreaming of being thousands."
+  },
+  {
+   "id": "p12",
+   "name": "The Nursery Moon",
+   "cost": 25000000000000,
+   "mintMult": 2,
+   "flavor": "A second moon, but greenhouse. Rises only over the potting shed."
+  },
+  {
+   "id": "l0",
+   "name": "Compost Heap",
+   "cost": 10000,
+   "costGrowth": 1.04,
+   "repeat": true,
+   "mult": 1.01,
+   "flavor": "Turn it again. Everything the garden was becomes what it will be."
+  },
+  {
+   "id": "l1",
+   "name": "Sprinkler Network",
+   "cost": 100000,
+   "costGrowth": 3,
+   "repeat": true,
+   "max": 6,
+   "cpsPct": 0.005,
+   "flavor": "Every click lands a little wetter. Clicks gain +0.5% of CpS per valve."
+  },
+  {
+   "id": "h0",
+   "name": "Parisian Round",
+   "building": 0,
+   "bmult": 1.1,
+   "cost": 100,
+   "costGrowth": 1.45,
+   "repeat": true,
+   "resprout": true,
+   "flavor": "Round as a coin, sweet as a secret. The sill was always big enough."
+  },
+  {
+   "id": "h1",
+   "name": "Amsterdam Forcing",
+   "building": 1,
+   "bmult": 1.1,
+   "cost": 250,
+   "costGrowth": 1.45,
+   "repeat": true,
+   "resprout": true,
+   "flavor": "Forced? Encouraged, firmly."
+  },
+  {
+   "id": "h2",
+   "name": "Nantes Half-Long",
+   "building": 2,
+   "bmult": 1.1,
+   "cost": 625,
+   "costGrowth": 1.45,
+   "repeat": true,
+   "resprout": true,
+   "flavor": "The committee measured. Exactly half-long. Motion carried."
+  },
+  {
+   "id": "h3",
+   "name": "Chantenay Red-Core",
+   "building": 3,
+   "bmult": 1.1,
+   "cost": 1560,
+   "costGrowth": 1.45,
+   "repeat": true,
+   "resprout": true,
+   "flavor": "The red core sells itself; the stall just holds it."
+  },
+  {
+   "id": "h4",
+   "name": "Oxheart",
+   "building": 4,
+   "bmult": 1.1,
+   "cost": 3910,
+   "costGrowth": 1.45,
+   "repeat": true,
+   "resprout": true,
+   "flavor": "A carrot the size of a fist, a heart the size of June."
+  },
+  {
+   "id": "h5",
+   "name": "Cosmic Purple",
+   "building": 5,
+   "bmult": 1.1,
+   "cost": 9770,
+   "costGrowth": 1.45,
+   "repeat": true,
+   "resprout": true,
+   "flavor": "The rabbits demanded purple. Nobody asked why. Solidarity."
+  },
+  {
+   "id": "h6",
+   "name": "Autumn King",
+   "building": 6,
+   "bmult": 1.1,
+   "cost": 24400,
+   "costGrowth": 1.45,
+   "repeat": true,
+   "resprout": true,
+   "flavor": "Crowned each fall; harvested by appointment."
+  },
+  {
+   "id": "h7",
+   "name": "St. Valery",
+   "building": 7,
+   "bmult": 1.1,
+   "cost": 61000,
+   "costGrowth": 1.45,
+   "repeat": true,
+   "resprout": true,
+   "flavor": "Old French stock. The fungi approve of tradition."
+  },
+  {
+   "id": "h8",
+   "name": "Scarlet Keeper",
+   "building": 8,
+   "bmult": 1.1,
+   "cost": 153000,
+   "costGrowth": 1.45,
+   "repeat": true,
+   "resprout": true,
+   "flavor": "Keeps for months. In vacuum, forever."
+  },
+  {
+   "id": "h9",
+   "name": "Lunar White",
+   "building": 9,
+   "bmult": 1.1,
+   "cost": 381000,
+   "costGrowth": 1.45,
+   "repeat": true,
+   "resprout": true,
+   "flavor": "Pale as moonlight. All carrots, eventually, are a little bit this one."
   }
  ]
 }

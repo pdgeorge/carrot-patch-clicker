@@ -28,7 +28,10 @@ CC.Core = class {
     this.bought = {};             /* upgrade id -> true */
     this.seeds = 0;               /* permanent: +8% each, never spent */
     this.sprouts = 0;             /* spendable twin: minted 1:1 with seeds (R13) */
-    this.shed = {};               /* Potting Shed item id -> true; survives prestige */
+    this.shed = {};               /* Potting Shed item id -> level (R15); survives prestige */
+    this.prestiges = 0;           /* world counters (R15): deeds since records began */
+    this.rabbits = 0;
+    this.sproutsSpent = 0;
     this.buffs = [];              /* {name, mult, left} */
     this.t = 0;
     this._ribbonCount = 0;
@@ -82,7 +85,12 @@ CC.Core = class {
     if (c.seeds !== undefined) return this.seeds >= c.seeds;
     if (c.clicks !== undefined) return this.clicks >= c.clicks;
     if (c.bought !== undefined) return !!this.bought[c.bought];
-    if (c.shed !== undefined) return !!this.shed[c.shed];
+    if (c.shed !== undefined) return this.shedLevel(c.shed) >= 1;
+    /* world counters (R15) — records begin the day counters ship */
+    if (c.prestiges !== undefined) return this.prestiges >= c.prestiges;
+    if (c.rabbits !== undefined) return this.rabbits >= c.rabbits;
+    if (c.sproutsSpent !== undefined) return this.sproutsSpent >= c.sproutsSpent;
+    if (c.shedLv !== undefined) return this.shedLevel(c.shedLv) >= (c.n || 1);
     return false;
   }
 
@@ -112,6 +120,9 @@ CC.Core = class {
     for (let ti = 0; ti < CC.TIERS.length; ti++) if (this.bought[`b${i}t${ti}`]) m *= 2;
     for (const u of CC.SYNERGY_UPGRADES) {
       if (u.target === i && this.bought[u.id]) m *= 1 + u.pct * this.owned[u.per];
+    }
+    for (const u of CC.SHED) {
+      if (u.building === i && u.bmult) m *= Math.pow(u.bmult, this.shedLevel(u.id));
     }
     return m;
   }
@@ -145,7 +156,7 @@ CC.Core = class {
   globalMult() {
     let m = this.seedMult() * this.ribbonMult();
     for (const u of CC.GLOBAL_UPGRADES) if (this.bought[u.id]) m *= u.mult;
-    for (const u of CC.SHED) if (this.shed[u.id]) m *= u.mult;
+    for (const u of CC.SHED) if (u.mult) m *= Math.pow(u.mult, this.shedLevel(u.id));
     m *= Math.pow(CC.MILESTONE_MULT, this.bumperTotal());
     return m;
   }
@@ -173,6 +184,7 @@ CC.Core = class {
       if (u.mult) base *= u.mult;
       if (u.cpsPct) pct += u.cpsPct;
     }
+    for (const u of CC.SHED) if (u.cpsPct) pct += u.cpsPct * this.shedLevel(u.id);
     return (base + pct * this.baseCps()) * this.buffMult();
   }
 
@@ -200,17 +212,52 @@ CC.Core = class {
     return true;
   }
 
-  /* ---------- the Potting Shed (R13) ---------- */
+  /* ---------- the Potting Shed (R13/R15) ---------- */
+  /* Levels: a one-shot item goes 0→1; a `repeat` item climbs forever (or to
+     `max`) at ceil(cost·costGrowth^level) sprouts. Pre-R15 saves stored
+     `true`, which reads as level 1 — never rewrite the map, just read it. */
+  shedLevel(id) {
+    const v = this.shed[id];
+    return v === true ? 1 : (v || 0);
+  }
+
+  shedCost(id) {
+    const u = CC.SHED.find(u => u.id === id);
+    if (!u) return Infinity;
+    return u.repeat ? Math.ceil(u.cost * Math.pow(u.costGrowth, this.shedLevel(id))) : u.cost;
+  }
+
+  shedMaxed(u) {
+    const lv = this.shedLevel(u.id);
+    return u.repeat ? (u.max !== undefined && lv >= u.max) : lv >= 1;
+  }
+
+  shedVisible(u) {
+    if (u.unlock) return u.unlock.every(c => this.condMet(c));
+    return true;
+  }
+
+  /* sprouts minted per seed at prestige: doublers stack (R15) */
+  mintMult() {
+    let m = 1;
+    for (const u of CC.SHED) if (u.mintMult) m *= Math.pow(u.mintMult, this.shedLevel(u.id));
+    return m;
+  }
+
   buyShed(id) {
     const u = CC.SHED.find(u => u.id === id);
-    if (!u || this.shed[id] || this.sprouts < u.cost) return false;
-    this.sprouts -= u.cost;
-    this.shed[id] = true;
+    if (!u || this.shedMaxed(u) || !this.shedVisible(u)) return false;
+    const cost = this.shedCost(id);
+    if (this.sprouts < cost) return false;
+    this.sprouts -= cost;
+    this.sproutsSpent += cost;
+    this.shed[id] = this.shedLevel(id) + 1;
     return true;
   }
 
   /* ---------- golden rabbit ---------- */
   rabbitReward(rng = Math.random) {
+    this.rabbits++;
     if (rng() < 0.55) {
       this.buffs.push({ name: 'Rabbit Frenzy', mult: 7, left: 30 });
       return { kind: 'frenzy', text: 'RABBIT FRENZY! Production ×7 for 30 seconds!' };
@@ -229,14 +276,22 @@ CC.Core = class {
     const gain = this.pendingSeeds();
     if (gain < 1) return 0;
     this.seeds += gain;
-    this.sprouts += gain; /* every seed also sprouts (R13); shed keeps its purchases */
+    this.sprouts += gain * this.mintMult(); /* every seed sprouts (R13); doublers stack (R15) */
+    this.prestiges++;
     this.bank = 0;
     this.lifetimeBase += this.totalRun; /* fold the run before resetting it */
     this.totalRun = 0;
     this.owned = CC.BUILDINGS.map(() => 0);
     this.bought = {};
     this.buffs = [];
-    this._bumperSeen = CC.BUILDINGS.map(() => 0);
+    /* resprout (R15): heirloom strains regrow themselves each spring */
+    for (const u of CC.SHED) {
+      if (u.resprout && u.building !== undefined) {
+        this.owned[u.building] = Math.min(this.shedLevel(u.id), 100);
+      }
+    }
+    /* pre-seed, silently: resprouted rows must not fire a bumper toast storm */
+    this._bumperSeen = CC.BUILDINGS.map((_, i) => this.bumperCount(i));
     return gain;
   }
 
@@ -272,6 +327,7 @@ CC.Core = class {
       v: 1, bank: this.bank, totalAllTime: this.totalAllTime, totalRun: this.totalRun,
       clicks: this.clicks, owned: this.owned, bought: this.bought, seeds: this.seeds,
       sprouts: this.sprouts, shed: this.shed,
+      prestiges: this.prestiges, rabbits: this.rabbits, sproutsSpent: this.sproutsSpent,
       buffs: this.buffs.map(b => ({ ...b })), /* a frenzy survives a mid-buff reload */
       last: Date.now(),
     };
@@ -290,6 +346,9 @@ CC.Core = class {
        backlog — sprouts = seeds — as the fair one-time migration */
     this.sprouts = s.sprouts !== undefined ? s.sprouts : (s.seeds || 0);
     this.shed = s.shed || {};
+    this.prestiges = s.prestiges || 0;   /* R15 counters: absent = records begin now */
+    this.rabbits = s.rabbits || 0;
+    this.sproutsSpent = s.sproutsSpent || 0;
     this.buffs = (s.buffs || []).map(b => ({ ...b }));
     if (s.last) { /* buffs kept ticking while the tab was closed */
       const gone = Math.max(0, (Date.now() - s.last) / 1000);

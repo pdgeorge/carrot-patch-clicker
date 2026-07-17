@@ -120,6 +120,19 @@ CC.SYNERGY_UPGRADES = [
    are pacing knobs (DESIGN "Tunables"), not choices. Future items may gate
    other content via unlock: [{ shed: 'id' }]. */
 CC.SHED = [
+  /* R15 schema — one mechanism, many shapes. A one-shot item is level 0→1;
+     `repeat: true` items climb forever (or to `max`) at
+     ceil(cost·costGrowth^level) sprouts. Effects reuse engine shapes only:
+       mult      global production, applied mult^level
+       building+bmult   that building's output, bmult^level
+       cpsPct    clicks gain +cpsPct·level of CpS
+       mintMult  sprouts minted per seed at prestige, ^level
+       resprout  building starts each spring at min(level, 100) owned
+     `unlock: [...]` (R8 vocabulary + the R15 counters) gates visibility.
+     GROWTH BUDGET: each uncapped ladder adds β = ln(effect)/ln(costGrowth)
+     to the world's polynomial growth rate. Compost 0.254 + heirlooms 0.257
+     + Fair Circuit 0.098 + Almanac headroom 0.03 = 0.64 — the budget is 1;
+     tests/sim.js asserts < 0.75. Spend the rest wisely. */
   { id: 'p0', name: 'Potting Bench', cost: 5, mult: 1.05,
     flavor: 'Somewhere to stand, somewhere to plan. The whole world leans on it.' },
   { id: 'p1', name: 'Cold Frame', cost: 25, mult: 1.08,
@@ -128,6 +141,64 @@ CC.SHED = [
     flavor: 'Every variety the world ever grew, filed under W for wonderful.' },
   { id: 'p3', name: 'The Grafting Table', cost: 625, mult: 1.12,
     flavor: 'Two gardens, one stem. The judges have questions; the carrots have answers.' },
+  /* keystones: the day-one splurge, revealed as the world spends and springs */
+  { id: 'p4', name: 'Rainwater Cistern', cost: 5000, mult: 1.15,
+    flavor: 'Every storm, banked. The garden drinks on schedule now.' },
+  { id: 'p5', name: 'Bee Cooperative', cost: 50000, mult: 1.15, unlock: [{ sproutsSpent: 1e6 }],
+    flavor: 'Unionized pollination. The rabbits sent organizers.' },
+  { id: 'p6', name: 'Seed Vault', cost: 500000, mult: 1.20, unlock: [{ prestiges: 10 }],
+    flavor: 'Deep in the hillside, every spring that ever was, waiting.' },
+  { id: 'p7', name: 'Orrery of Junes', cost: 5e6, mult: 1.25, unlock: [{ sproutsSpent: 25e6 }],
+    flavor: 'Brass rings, tiny suns. It is always the best week of June somewhere in it.' },
+  { id: 'p8', name: 'The Perennial Engine', cost: 5e7, mult: 1.30, unlock: [{ prestiges: 40 }],
+    flavor: 'It runs on continuity. Nobody remembers starting it.' },
+  /* sprout-mint doublers: multi-hundred-prestige savings goals, ×100 apart */
+  { id: 'p9', name: 'Propagation Bench', cost: 25e6, mintMult: 2,
+    flavor: 'One cutting becomes two. The mathematics of generosity.' },
+  { id: 'p10', name: 'Mist House', cost: 2.5e9, mintMult: 2,
+    flavor: 'A building made of weather. Cuttings root out of sheer comfort.' },
+  { id: 'p11', name: 'Tissue-Culture Lab', cost: 250e9, mintMult: 2,
+    flavor: 'A carrot in a jar, dreaming of being thousands.' },
+  { id: 'p12', name: 'The Nursery Moon', cost: 25e12, mintMult: 2,
+    flavor: 'A second moon, but greenhouse. Rises only over the potting shed.' },
+  /* the grounds: repeatable ladders — the shed can be finished; the grounds never are */
+  { id: 'l0', name: 'Compost Heap', cost: 10000, costGrowth: 1.04, repeat: true, mult: 1.01,
+    flavor: 'Turn it again. Everything the garden was becomes what it will be.' },
+  { id: 'l1', name: 'Sprinkler Network', cost: 100000, costGrowth: 3, repeat: true, max: 6,
+    cpsPct: 0.005,
+    flavor: 'Every click lands a little wetter. Clicks gain +0.5% of CpS per valve.' },
+  /* heirloom strains (R15): one per building, ×1.10 per level, and the
+     strain resprouts each spring — min(level, 100) already in the ground */
+  { id: 'h0', name: 'Parisian Round', building: 0, bmult: 1.10, cost: 100, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'Round as a coin, sweet as a secret. The sill was always big enough.' },
+  { id: 'h1', name: 'Amsterdam Forcing', building: 1, bmult: 1.10, cost: 250, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'Forced? Encouraged, firmly.' },
+  { id: 'h2', name: 'Nantes Half-Long', building: 2, bmult: 1.10, cost: 625, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'The committee measured. Exactly half-long. Motion carried.' },
+  { id: 'h3', name: 'Chantenay Red-Core', building: 3, bmult: 1.10, cost: 1560, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'The red core sells itself; the stall just holds it.' },
+  { id: 'h4', name: 'Oxheart', building: 4, bmult: 1.10, cost: 3910, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'A carrot the size of a fist, a heart the size of June.' },
+  { id: 'h5', name: 'Cosmic Purple', building: 5, bmult: 1.10, cost: 9770, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'The rabbits demanded purple. Nobody asked why. Solidarity.' },
+  { id: 'h6', name: 'Autumn King', building: 6, bmult: 1.10, cost: 24400, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'Crowned each fall; harvested by appointment.' },
+  { id: 'h7', name: 'St. Valery', building: 7, bmult: 1.10, cost: 61000, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'Old French stock. The fungi approve of tradition.' },
+  { id: 'h8', name: 'Scarlet Keeper', building: 8, bmult: 1.10, cost: 153000, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'Keeps for months. In vacuum, forever.' },
+  { id: 'h9', name: 'Lunar White', building: 9, bmult: 1.10, cost: 381000, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'Pale as moonlight. All carrots, eventually, are a little bit this one.' },
 ];
 
 /* Ribbons: permanent multipliers at lifetime-harvest milestones (your trophy shelf). */

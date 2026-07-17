@@ -122,6 +122,9 @@ CC.Patch = class {
       /* pre-R13 server: mirror the save migration (sprouts backlog = seeds) */
       c.sprouts = s.sprouts !== undefined ? s.sprouts : (s.seeds || 0);
       c.shed = s.shed || {};
+      c.prestiges = s.prestiges || 0;   /* R15 counters gate keystone visibility */
+      c.rabbits = s.rabbits || 0;
+      c.sproutsSpent = s.sproutsSpent || 0;
       c.buffs = s.buffs.map(b => ({ ...b }));
       c._ribbonCount = c.ribbons().length;
       c._bumperSeen = CC.BUILDINGS.map((_, i) => c.bumperCount(i));

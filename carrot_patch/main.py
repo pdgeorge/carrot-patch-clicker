@@ -136,8 +136,13 @@ class Patch:
                     f"({what}) for everyone. A new spring begins.")
         if ev["type"] == "shed":
             u = next((u for u in d["shed"] if u["id"] == ev["id"]), None)
-            return (f"🌱 A sprout was planted: {u['name']}! "
-                    f"+{round((u['mult'] - 1) * 100)}% production, forever.") if u else None
+            if not u:
+                return None
+            lv = ev.get("lv", 1)
+            what = f" → Lv {lv}" if lv > 1 else "!"
+            eff = (f" +{round((u['mult'] - 1) * 100)}% production, forever."
+                   if u.get("mult") else "")
+            return f"🌱 A sprout was planted: {u['name']}{what}{eff}"
         return None
 
     # ---------- main loop ----------
@@ -220,10 +225,10 @@ class Patch:
                 self.emit({"type": "upgrade", "id": uid})
 
         elif kind == "shed":
-            # the Potting Shed (R13): spend the world's sprouts on a permanent perk
+            # the Potting Shed (R13/R15): spend the world's sprouts on a perk level
             uid = str(msg.get("id", ""))[:16]
             if eco.buy_shed(uid):
-                self.emit({"type": "shed", "id": uid})
+                self.emit({"type": "shed", "id": uid, "lv": eco.shed_level(uid)})
                 self.save()  # permanent purchases deserve the prestige treatment
 
         elif kind == "catch":

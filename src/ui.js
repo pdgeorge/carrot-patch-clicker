@@ -256,15 +256,17 @@ CC.UI = class {
       return row;
     });
 
-    /* Potting Shed catalog (R13): all items visible — the catalog is
-       completable, so browsing the whole ladder IS the long-term goal */
+    /* Potting Shed catalog (R13/R15): one-shots are completable; the
+       repeatable grounds never are. Locked keystones tease as ??? until
+       the world's counters open them. Text fills in updateDOM. */
     const sitems = this.$('shed-items');
     this.shedEls = CC.SHED.map(u => {
       const el = document.createElement('div');
       el.className = 'shed-item';
-      el.innerHTML = `<div class="s-head"><b>${u.name}</b><span class="s-cost"></span></div>` +
-        `<div class="s-effect">+${Math.round((u.mult - 1) * 100)}% production, forever</div>` +
-        `<div class="s-flavor">${u.flavor}</div>`;
+      el.innerHTML = `<div class="s-head"><b><span class="s-name"></span><span class="s-lv"></span></b>` +
+        `<span class="s-cost"></span></div>` +
+        `<div class="s-effect"></div>` +
+        `<div class="s-flavor"></div>`;
       el.addEventListener('click', () => this.buyShed(u.id));
       sitems.appendChild(el);
       return el;
@@ -374,6 +376,15 @@ CC.UI = class {
     }
   }
 
+  /* one line per effect shape — the engine knows numbers, the skin words */
+  shedEffectText(u) {
+    if (u.mintMult) return `×${u.mintMult} sprouts from every Going to Seed`;
+    if (u.bmult) return `${CC.BUILDINGS[u.building].name}s +${Math.round((u.bmult - 1) * 100)}% per level · resprout each spring`;
+    if (u.cpsPct) return `clicks +${(u.cpsPct * 100).toFixed(1)}% of CpS per level`;
+    if (u.mult) return `+${Math.round((u.mult - 1) * 100)}% production${u.repeat ? ' per level' : ', forever'}`;
+    return '';
+  }
+
   buyShed(id) {
     if (this.awaitingWorld()) return;
     CC.audio.ensure();
@@ -385,7 +396,8 @@ CC.UI = class {
     if (this.core.buyShed(id)) {
       const u = CC.SHED.find(u => u.id === id);
       CC.audio.seed();
-      this.toast(`🌱 ${u.name}! +${Math.round((u.mult - 1) * 100)}% production, forever.`);
+      const lv = this.core.shedLevel(id);
+      this.toast(`🌱 ${u.name}${u.repeat ? ` → Lv ${lv}` : ''}! ${this.shedEffectText(u)}.`);
     }
   }
 
@@ -496,7 +508,8 @@ CC.UI = class {
       const u = CC.SHED.find(u => u.id === ev.id);
       if (!u) return;
       CC.audio.seed();
-      this.toast(`🌱 A sprout was planted: ${u.name}! +${Math.round((u.mult - 1) * 100)}% production, forever.`);
+      this.toast(`🌱 A sprout was planted: ${u.name}${ev.lv > 1 ? ` → Lv ${ev.lv}` : ''}! ` +
+        `${this.shedEffectText(u)}.`);
     }
   }
 
@@ -606,16 +619,30 @@ CC.UI = class {
       ? `🌱 ${CC.fmt(c.sprouts)} sprout${c.sprouts === 1 ? '' : 's'} to spend` : '';
     const sb = this.$('shed-btn');
     sb.classList.toggle('hidden', !(c.seeds > 0 || c.sprouts > 0 || shedBought > 0));
-    sb.classList.toggle('affordable', CC.SHED.some(u => !c.shed[u.id] && c.sprouts >= u.cost));
-    const shedSig = CC.SHED.map(u => (c.shed[u.id] ? 'x' : c.sprouts >= u.cost ? '+' : '-')).join('') + '|' + c.sprouts;
+    sb.classList.toggle('affordable', CC.SHED.some(u =>
+      !c.shedMaxed(u) && c.shedVisible(u) && c.sprouts >= c.shedCost(u.id)));
+    const shedSig = CC.SHED.map(u => {
+      if (!c.shedVisible(u)) return '?';
+      if (c.shedMaxed(u)) return 'x' + c.shedLevel(u.id);
+      return (c.sprouts >= c.shedCost(u.id) ? '+' : '-') + c.shedLevel(u.id);
+    }).join(',') + '|' + c.sprouts;
     if (shedSig !== this._shedSig) {
       this._shedSig = shedSig;
-      this.$('shed-balance').innerHTML = `<b>${CC.fmt(c.sprouts)}</b> 🌱 sprouts ready for planting`;
+      this.$('shed-balance').innerHTML = `<b>${CC.fmt(c.sprouts)}</b> 🌱 sprouts ready for planting` +
+        ` · <span style="opacity:0.75">${CC.fmt(c.sproutsSpent)} planted since records began</span>`;
       CC.SHED.forEach((u, i) => {
         const el = this.shedEls[i];
-        el.classList.toggle('bought', !!c.shed[u.id]);
-        el.classList.toggle('cant', !c.shed[u.id] && c.sprouts < u.cost);
-        el.querySelector('.s-cost').textContent = c.shed[u.id] ? '🌱 planted' : `${CC.fmt(u.cost)} 🌱`;
+        const vis = c.shedVisible(u), maxed = c.shedMaxed(u), lv = c.shedLevel(u.id);
+        el.querySelector('.s-name').textContent = vis ? u.name : '???';
+        el.querySelector('.s-lv').textContent = u.repeat && lv > 0 ? ` · Lv ${lv}` : '';
+        el.querySelector('.s-effect').textContent = vis ? this.shedEffectText(u) : '';
+        el.querySelector('.s-flavor').textContent = vis ? u.flavor
+          : 'The grounds keep their secrets — for now.';
+        el.classList.toggle('bought', maxed);
+        el.classList.toggle('cant', !maxed && (!vis || c.sprouts < c.shedCost(u.id)));
+        el.querySelector('.s-cost').textContent = !vis ? '🔒'
+          : maxed ? (u.repeat ? '🌱 fully grown' : '🌱 planted')
+            : `${CC.fmt(c.shedCost(u.id))} 🌱`;
       });
     }
 
@@ -677,6 +704,8 @@ CC.UI = class {
         `<div>Lifetime harvest <b>${CC.fmt(c.totalAllTime)}</b></div>` +
         `<div>This spring <b>${CC.fmt(c.totalRun)}</b></div>` +
         `<div>Hand-pulled (clicks) <b>${CC.fmt(c.clicks)}</b></div>` +
+        `<div>Springs on record 🌸 <b>${CC.fmt(c.prestiges)}</b></div>` +
+        `<div>Rabbits caught 🐇 <b>${CC.fmt(c.rabbits)}</b></div>` +
         `<div>Plots &amp; contraptions <b>${CC.fmt(totalBuildings)}</b></div>` +
         `<div>Bumper crops 🌾 <b>${bumpers} (+${Math.round((Math.pow(CC.MILESTONE_MULT, bumpers) - 1) * 100)}%)</b></div>` +
         `<div>Production bonus <b>${this.fmtX(c.globalMult())}${c.buffMult() > 1 ? ` · ⚡${this.fmtX(c.buffMult())}` : ''}</b></div>` +

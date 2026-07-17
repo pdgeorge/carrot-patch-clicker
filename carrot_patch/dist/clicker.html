@@ -599,7 +599,7 @@ html, body { margin: 0; padding: 0; }
 </div>
 
 <script>
-globalThis.CC = globalThis.CC || {}; CC.BUILD = 'b0bc1ed'; CC.GARDENERS = ["pdgeorge","Claude Fable 5"];
+globalThis.CC = globalThis.CC || {}; CC.BUILD = '85110ea'; CC.GARDENERS = ["pdgeorge","Claude Fable 5"];
 /* ==== data.js ==== */
 /* Carrot Clicker — content: buildings, upgrades, ribbons, news. */
 globalThis.CC = globalThis.CC || {};
@@ -723,6 +723,19 @@ CC.SYNERGY_UPGRADES = [
    are pacing knobs (DESIGN "Tunables"), not choices. Future items may gate
    other content via unlock: [{ shed: 'id' }]. */
 CC.SHED = [
+  /* R15 schema — one mechanism, many shapes. A one-shot item is level 0→1;
+     `repeat: true` items climb forever (or to `max`) at
+     ceil(cost·costGrowth^level) sprouts. Effects reuse engine shapes only:
+       mult      global production, applied mult^level
+       building+bmult   that building's output, bmult^level
+       cpsPct    clicks gain +cpsPct·level of CpS
+       mintMult  sprouts minted per seed at prestige, ^level
+       resprout  building starts each spring at min(level, 100) owned
+     `unlock: [...]` (R8 vocabulary + the R15 counters) gates visibility.
+     GROWTH BUDGET: each uncapped ladder adds β = ln(effect)/ln(costGrowth)
+     to the world's polynomial growth rate. Compost 0.254 + heirlooms 0.257
+     + Fair Circuit 0.098 + Almanac headroom 0.03 = 0.64 — the budget is 1;
+     tests/sim.js asserts < 0.75. Spend the rest wisely. */
   { id: 'p0', name: 'Potting Bench', cost: 5, mult: 1.05,
     flavor: 'Somewhere to stand, somewhere to plan. The whole world leans on it.' },
   { id: 'p1', name: 'Cold Frame', cost: 25, mult: 1.08,
@@ -731,6 +744,64 @@ CC.SHED = [
     flavor: 'Every variety the world ever grew, filed under W for wonderful.' },
   { id: 'p3', name: 'The Grafting Table', cost: 625, mult: 1.12,
     flavor: 'Two gardens, one stem. The judges have questions; the carrots have answers.' },
+  /* keystones: the day-one splurge, revealed as the world spends and springs */
+  { id: 'p4', name: 'Rainwater Cistern', cost: 5000, mult: 1.15,
+    flavor: 'Every storm, banked. The garden drinks on schedule now.' },
+  { id: 'p5', name: 'Bee Cooperative', cost: 50000, mult: 1.15, unlock: [{ sproutsSpent: 1e6 }],
+    flavor: 'Unionized pollination. The rabbits sent organizers.' },
+  { id: 'p6', name: 'Seed Vault', cost: 500000, mult: 1.20, unlock: [{ prestiges: 10 }],
+    flavor: 'Deep in the hillside, every spring that ever was, waiting.' },
+  { id: 'p7', name: 'Orrery of Junes', cost: 5e6, mult: 1.25, unlock: [{ sproutsSpent: 25e6 }],
+    flavor: 'Brass rings, tiny suns. It is always the best week of June somewhere in it.' },
+  { id: 'p8', name: 'The Perennial Engine', cost: 5e7, mult: 1.30, unlock: [{ prestiges: 40 }],
+    flavor: 'It runs on continuity. Nobody remembers starting it.' },
+  /* sprout-mint doublers: multi-hundred-prestige savings goals, ×100 apart */
+  { id: 'p9', name: 'Propagation Bench', cost: 25e6, mintMult: 2,
+    flavor: 'One cutting becomes two. The mathematics of generosity.' },
+  { id: 'p10', name: 'Mist House', cost: 2.5e9, mintMult: 2,
+    flavor: 'A building made of weather. Cuttings root out of sheer comfort.' },
+  { id: 'p11', name: 'Tissue-Culture Lab', cost: 250e9, mintMult: 2,
+    flavor: 'A carrot in a jar, dreaming of being thousands.' },
+  { id: 'p12', name: 'The Nursery Moon', cost: 25e12, mintMult: 2,
+    flavor: 'A second moon, but greenhouse. Rises only over the potting shed.' },
+  /* the grounds: repeatable ladders — the shed can be finished; the grounds never are */
+  { id: 'l0', name: 'Compost Heap', cost: 10000, costGrowth: 1.04, repeat: true, mult: 1.01,
+    flavor: 'Turn it again. Everything the garden was becomes what it will be.' },
+  { id: 'l1', name: 'Sprinkler Network', cost: 100000, costGrowth: 3, repeat: true, max: 6,
+    cpsPct: 0.005,
+    flavor: 'Every click lands a little wetter. Clicks gain +0.5% of CpS per valve.' },
+  /* heirloom strains (R15): one per building, ×1.10 per level, and the
+     strain resprouts each spring — min(level, 100) already in the ground */
+  { id: 'h0', name: 'Parisian Round', building: 0, bmult: 1.10, cost: 100, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'Round as a coin, sweet as a secret. The sill was always big enough.' },
+  { id: 'h1', name: 'Amsterdam Forcing', building: 1, bmult: 1.10, cost: 250, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'Forced? Encouraged, firmly.' },
+  { id: 'h2', name: 'Nantes Half-Long', building: 2, bmult: 1.10, cost: 625, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'The committee measured. Exactly half-long. Motion carried.' },
+  { id: 'h3', name: 'Chantenay Red-Core', building: 3, bmult: 1.10, cost: 1560, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'The red core sells itself; the stall just holds it.' },
+  { id: 'h4', name: 'Oxheart', building: 4, bmult: 1.10, cost: 3910, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'A carrot the size of a fist, a heart the size of June.' },
+  { id: 'h5', name: 'Cosmic Purple', building: 5, bmult: 1.10, cost: 9770, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'The rabbits demanded purple. Nobody asked why. Solidarity.' },
+  { id: 'h6', name: 'Autumn King', building: 6, bmult: 1.10, cost: 24400, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'Crowned each fall; harvested by appointment.' },
+  { id: 'h7', name: 'St. Valery', building: 7, bmult: 1.10, cost: 61000, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'Old French stock. The fungi approve of tradition.' },
+  { id: 'h8', name: 'Scarlet Keeper', building: 8, bmult: 1.10, cost: 153000, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'Keeps for months. In vacuum, forever.' },
+  { id: 'h9', name: 'Lunar White', building: 9, bmult: 1.10, cost: 381000, costGrowth: 1.45,
+    repeat: true, resprout: true,
+    flavor: 'Pale as moonlight. All carrots, eventually, are a little bit this one.' },
 ];
 
 /* Ribbons: permanent multipliers at lifetime-harvest milestones (your trophy shelf). */
@@ -891,7 +962,10 @@ CC.Core = class {
     this.bought = {};             /* upgrade id -> true */
     this.seeds = 0;               /* permanent: +8% each, never spent */
     this.sprouts = 0;             /* spendable twin: minted 1:1 with seeds (R13) */
-    this.shed = {};               /* Potting Shed item id -> true; survives prestige */
+    this.shed = {};               /* Potting Shed item id -> level (R15); survives prestige */
+    this.prestiges = 0;           /* world counters (R15): deeds since records began */
+    this.rabbits = 0;
+    this.sproutsSpent = 0;
     this.buffs = [];              /* {name, mult, left} */
     this.t = 0;
     this._ribbonCount = 0;
@@ -945,7 +1019,12 @@ CC.Core = class {
     if (c.seeds !== undefined) return this.seeds >= c.seeds;
     if (c.clicks !== undefined) return this.clicks >= c.clicks;
     if (c.bought !== undefined) return !!this.bought[c.bought];
-    if (c.shed !== undefined) return !!this.shed[c.shed];
+    if (c.shed !== undefined) return this.shedLevel(c.shed) >= 1;
+    /* world counters (R15) — records begin the day counters ship */
+    if (c.prestiges !== undefined) return this.prestiges >= c.prestiges;
+    if (c.rabbits !== undefined) return this.rabbits >= c.rabbits;
+    if (c.sproutsSpent !== undefined) return this.sproutsSpent >= c.sproutsSpent;
+    if (c.shedLv !== undefined) return this.shedLevel(c.shedLv) >= (c.n || 1);
     return false;
   }
 
@@ -975,6 +1054,9 @@ CC.Core = class {
     for (let ti = 0; ti < CC.TIERS.length; ti++) if (this.bought[`b${i}t${ti}`]) m *= 2;
     for (const u of CC.SYNERGY_UPGRADES) {
       if (u.target === i && this.bought[u.id]) m *= 1 + u.pct * this.owned[u.per];
+    }
+    for (const u of CC.SHED) {
+      if (u.building === i && u.bmult) m *= Math.pow(u.bmult, this.shedLevel(u.id));
     }
     return m;
   }
@@ -1008,7 +1090,7 @@ CC.Core = class {
   globalMult() {
     let m = this.seedMult() * this.ribbonMult();
     for (const u of CC.GLOBAL_UPGRADES) if (this.bought[u.id]) m *= u.mult;
-    for (const u of CC.SHED) if (this.shed[u.id]) m *= u.mult;
+    for (const u of CC.SHED) if (u.mult) m *= Math.pow(u.mult, this.shedLevel(u.id));
     m *= Math.pow(CC.MILESTONE_MULT, this.bumperTotal());
     return m;
   }
@@ -1036,6 +1118,7 @@ CC.Core = class {
       if (u.mult) base *= u.mult;
       if (u.cpsPct) pct += u.cpsPct;
     }
+    for (const u of CC.SHED) if (u.cpsPct) pct += u.cpsPct * this.shedLevel(u.id);
     return (base + pct * this.baseCps()) * this.buffMult();
   }
 
@@ -1063,17 +1146,52 @@ CC.Core = class {
     return true;
   }
 
-  /* ---------- the Potting Shed (R13) ---------- */
+  /* ---------- the Potting Shed (R13/R15) ---------- */
+  /* Levels: a one-shot item goes 0→1; a `repeat` item climbs forever (or to
+     `max`) at ceil(cost·costGrowth^level) sprouts. Pre-R15 saves stored
+     `true`, which reads as level 1 — never rewrite the map, just read it. */
+  shedLevel(id) {
+    const v = this.shed[id];
+    return v === true ? 1 : (v || 0);
+  }
+
+  shedCost(id) {
+    const u = CC.SHED.find(u => u.id === id);
+    if (!u) return Infinity;
+    return u.repeat ? Math.ceil(u.cost * Math.pow(u.costGrowth, this.shedLevel(id))) : u.cost;
+  }
+
+  shedMaxed(u) {
+    const lv = this.shedLevel(u.id);
+    return u.repeat ? (u.max !== undefined && lv >= u.max) : lv >= 1;
+  }
+
+  shedVisible(u) {
+    if (u.unlock) return u.unlock.every(c => this.condMet(c));
+    return true;
+  }
+
+  /* sprouts minted per seed at prestige: doublers stack (R15) */
+  mintMult() {
+    let m = 1;
+    for (const u of CC.SHED) if (u.mintMult) m *= Math.pow(u.mintMult, this.shedLevel(u.id));
+    return m;
+  }
+
   buyShed(id) {
     const u = CC.SHED.find(u => u.id === id);
-    if (!u || this.shed[id] || this.sprouts < u.cost) return false;
-    this.sprouts -= u.cost;
-    this.shed[id] = true;
+    if (!u || this.shedMaxed(u) || !this.shedVisible(u)) return false;
+    const cost = this.shedCost(id);
+    if (this.sprouts < cost) return false;
+    this.sprouts -= cost;
+    this.sproutsSpent += cost;
+    this.shed[id] = this.shedLevel(id) + 1;
     return true;
   }
 
   /* ---------- golden rabbit ---------- */
   rabbitReward(rng = Math.random) {
+    this.rabbits++;
     if (rng() < 0.55) {
       this.buffs.push({ name: 'Rabbit Frenzy', mult: 7, left: 30 });
       return { kind: 'frenzy', text: 'RABBIT FRENZY! Production ×7 for 30 seconds!' };
@@ -1092,14 +1210,22 @@ CC.Core = class {
     const gain = this.pendingSeeds();
     if (gain < 1) return 0;
     this.seeds += gain;
-    this.sprouts += gain; /* every seed also sprouts (R13); shed keeps its purchases */
+    this.sprouts += gain * this.mintMult(); /* every seed sprouts (R13); doublers stack (R15) */
+    this.prestiges++;
     this.bank = 0;
     this.lifetimeBase += this.totalRun; /* fold the run before resetting it */
     this.totalRun = 0;
     this.owned = CC.BUILDINGS.map(() => 0);
     this.bought = {};
     this.buffs = [];
-    this._bumperSeen = CC.BUILDINGS.map(() => 0);
+    /* resprout (R15): heirloom strains regrow themselves each spring */
+    for (const u of CC.SHED) {
+      if (u.resprout && u.building !== undefined) {
+        this.owned[u.building] = Math.min(this.shedLevel(u.id), 100);
+      }
+    }
+    /* pre-seed, silently: resprouted rows must not fire a bumper toast storm */
+    this._bumperSeen = CC.BUILDINGS.map((_, i) => this.bumperCount(i));
     return gain;
   }
 
@@ -1135,6 +1261,7 @@ CC.Core = class {
       v: 1, bank: this.bank, totalAllTime: this.totalAllTime, totalRun: this.totalRun,
       clicks: this.clicks, owned: this.owned, bought: this.bought, seeds: this.seeds,
       sprouts: this.sprouts, shed: this.shed,
+      prestiges: this.prestiges, rabbits: this.rabbits, sproutsSpent: this.sproutsSpent,
       buffs: this.buffs.map(b => ({ ...b })), /* a frenzy survives a mid-buff reload */
       last: Date.now(),
     };
@@ -1153,6 +1280,9 @@ CC.Core = class {
        backlog — sprouts = seeds — as the fair one-time migration */
     this.sprouts = s.sprouts !== undefined ? s.sprouts : (s.seeds || 0);
     this.shed = s.shed || {};
+    this.prestiges = s.prestiges || 0;   /* R15 counters: absent = records begin now */
+    this.rabbits = s.rabbits || 0;
+    this.sproutsSpent = s.sproutsSpent || 0;
     this.buffs = (s.buffs || []).map(b => ({ ...b }));
     if (s.last) { /* buffs kept ticking while the tab was closed */
       const gone = Math.max(0, (Date.now() - s.last) / 1000);
@@ -1297,6 +1427,9 @@ CC.Patch = class {
       /* pre-R13 server: mirror the save migration (sprouts backlog = seeds) */
       c.sprouts = s.sprouts !== undefined ? s.sprouts : (s.seeds || 0);
       c.shed = s.shed || {};
+      c.prestiges = s.prestiges || 0;   /* R15 counters gate keystone visibility */
+      c.rabbits = s.rabbits || 0;
+      c.sproutsSpent = s.sproutsSpent || 0;
       c.buffs = s.buffs.map(b => ({ ...b }));
       c._ribbonCount = c.ribbons().length;
       c._bumperSeen = CC.BUILDINGS.map((_, i) => c.bumperCount(i));
@@ -1595,15 +1728,17 @@ CC.UI = class {
       return row;
     });
 
-    /* Potting Shed catalog (R13): all items visible — the catalog is
-       completable, so browsing the whole ladder IS the long-term goal */
+    /* Potting Shed catalog (R13/R15): one-shots are completable; the
+       repeatable grounds never are. Locked keystones tease as ??? until
+       the world's counters open them. Text fills in updateDOM. */
     const sitems = this.$('shed-items');
     this.shedEls = CC.SHED.map(u => {
       const el = document.createElement('div');
       el.className = 'shed-item';
-      el.innerHTML = `<div class="s-head"><b>${u.name}</b><span class="s-cost"></span></div>` +
-        `<div class="s-effect">+${Math.round((u.mult - 1) * 100)}% production, forever</div>` +
-        `<div class="s-flavor">${u.flavor}</div>`;
+      el.innerHTML = `<div class="s-head"><b><span class="s-name"></span><span class="s-lv"></span></b>` +
+        `<span class="s-cost"></span></div>` +
+        `<div class="s-effect"></div>` +
+        `<div class="s-flavor"></div>`;
       el.addEventListener('click', () => this.buyShed(u.id));
       sitems.appendChild(el);
       return el;
@@ -1713,6 +1848,15 @@ CC.UI = class {
     }
   }
 
+  /* one line per effect shape — the engine knows numbers, the skin words */
+  shedEffectText(u) {
+    if (u.mintMult) return `×${u.mintMult} sprouts from every Going to Seed`;
+    if (u.bmult) return `${CC.BUILDINGS[u.building].name}s +${Math.round((u.bmult - 1) * 100)}% per level · resprout each spring`;
+    if (u.cpsPct) return `clicks +${(u.cpsPct * 100).toFixed(1)}% of CpS per level`;
+    if (u.mult) return `+${Math.round((u.mult - 1) * 100)}% production${u.repeat ? ' per level' : ', forever'}`;
+    return '';
+  }
+
   buyShed(id) {
     if (this.awaitingWorld()) return;
     CC.audio.ensure();
@@ -1724,7 +1868,8 @@ CC.UI = class {
     if (this.core.buyShed(id)) {
       const u = CC.SHED.find(u => u.id === id);
       CC.audio.seed();
-      this.toast(`🌱 ${u.name}! +${Math.round((u.mult - 1) * 100)}% production, forever.`);
+      const lv = this.core.shedLevel(id);
+      this.toast(`🌱 ${u.name}${u.repeat ? ` → Lv ${lv}` : ''}! ${this.shedEffectText(u)}.`);
     }
   }
 
@@ -1835,7 +1980,8 @@ CC.UI = class {
       const u = CC.SHED.find(u => u.id === ev.id);
       if (!u) return;
       CC.audio.seed();
-      this.toast(`🌱 A sprout was planted: ${u.name}! +${Math.round((u.mult - 1) * 100)}% production, forever.`);
+      this.toast(`🌱 A sprout was planted: ${u.name}${ev.lv > 1 ? ` → Lv ${ev.lv}` : ''}! ` +
+        `${this.shedEffectText(u)}.`);
     }
   }
 
@@ -1945,16 +2091,30 @@ CC.UI = class {
       ? `🌱 ${CC.fmt(c.sprouts)} sprout${c.sprouts === 1 ? '' : 's'} to spend` : '';
     const sb = this.$('shed-btn');
     sb.classList.toggle('hidden', !(c.seeds > 0 || c.sprouts > 0 || shedBought > 0));
-    sb.classList.toggle('affordable', CC.SHED.some(u => !c.shed[u.id] && c.sprouts >= u.cost));
-    const shedSig = CC.SHED.map(u => (c.shed[u.id] ? 'x' : c.sprouts >= u.cost ? '+' : '-')).join('') + '|' + c.sprouts;
+    sb.classList.toggle('affordable', CC.SHED.some(u =>
+      !c.shedMaxed(u) && c.shedVisible(u) && c.sprouts >= c.shedCost(u.id)));
+    const shedSig = CC.SHED.map(u => {
+      if (!c.shedVisible(u)) return '?';
+      if (c.shedMaxed(u)) return 'x' + c.shedLevel(u.id);
+      return (c.sprouts >= c.shedCost(u.id) ? '+' : '-') + c.shedLevel(u.id);
+    }).join(',') + '|' + c.sprouts;
     if (shedSig !== this._shedSig) {
       this._shedSig = shedSig;
-      this.$('shed-balance').innerHTML = `<b>${CC.fmt(c.sprouts)}</b> 🌱 sprouts ready for planting`;
+      this.$('shed-balance').innerHTML = `<b>${CC.fmt(c.sprouts)}</b> 🌱 sprouts ready for planting` +
+        ` · <span style="opacity:0.75">${CC.fmt(c.sproutsSpent)} planted since records began</span>`;
       CC.SHED.forEach((u, i) => {
         const el = this.shedEls[i];
-        el.classList.toggle('bought', !!c.shed[u.id]);
-        el.classList.toggle('cant', !c.shed[u.id] && c.sprouts < u.cost);
-        el.querySelector('.s-cost').textContent = c.shed[u.id] ? '🌱 planted' : `${CC.fmt(u.cost)} 🌱`;
+        const vis = c.shedVisible(u), maxed = c.shedMaxed(u), lv = c.shedLevel(u.id);
+        el.querySelector('.s-name').textContent = vis ? u.name : '???';
+        el.querySelector('.s-lv').textContent = u.repeat && lv > 0 ? ` · Lv ${lv}` : '';
+        el.querySelector('.s-effect').textContent = vis ? this.shedEffectText(u) : '';
+        el.querySelector('.s-flavor').textContent = vis ? u.flavor
+          : 'The grounds keep their secrets — for now.';
+        el.classList.toggle('bought', maxed);
+        el.classList.toggle('cant', !maxed && (!vis || c.sprouts < c.shedCost(u.id)));
+        el.querySelector('.s-cost').textContent = !vis ? '🔒'
+          : maxed ? (u.repeat ? '🌱 fully grown' : '🌱 planted')
+            : `${CC.fmt(c.shedCost(u.id))} 🌱`;
       });
     }
 
@@ -2016,6 +2176,8 @@ CC.UI = class {
         `<div>Lifetime harvest <b>${CC.fmt(c.totalAllTime)}</b></div>` +
         `<div>This spring <b>${CC.fmt(c.totalRun)}</b></div>` +
         `<div>Hand-pulled (clicks) <b>${CC.fmt(c.clicks)}</b></div>` +
+        `<div>Springs on record 🌸 <b>${CC.fmt(c.prestiges)}</b></div>` +
+        `<div>Rabbits caught 🐇 <b>${CC.fmt(c.rabbits)}</b></div>` +
         `<div>Plots &amp; contraptions <b>${CC.fmt(totalBuildings)}</b></div>` +
         `<div>Bumper crops 🌾 <b>${bumpers} (+${Math.round((Math.pow(CC.MILESTONE_MULT, bumpers) - 1) * 100)}%)</b></div>` +
         `<div>Production bonus <b>${this.fmtX(c.globalMult())}${c.buffMult() > 1 ? ` · ⚡${this.fmtX(c.buffMult())}` : ''}</b></div>` +

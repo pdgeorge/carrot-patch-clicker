@@ -147,6 +147,45 @@ check(abs(pr.global_mult() - js_r14["gmult"]) <= 1e-9 * js_r14["gmult"], "global
 check(pyfmt(1e36) == js_r14["u36"] == "1.00Ud" and pyfmt(1e45) == js_r14["u45"] == "1.00Qad",
       "new fmt units identical in both engines")
 
+# ---------- 1d. R15: leveled shed / counters / resprout parity ----------
+print("\n=== the shed grounds (R15) ===")
+JS_R15 = r"""
+const fs = require('fs'), path = require('path'), vm = require('vm');
+for (const f of ['data.js', 'core.js']) {
+  vm.runInThisContext(fs.readFileSync(path.join(process.argv[1], 'src', f), 'utf8'));
+}
+const c = new CC.Core();
+c.sprouts = 3e8;
+c.prestiges = 12;
+['p4','p6','p9','l0','l0','l0','l1','h0','h0','h4'].forEach(id => c.buyShed(id));
+c.earn(25e6);
+const gained = c.prestige();
+console.log(JSON.stringify({
+  gained, sprouts: c.sprouts, spent: c.sproutsSpent, lvl0: c.shedLevel('l0'),
+  costl0: c.shedCost('l0'), costh0: c.shedCost('h0'), mint: c.mintMult(),
+  gmult: c.globalMult(), bm0: c.buildingMult(0), bm4: c.buildingMult(4),
+  click: c.clickPower(), owned0: c.owned[0], owned4: c.owned[4], prestiges: c.prestiges,
+}));
+"""
+js15 = json.loads(subprocess.run(
+    ["node", "-e", JS_R15, str(ROOT)], capture_output=True, text=True, check=True).stdout)
+p15 = Economy(load_data())
+p15.sprouts = int(3e8)
+p15.prestiges = 12
+for uid in ["p4", "p6", "p9", "l0", "l0", "l0", "l1", "h0", "h0", "h4"]:
+    p15.buy_shed(uid)
+p15.earn(25e6)
+gained15 = p15.prestige()
+pairs15 = [("gained", gained15), ("sprouts", p15.sprouts), ("spent", p15.sprouts_spent),
+           ("lvl0", p15.shed_level("l0")), ("costl0", p15.shed_cost("l0")),
+           ("costh0", p15.shed_cost("h0")), ("mint", p15.mint_mult()),
+           ("gmult", p15.global_mult()), ("bm0", p15.building_mult(0)),
+           ("bm4", p15.building_mult(4)), ("click", p15.click_power()),
+           ("owned0", p15.owned[0]), ("owned4", p15.owned[4]), ("prestiges", p15.prestiges)]
+for name, pv in pairs15:
+    jv = js15[name]
+    check(abs(pv - jv) <= 1e-9 * max(1.0, abs(jv)), f"R15 {name}: py {pv:.6g} == js {jv:.6g}")
+
 # ---------- 1a'. bulk buys all-or-nothing in both engines (audit f9) ----------
 print("\n=== bulk buys all-or-nothing parity ===")
 JS_AO = r"""
@@ -342,6 +381,17 @@ with TestClient(app) as client:
         time.sleep(0.05)
         check(patch.eco.sprouts == 2, "double-buying a shed item is ignored")
 
+        # R15: repeatable levels climb over the wire at geometric prices
+        patch.eco.sprouts += 30000
+        ws.send_json({"type": "shed", "id": "l0"})
+        time.sleep(0.05)
+        check(patch.eco.shed_level("l0") == 1, "compost level 1 over the wire")
+        ws.send_json({"type": "shed", "id": "l0"})
+        time.sleep(0.05)
+        check(patch.eco.shed_level("l0") == 2 and patch.eco.sprouts == 9602,
+              f"level 2 costs more (10000 then 10400; left {patch.eco.sprouts})")
+        check(patch.eco.sprouts_spent == 5 + 20400, "the world's spent-sprouts counter tallies")
+
         # two gardeners share one world
         with client.websocket_connect("/ws") as ws2:
             snap2 = ws2.receive_json()
@@ -419,8 +469,10 @@ with TestClient(app) as client:
     fresh = Economy(load_data())
     fresh.deserialize(json.loads(state_path.read_text()))
     check(fresh.total_all_time >= 12345, "world state survives a save/load")
-    check(fresh.shed.get("p0") and fresh.sprouts == 4,
-          "shed purchases and sprouts survive a save/load (2 left + 2 minted by the prestige above)")
+    check(fresh.shed.get("p0") and fresh.shed_level("l0") == 2 and fresh.sprouts == 9604,
+          "shed levels and sprouts survive a save/load (9602 left + 2 minted by the prestige above)")
+    check(fresh.prestiges == 1 and fresh.sprouts_spent == 20405,
+          "world counters survive a save/load")
 
     # pre-R13 save migration: sprouts backlog = seeds (none were ever spendable)
     legacy = json.loads(state_path.read_text())

@@ -137,6 +137,57 @@ sh.earn(1e9);
 const minted2 = sh.prestige();
 check(sh.shed['p0'] && sh.sprouts === minted2, 'shed purchases survive prestige; new sprouts mint');
 
+/* the Potting Shed grounds (R15): levels, ladders, doublers, resprout */
+console.log('\n=== the shed grounds (R15) ===');
+const g = new CC.Core();
+g.sprouts = 200e6;
+check(g.buyShed('p4') && g.shedLevel('p4') === 1, 'keystone one-shot plants once');
+check(!g.buyShed('p4'), 'and never twice');
+check(!g.shedVisible(CC.SHED.find(u => u.id === 'p6')) && !g.buyShed('p6'),
+  'Seed Vault stays locked before 10 springs');
+g.prestiges = 10;
+check(g.buyShed('p6'), 'and opens at the 10th');
+const gm0 = g.globalMult();
+const cost0 = g.shedCost('l0');
+check(g.buyShed('l0') && g.buyShed('l0') && g.shedLevel('l0') === 2, 'compost climbs by level');
+check(g.shedCost('l0') > cost0, 'each turning costs more');
+check(Math.abs(g.globalMult() / gm0 - 1.01 * 1.01) < 1e-9, 'and compounds ×1.01 per level');
+for (let k = 0; k < 9; k++) g.buyShed('l1');
+check(g.shedLevel('l1') === 6, 'sprinklers hard-cap at 6 valves');
+const bm0 = g.buildingMult(0);
+g.buyShed('h0'); g.buyShed('h0');
+check(Math.abs(g.buildingMult(0) / bm0 - 1.21) < 1e-9, 'heirloom strain ×1.10 per level');
+check(g.sproutsSpent > 0 && g.sprouts + g.sproutsSpent === 200e6, 'spent sprouts are counted, not lost');
+g.buyShed('p9'); /* ×2 mint */
+g.earn(9e6); /* 3 seeds pending */
+const sp0 = g.sprouts;
+const gained2 = g.prestige();
+check(gained2 === 3 && g.sprouts === sp0 + 6, 'Propagation Bench doubles the mint');
+check(g.owned[0] === 2, 'Parisian Round resprouts to its level each spring');
+check(g.tick(0.1).every(e => e.type !== 'bumper'), 'resprout never fires a bumper toast storm');
+g.rabbitReward(() => 0.9);
+check(g.rabbits === 1, 'rabbit catches are counted');
+const g2 = new CC.Core();
+g2.deserialize(JSON.parse(JSON.stringify(g.serialize())));
+check(g2.prestiges === g.prestiges && g2.shedLevel('l0') === 2 && g2.sproutsSpent === g.sproutsSpent
+  && Math.abs(g2.cps() - g.cps()) < 1e-9, 'levels and counters survive the save');
+const oldShed = new CC.Core();
+oldShed.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0,
+  owned: [], bought: {}, seeds: 0, sprouts: 0, shed: { p0: true } });
+check(oldShed.shedLevel('p0') === 1 && Math.abs(oldShed.globalMult() - 1.05) < 1e-9,
+  'pre-R15 `true` reads as level 1');
+
+/* growth-budget tripwire: every uncapped ladder's β must fit the budget —
+   if a data.js edit trips this, the economy has become super-linear */
+console.log('\n=== growth-budget tripwire ===');
+let beta = 0.098 + 0.03; /* Fair Circuit (per decade, spec) + Almanac headroom (R16) */
+for (const u of CC.SHED) {
+  if (!u.repeat || u.max !== undefined) continue;
+  if (u.mult) beta += Math.log(u.mult) / Math.log(u.costGrowth);
+  if (u.bmult) beta += Math.log(u.bmult) / Math.log(u.costGrowth) / CC.BUILDINGS.length;
+}
+check(beta < 0.75, `β-budget ${beta.toFixed(3)} < 0.75 (runaway inflation at 1)`);
+
 /* save round-trip */
 console.log('\n=== save round-trip ===');
 const a = new CC.Core();
