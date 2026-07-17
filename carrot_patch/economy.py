@@ -464,7 +464,8 @@ def fmt(n: float) -> str:
             return _fx(n, 1)
         return str(int(n))
     units = ["k", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc",
-             "Ud", "Dd", "Td", "Qad", "Qid"]  # Ud..Qid: R14, mirror of CC.fmt
+             "Ud", "Dd", "Td", "Qad", "Qid",
+             "Sxd", "Spd", "Ocd", "Nod", "Vg"]  # Ud..Vg: R14/R17, mirror of CC.fmt
     u = -1
     while n >= 1000 and u < len(units) - 1:
         n /= 1000

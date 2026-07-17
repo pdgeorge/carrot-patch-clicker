@@ -352,8 +352,12 @@ fc.deserialize({ v: 1, bank: 0, totalAllTime: 3.4e22, totalRun: 0, clicks: 0,
 check(fc.ribbons().length === 15, `live world claims 15 rungs on deploy day (got ${fc.ribbons().length})`);
 check(Math.abs(fc.ribbonMult() / (1.5344979552 * Math.pow(1.12, 9)) - 1) < 1e-9,
   `day-one ribbon mult is the old six × 1.12^9 (×${fc.ribbonMult().toFixed(3)})`);
-check(CC.fmt(1e36) === '1.00Ud' && CC.fmt(1.8e41) === '180Dd' && CC.fmt(1e45) === '1.00Qad',
-  'fmt speaks the new units (Ud/Dd/Td/Qad/Qid)');
+check(CC.fmt(1e36) === '1.00Ud' && CC.fmt(1.8e41) === '180Dd' && CC.fmt(1e45) === '1.00Qad'
+  && CC.fmt(1e60) === '1.00Nod', 'fmt speaks the new units (Ud through Vg)');
+check(CC.RIBBONS[CC.RIBBONS.length - 1].at === 1e60
+  && CC.RIBBONS.filter(r => r.at > 1e30)
+    .every((r, i, a) => i === 0 || Math.abs(Math.log10(r.at / a[i - 1].at) - 2) < 1e-9),
+  'the stretched tail: two decades between rungs past 1e30, ending at 1e60');
 const evs2 = fc.tick(0.1);
 check(!evs2.some(e => e.type === 'ribbon'), 'no ribbon toast storm on load — rungs pre-seeded');
 

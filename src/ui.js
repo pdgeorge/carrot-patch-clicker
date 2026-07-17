@@ -754,7 +754,12 @@ CC.UI = class {
         `<div>Bumper crops 🌾 <b>${bumpers} (+${Math.round((Math.pow(CC.MILESTONE_MULT, bumpers) - 1) * 100)}%)</b></div>` +
         `<div>Production bonus <b>${this.fmtX(c.globalMult())}${c.buffMult() > 1 ? ` · ⚡${this.fmtX(c.buffMult())}` : ''}</b></div>` +
         `<div class="stat-sub">seeds ${this.fmtX(c.seedMult())} · ribbons ${this.fmtX(c.ribbonMult())} · rest ${this.fmtX(c.globalMult() / (c.seedMult() * c.ribbonMult()))}</div>` +
-        `<div>Next seed in <b>${CC.fmt(Math.max(0, c.nextSeedAt() - c.totalAllTime))} 🥕</b></div>`;
+        `<div>Next seed in <b>${CC.fmt(Math.max(0, c.nextSeedAt() - c.totalAllTime))} 🥕</b></div>` +
+        (() => { /* the tail must never fade into fog: name the next rung */
+          const r = CC.RIBBONS.find(r => r.at > c.totalAllTime);
+          return r ? `<div>Next ribbon in <b>${CC.fmt(r.at - c.totalAllTime)} 🥕</b></div>`
+            : `<div>Trophy shelf <b>complete 🎀</b></div>`;
+        })();
       if (html !== this._statHtml) {
         this._statHtml = html;
         this.$('stats').innerHTML = html;
