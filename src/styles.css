@@ -352,6 +352,7 @@
 }
 #stats b { color: var(--ink); float: right; font-variant-numeric: tabular-nums; }
 #stats div { clear: both; }
+#stats .stat-sub { font-size: 11px; opacity: 0.72; }
 
 /* tooltip as a note left on the bench */
 #tooltip {

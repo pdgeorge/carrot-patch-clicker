@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-for (const f of ['data.js', 'core.js']) {
+for (const f of ['data.js', 'core.js', 'net.js']) {
   vm.runInThisContext(fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8'), { filename: f });
 }
 const CC = global.CC;
@@ -152,6 +152,63 @@ delete legacy.sprouts; delete legacy.shed;
 const m = new CC.Core();
 m.deserialize(JSON.parse(JSON.stringify(legacy)));
 check(m.sprouts === m.seeds && m.seeds === 3, 'pre-R13 save mints retroactive sprouts 1:1 with seeds');
+
+/* bulk buys are all-or-nothing, exactly like the displayed ×N price (audit f9) */
+console.log('\n=== bulk buys all-or-nothing ===');
+const ao = new CC.Core();
+ao.bank = 200; /* costOf(0,10) ≈ 304.6 */
+check(!ao.buy(0, 10) && ao.owned[0] === 0 && ao.bank === 200, 'cannot afford ×10: buys none, charges nothing');
+ao.bank = 400;
+check(ao.buy(0, 10) && ao.owned[0] === 10, 'affordable ×10 bought at the summed geometric price');
+
+/* lifetime precision at live-world magnitude (audit f1): at 3.4e22 a double's
+   ulp is 4,194,304 carrots — naive `+=` absorbed clicks and small ticks */
+console.log('\n=== lifetime precision at 3.4e22 ===');
+const big = new CC.Core();
+big.deserialize({ v: 1, bank: 0, totalAllTime: 3.4e22, totalRun: 0, clicks: 0,
+  owned: [1], bought: {}, seeds: 184711462, sprouts: 0, shed: {} });
+const bcps = big.cps();
+check(bcps > 2e6 && bcps < 3e6, `one Window Box at 184.7M seeds makes ~2.27M/s (got ${CC.fmt(bcps)})`);
+for (let k = 0; k < 20; k++) big.tick(1);
+const dl = big.totalAllTime - 3.4e22;
+check(Math.abs(dl - 20 * bcps) <= 4194304,
+  `20 ticks advance lifetime by 20×cps within one ulp (Δ ${CC.fmt(dl)}, want ${CC.fmt(20 * bcps)})`);
+const b2 = new CC.Core();
+b2.deserialize({ v: 1, bank: 0, totalAllTime: 3.4e22, totalRun: 0, clicks: 0,
+  owned: [], bought: {}, seeds: 0, sprouts: 0, shed: {} });
+for (let k = 0; k < 5; k++) b2.earn(1e6);
+check(b2.totalRun === 5e6, 'the run accumulator is exact');
+check(b2.totalAllTime > 3.4e22, 'five 1M earns are visible at 3.4e22 lifetime (naive += absorbed each one)');
+
+/* mid-run saves: run must be assigned before total, or a reload re-adds the
+   run into lifetime and mints phantom seeds (review T1) */
+console.log('\n=== mid-run save ordering ===');
+const mr = new CC.Core();
+mr.deserialize({ v: 1, bank: 1e20, totalAllTime: 3.4e22, totalRun: 5.39e20, clicks: 0,
+  owned: [], bought: {}, seeds: 184390889, sprouts: 0, shed: {} });
+check(mr.totalAllTime === 3.4e22, 'mid-run lifetime reconstructs exactly (base = total − run)');
+check(mr.pendingSeeds() === 0, 'a reload mints no phantom seeds');
+
+/* the world-snapshot handler shares the same ordering constraint (review T2) */
+console.log('\n=== patch snapshot ordering ===');
+const pp = Object.create(CC.Patch.prototype);
+pp.core = new CC.Core();
+pp.ui = { updatePatchLine() {}, patchEvent() {}, nameResult() {}, toast() {}, rabbit: null };
+pp.handle({ type: 'snapshot', online: 3, clickRate: 7, rabbitTtl: 0, state: {
+  bank: 1e20, totalAllTime: 3.4e22, totalRun: 5.39e20, clicks: 9,
+  owned: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0], bought: {}, seeds: 184390889,
+  sprouts: 0, shed: {}, buffs: [] } });
+check(pp.core.totalAllTime === 3.4e22, 'snapshot reconstructs lifetime exactly (run assigned first)');
+check(pp.core.pendingSeeds() === 0, 'no phantom pending seeds after a snapshot');
+
+/* active buffs survive the save (audit f27) */
+console.log('\n=== buffs survive save ===');
+const bf = new CC.Core();
+bf.earn(1000); bf.buy(0, 5);
+bf.buffs.push({ name: 'Rabbit Frenzy', mult: 7, left: 12 });
+const bf2 = new CC.Core();
+bf2.deserialize(JSON.parse(JSON.stringify(bf.serialize())));
+check(bf2.buffs.length === 1 && Math.abs(bf2.cps() - bf.cps()) < 1e-9, 'an active frenzy survives a save/load');
 
 console.log(fails ? `\n${fails} FAILURE(S)` : '\nALL CHECKS PASSED');
 process.exit(fails ? 1 : 0);

@@ -37,7 +37,7 @@ class Economy:
     def __init__(self, data: dict):
         self.d = data
         self.bank: float = 0.0
-        self.total_all_time: float = 0.0
+        self._lifetime_base: float = 0.0  # lifetime banked before this run (see total_all_time)
         self.total_run: float = 0.0
         self.clicks: int = 0
         self.owned: list[int] = [0] * len(data["buildings"])
@@ -49,6 +49,19 @@ class Economy:
         self._ribbon_seen = 0
         self._bumper_seen = [0] * len(data["buildings"])
         self._upgrades: list[dict] | None = None
+
+    # Lifetime harvest = base (folded in at prestige) + this run's total, so
+    # earning always accumulates at run magnitude: at 3e22 lifetime a double's
+    # ulp is ~4M carrots and a naive += silently drops clicks and small ticks
+    # (and freezes entirely past 2**75). Reads still round to one ulp of the
+    # sum — a display grain, never lost carrots. Mirror of core.js.
+    @property
+    def total_all_time(self) -> float:
+        return self._lifetime_base + self.total_run
+
+    @total_all_time.setter
+    def total_all_time(self, v: float) -> None:
+        self._lifetime_base = v - self.total_run
 
     # ---------- upgrades ----------
     def all_upgrades(self) -> list[dict]:
@@ -127,10 +140,17 @@ class Economy:
     def ribbons(self) -> list[dict]:
         return [r for r in self.d["ribbons"] if self.total_all_time >= r["at"]]
 
-    def global_mult(self) -> float:
-        m = 1 + 0.08 * self.seeds
+    def seed_mult(self) -> float:
+        return 1 + 0.08 * self.seeds
+
+    def ribbon_mult(self) -> float:
+        m = 1.0
         for r in self.ribbons():
             m *= r["mult"]
+        return m
+
+    def global_mult(self) -> float:
+        m = self.seed_mult() * self.ribbon_mult()
         for u in self.d["globalUpgrades"]:
             if self.bought.get(u["id"]):
                 m *= u["mult"]
@@ -168,8 +188,7 @@ class Economy:
     # ---------- actions ----------
     def earn(self, n: float) -> None:
         self.bank += n
-        self.total_all_time += n
-        self.total_run += n
+        self.total_run += n  # lifetime = base + run
 
     def do_clicks(self, n: int) -> float:
         gain = self.click_power() * n
@@ -183,13 +202,15 @@ class Economy:
         return c0 * (r ** count - 1) / (r - 1)
 
     def buy(self, i: int, count: int = 1) -> int:
-        """Buy up to `count`, as many as affordable. Returns number bought."""
-        bought = 0
-        while bought < count and self.bank >= self.cost_of(i, 1):
-            self.bank -= self.cost_of(i, 1)
-            self.owned[i] += 1
-            bought += 1
-        return bought
+        """Buy exactly `count` or nothing, at the summed geometric price —
+        matching core.js buy() and the ×N price the shop row displays.
+        Returns the number bought (count or 0)."""
+        cost = self.cost_of(i, count)
+        if self.bank < cost:
+            return 0
+        self.bank -= cost
+        self.owned[i] += count
+        return count
 
     # ---------- the Potting Shed (R13) ----------
     def buy_shed(self, uid: str) -> bool:
@@ -216,6 +237,9 @@ class Economy:
     def pending_seeds(self) -> int:
         return max(0, self.seeds_earned_total() - self.seeds)
 
+    def next_seed_at(self) -> float:
+        return (self.seeds_earned_total() + 1) ** 2 * 1e6
+
     def prestige(self) -> int:
         gain = self.pending_seeds()
         if gain < 1:
@@ -223,6 +247,7 @@ class Economy:
         self.seeds += gain
         self.sprouts += gain  # every seed also sprouts (R13); shed keeps its purchases
         self.bank = 0.0
+        self._lifetime_base += self.total_run  # fold the run before resetting it
         self.total_run = 0.0
         self.owned = [0] * len(self.owned)
         self.bought = {}
@@ -268,8 +293,8 @@ class Economy:
         if not s or s.get("v") != 1:
             return
         self.bank = s.get("bank", 0.0)
-        self.total_all_time = s.get("totalAllTime", 0.0)
         self.total_run = s.get("totalRun", 0.0)
+        self.total_all_time = s.get("totalAllTime", 0.0)  # setter derives base — run first
         self.clicks = s.get("clicks", 0)
         self.owned = [(s.get("owned") or [0] * len(self.owned))[i] if i < len(s.get("owned", [])) else 0
                       for i in range(len(self.owned))]
@@ -284,6 +309,9 @@ class Economy:
         self._bumper_seen = [self.bumper_count(i) for i in range(len(self.owned))]
         # the garden keeps growing while the server is down (full rate, capped 24h)
         away = min(max(0.0, time.time() - s.get("saved", time.time())), 24 * 3600)
+        for b in self.buffs:  # buffs kept ticking while we were down
+            b["left"] -= away
+        self.buffs = [b for b in self.buffs if b["left"] > 0]
         if away > 1:
             self.earn(self.base_cps() * away)
 
@@ -300,6 +328,10 @@ class Economy:
 
 def fmt(n: float) -> str:
     if n < 1000:
+        # mirror CC.fmt: one decimal for small non-integers, ties rounding up
+        # like toFixed (5.25 -> "5.3"), not python's round-half-even ("5.2")
+        if n < 10 and n % 1:
+            return f"{math.floor(n * 10 + 0.5) / 10:.1f}"
         return str(int(n))
     units = ["k", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc"]
     u = -1

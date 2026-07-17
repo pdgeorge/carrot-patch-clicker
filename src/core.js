@@ -15,7 +15,7 @@ CC.fmt = function (n) {
 CC.Core = class {
   constructor() {
     this.bank = 0;
-    this.totalAllTime = 0;        /* lifetime harvest, survives prestige */
+    this.lifetimeBase = 0;        /* lifetime harvest banked before this run (see totalAllTime) */
     this.totalRun = 0;
     this.clicks = 0;
     this.owned = CC.BUILDINGS.map(() => 0);
@@ -28,6 +28,14 @@ CC.Core = class {
     this._ribbonCount = 0;
     this._bumperSeen = CC.BUILDINGS.map(() => 0);
   }
+
+  /* Lifetime harvest = base (folded in at prestige) + this run's total, so
+     earning always accumulates at run magnitude: at 3e22 lifetime a double's
+     ulp is ~4M carrots and a naive `+=` silently drops clicks and small
+     ticks (and freezes entirely past 2^75). Reads still round to one ulp of
+     the sum — a display grain, never lost carrots. Mirrored in economy.py. */
+  get totalAllTime() { return this.lifetimeBase + this.totalRun; }
+  set totalAllTime(v) { this.lifetimeBase = v - this.totalRun; }
 
   /* ---------- upgrades ---------- */
   buildingUpgrades(i) {
@@ -120,9 +128,16 @@ CC.Core = class {
 
   ribbons() { return CC.RIBBONS.filter(r => this.totalAllTime >= r.at); }
 
-  globalMult() {
-    let m = 1 + 0.08 * this.seeds;
+  seedMult() { return 1 + 0.08 * this.seeds; }
+
+  ribbonMult() {
+    let m = 1;
     for (const r of this.ribbons()) m *= r.mult;
+    return m;
+  }
+
+  globalMult() {
+    let m = this.seedMult() * this.ribbonMult();
     for (const u of CC.GLOBAL_UPGRADES) if (this.bought[u.id]) m *= u.mult;
     for (const u of CC.SHED) if (this.shed[u.id]) m *= u.mult;
     m *= Math.pow(CC.MILESTONE_MULT, this.bumperTotal());
@@ -156,7 +171,7 @@ CC.Core = class {
   }
 
   /* ---------- actions ---------- */
-  earn(n) { this.bank += n; this.totalAllTime += n; this.totalRun += n; }
+  earn(n) { this.bank += n; this.totalRun += n; /* lifetime = base + run */ }
 
   click() {
     const g = this.clickPower();
@@ -202,6 +217,7 @@ CC.Core = class {
   /* ---------- prestige ---------- */
   seedsEarnedTotal() { return Math.floor(Math.sqrt(this.totalAllTime / 1e6)); }
   pendingSeeds() { return Math.max(0, this.seedsEarnedTotal() - this.seeds); }
+  nextSeedAt() { return Math.pow(this.seedsEarnedTotal() + 1, 2) * 1e6; }
 
   prestige() {
     const gain = this.pendingSeeds();
@@ -209,6 +225,7 @@ CC.Core = class {
     this.seeds += gain;
     this.sprouts += gain; /* every seed also sprouts (R13); shed keeps its purchases */
     this.bank = 0;
+    this.lifetimeBase += this.totalRun; /* fold the run before resetting it */
     this.totalRun = 0;
     this.owned = CC.BUILDINGS.map(() => 0);
     this.bought = {};
@@ -249,6 +266,7 @@ CC.Core = class {
       v: 1, bank: this.bank, totalAllTime: this.totalAllTime, totalRun: this.totalRun,
       clicks: this.clicks, owned: this.owned, bought: this.bought, seeds: this.seeds,
       sprouts: this.sprouts, shed: this.shed,
+      buffs: this.buffs.map(b => ({ ...b })), /* a frenzy survives a mid-buff reload */
       last: Date.now(),
     };
   }
@@ -256,8 +274,8 @@ CC.Core = class {
   deserialize(s) {
     if (!s || s.v !== 1) return { offline: 0 };
     this.bank = s.bank || 0;
-    this.totalAllTime = s.totalAllTime || 0;
     this.totalRun = s.totalRun || 0;
+    this.totalAllTime = s.totalAllTime || 0; /* setter derives lifetimeBase — run first */
     this.clicks = s.clicks || 0;
     this.owned = CC.BUILDINGS.map((_, i) => (s.owned && s.owned[i]) || 0);
     this.bought = s.bought || {};
@@ -266,6 +284,12 @@ CC.Core = class {
        backlog — sprouts = seeds — as the fair one-time migration */
     this.sprouts = s.sprouts !== undefined ? s.sprouts : (s.seeds || 0);
     this.shed = s.shed || {};
+    this.buffs = (s.buffs || []).map(b => ({ ...b }));
+    if (s.last) { /* buffs kept ticking while the tab was closed */
+      const gone = Math.max(0, (Date.now() - s.last) / 1000);
+      for (const b of this.buffs) b.left -= gone;
+      this.buffs = this.buffs.filter(b => b.left > 0);
+    }
     this._ribbonCount = this.ribbons().length;
     this._bumperSeen = CC.BUILDINGS.map((_, i) => this.bumperCount(i));
     /* offline earnings: half rate, capped at 8 hours */

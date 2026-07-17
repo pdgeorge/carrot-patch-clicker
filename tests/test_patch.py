@@ -47,6 +47,7 @@ console.log(JSON.stringify({
   cps: c.cps(), click: c.clickPower(), cost0: c.costOf(0, 10),
   gmult: c.globalMult(), bank: c.bank, pending: c.pendingSeeds(),
   sprouts: c.sprouts,
+  smult: c.seedMult(), rmult: c.ribbonMult(), nextAt: c.nextSeedAt(),
 }));
 """
 js = json.loads(subprocess.run(
@@ -64,11 +65,88 @@ py.buffs.append({"name": "Rabbit Frenzy", "mult": 7, "left": 30.0})
 
 pairs = [("cps", py.cps()), ("click", py.click_power()), ("cost0", py.cost_of(0, 10)),
          ("gmult", py.global_mult()), ("bank", py.bank), ("pending", py.pending_seeds()),
-         ("sprouts", py.sprouts)]
+         ("sprouts", py.sprouts),
+         ("smult", py.seed_mult()), ("rmult", py.ribbon_mult()), ("nextAt", py.next_seed_at())]
 for name, pv in pairs:
     jv = js[name]
     ok = abs(pv - jv) <= 1e-6 * max(1.0, abs(jv))
     check(ok, f"{name}: py {pv:.6g} == js {jv:.6g}")
+
+# ---------- 1a. lifetime precision parity at live-world magnitude (audit f1) ----------
+print("\n=== lifetime precision at 3.4e22 ===")
+JS_BIG = r"""
+const fs = require('fs'), path = require('path'), vm = require('vm');
+for (const f of ['data.js', 'core.js']) {
+  vm.runInThisContext(fs.readFileSync(path.join(process.argv[1], 'src', f), 'utf8'));
+}
+const c = new CC.Core();
+c.deserialize({ v: 1, bank: 0, totalAllTime: 3.4e22, totalRun: 0, clicks: 0,
+  owned: [1], bought: {}, seeds: 184711462, sprouts: 0, shed: {} });
+for (let k = 0; k < 20; k++) c.tick(1);
+c.earn(1);  // a single carrot must not vanish from the run accumulator
+console.log(JSON.stringify({ tat: c.totalAllTime, run: c.totalRun }));
+"""
+js_big = json.loads(subprocess.run(
+    ["node", "-e", JS_BIG, str(ROOT)], capture_output=True, text=True, check=True).stdout)
+pb = Economy(load_data())
+pb.deserialize({"v": 1, "bank": 0, "totalAllTime": 3.4e22, "totalRun": 0, "clicks": 0,
+                "owned": [1], "bought": {}, "seeds": 184711462, "sprouts": 0, "shed": {}})
+for _ in range(20):
+    pb.tick(1.0)
+pb.earn(1)
+check(abs(pb.total_all_time - js_big["tat"]) <= 4194304,
+      f"lifetime parity at 3.4e22 within one ulp (py {pb.total_all_time!r} js {js_big['tat']!r})")
+check(abs(pb.total_run - js_big["run"]) < 1.0, "run accumulator parity")
+check(pb.total_run > 20 * 2.2e6, "20 ticks actually accumulated — no float absorption")
+
+# mid-run save: run assigned before total, or a reload mints phantom seeds (review T1)
+pmr = Economy(load_data())
+pmr.deserialize({"v": 1, "bank": 1e20, "totalAllTime": 3.4e22, "totalRun": 5.39e20,
+                 "clicks": 0, "owned": [], "bought": {}, "seeds": 184390889,
+                 "sprouts": 0, "shed": {}})
+check(pmr.total_all_time == 3.4e22, "mid-run lifetime reconstructs exactly (base = total - run)")
+check(pmr.pending_seeds() == 0, "a server restart mints no phantom seeds")
+
+# fmt parity on small decimals, incl. exact ties like 5.25 (review T4/P6)
+JS_FMT = r"""
+const fs = require('fs'), path = require('path'), vm = require('vm');
+for (const f of ['data.js', 'core.js']) {
+  vm.runInThisContext(fs.readFileSync(path.join(process.argv[1], 'src', f), 'utf8'));
+}
+const out = [];
+for (let i = 0; i < 200; i++) out.push(CC.fmt(i / 8));
+console.log(JSON.stringify(out));
+"""
+from carrot_patch.economy import fmt as pyfmt  # noqa: E402
+js_fmt = json.loads(subprocess.run(
+    ["node", "-e", JS_FMT, str(ROOT)], capture_output=True, text=True, check=True).stdout)
+mism = [i / 8 for i in range(200) if pyfmt(i / 8) != js_fmt[i]]
+check(not mism, f"fmt parity for 0..25 in eighths ({len(mism)} mismatches: {mism[:5]})")
+
+# ---------- 1a'. bulk buys all-or-nothing in both engines (audit f9) ----------
+print("\n=== bulk buys all-or-nothing parity ===")
+JS_AO = r"""
+const fs = require('fs'), path = require('path'), vm = require('vm');
+for (const f of ['data.js', 'core.js']) {
+  vm.runInThisContext(fs.readFileSync(path.join(process.argv[1], 'src', f), 'utf8'));
+}
+const c = new CC.Core();
+c.earn(200);
+const r1 = c.buy(0, 10);
+c.earn(200);
+const r2 = c.buy(0, 10);
+console.log(JSON.stringify({ r1, r2, bank: c.bank, owned: c.owned[0] }));
+"""
+js_ao = json.loads(subprocess.run(
+    ["node", "-e", JS_AO, str(ROOT)], capture_output=True, text=True, check=True).stdout)
+pao = Economy(load_data())
+pao.earn(200)
+check(pao.buy(0, 10) == 0 and pao.owned[0] == 0 and abs(pao.bank - 200) < 1e-9,
+      "partially-affordable ×10 buys nothing, charges nothing (py)")
+pao.earn(200)
+check(pao.buy(0, 10) == 10 and pao.owned[0] == 10, "fully-affordable ×10 buys all (py)")
+check(js_ao["r1"] is False and js_ao["r2"] is True and abs(js_ao["bank"] - pao.bank) < 1e-9,
+      "JS agrees: all-or-nothing, identical remainder")
 
 # ---------- 1b. unlock vocabulary parity (DESIGN R8) ----------
 print("\n=== unlock vocabulary parity ===")
@@ -134,6 +212,16 @@ js_closed = json.loads(subprocess.run(
     capture_output=True, text=True, check=True).stdout)
 check(all("tu" not in s for s in js_closed), "unknown unlock condition fails closed (js)")
 
+# ---------- 1b'. wire-int hardening, each junk shape individually (review T3) ----------
+print("\n=== clamp_int hardening ===")
+from carrot_patch.main import clamp_int  # noqa: E402
+
+for junk in (float("nan"), float("inf"), float("-inf"), None, [1, 2], {}, "junk", object()):
+    check(clamp_int(junk, 250) == 0, f"clamp_int({junk!r}) -> 0")
+check(clamp_int("25", 250) == 25 and clamp_int(3.9, 250) == 3
+      and clamp_int(999, 250) == 250 and clamp_int(-5, 250) == 0,
+      "clamp_int keeps sane values sane and clamped")
+
 # ---------- 2. live protocol over a real websocket ----------
 print("\n=== protocol (in-process server) ===")
 import os  # noqa: E402
@@ -160,21 +248,21 @@ with TestClient(app) as client:
         check(snap["online"] == 1, "presence counts one gardener")
 
         # click batching: an absurd batch is clamped to the anti-flood
-        # ceiling (250 — anti-flood only, never game balance; DESIGN R2)
+        # ceiling (1000 — anti-flood only, never game balance; DESIGN R2)
         ws.send_json({"type": "clicks", "n": 999999})
         time.sleep(0.05)
-        check(abs(patch.eco.bank - 250) < 1e-9, f"999999 clicks clamped to 250 (bank {patch.eco.bank})")
+        check(abs(patch.eco.bank - 1000) < 1e-9, f"999999 clicks clamped to 1000 (bank {patch.eco.bank})")
 
         # rate limit: a second batch inside 0.75s is dropped
         ws.send_json({"type": "clicks", "n": 40})
         time.sleep(0.05)
-        check(abs(patch.eco.bank - 250) < 1e-9, "second batch within window is ignored")
+        check(abs(patch.eco.bank - 1000) < 1e-9, "second batch within window is ignored")
 
         # buy with the global bank
         ws.send_json({"type": "buy", "b": 0, "n": 1})
         time.sleep(0.05)
         check(patch.eco.owned[0] == 1, "bought a Window Box with global carrots")
-        check(patch.eco.bank < 250, "the world's bank paid for it")
+        check(patch.eco.bank < 1000, "the world's bank paid for it")
 
         # invalid / unaffordable requests are safely ignored
         ws.send_json({"type": "buy", "b": 9, "n": 10})
@@ -185,6 +273,37 @@ with TestClient(app) as client:
         time.sleep(0.05)
         check(patch.eco.owned[9] == 0 and not patch.eco.bought and patch.eco.seeds == 0,
               "invalid intents change nothing")
+
+        # malformed wire payloads must never kill the socket (audit f2):
+        # json.loads accepts bare NaN/Infinity, and int() of those raises
+        time.sleep(1.1)  # age out the flood window and the click interval
+        for bad in ('{"type":"clicks","n":NaN}', '{"type":"clicks","n":Infinity}',
+                    '{"type":"clicks","n":null}', '{"type":"clicks","n":[1,2]}',
+                    '{"type":"clicks","n":"junk"}'):
+            ws.send_text(bad)
+        ws.send_json({"type": "buy", "b": True, "n": 1})  # bool is not a building index
+        time.sleep(0.9)  # the NaN batch consumed the click window; wait it out
+        bank_before = patch.eco.bank
+        ws.send_json({"type": "clicks", "n": 3})
+        time.sleep(0.05)
+        delta = patch.eco.bank - bank_before
+        check(3 <= delta < 4, f"socket survives malformed payloads and still counts clicks (Δ {delta})")
+        check(patch.eco.owned[1] == 0, "buy with b=true is ignored (bool is not an index)")
+
+        # the second defense layer, pinned separately (review T3): even a
+        # handler that RAISES must not kill the socket
+        def boom(m, c2):
+            raise RuntimeError("boom (test)")
+        real_handle, patch.handle = patch.handle, boom
+        ws.send_json({"type": "clicks", "n": 999})
+        time.sleep(0.05)
+        patch.handle = real_handle
+        time.sleep(0.9)
+        bank_before = patch.eco.bank
+        ws.send_json({"type": "clicks", "n": 2})
+        time.sleep(0.05)
+        delta = patch.eco.bank - bank_before
+        check(2 <= delta < 3, f"socket survives a raising handle() (Δ {delta})")
 
         # the Potting Shed (R13): broke world can't buy; sprouts spend globally
         ws.send_json({"type": "shed", "id": "p0"})
@@ -257,13 +376,27 @@ with TestClient(app) as client:
         check(me is not None and me["clicks"] >= 7 and me["buildings"] >= 1,
               f"board tallies clicks and buildings under the good name ({me})")
 
+        # prestige announces its actual seed-bonus boost (audit f7)
+        patch.eco.earn(4e6)  # lifetime ≈ 4M → 2 seeds pending
+        ws.send_json({"type": "prestige"})
+        got = None
+        for _ in range(120):
+            m = ws.receive_json()
+            if m["type"] == "event" and m.get("ev", {}).get("type") == "prestige":
+                got = m["ev"]
+                break
+        check(got is not None and got.get("gained") == 2, f"prestige event carries gained ({got})")
+        check(got is not None and abs(got.get("boost", 0) - 1.16) < 1e-9,
+              f"and the real boost ×1.16, not '+16% of nothing' ({got})")
+
     # persistence round-trip
     patch.eco.earn(12345)
     patch.save()
     fresh = Economy(load_data())
     fresh.deserialize(json.loads(state_path.read_text()))
     check(fresh.total_all_time >= 12345, "world state survives a save/load")
-    check(fresh.shed.get("p0") and fresh.sprouts == 2, "shed purchases and sprouts survive a save/load")
+    check(fresh.shed.get("p0") and fresh.sprouts == 4,
+          "shed purchases and sprouts survive a save/load (2 left + 2 minted by the prestige above)")
 
     # pre-R13 save migration: sprouts backlog = seeds (none were ever spendable)
     legacy = json.loads(state_path.read_text())

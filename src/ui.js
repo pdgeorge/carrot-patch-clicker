@@ -247,7 +247,9 @@ CC.UI = class {
       const row = document.createElement('div');
       row.className = 'b-row';
       row.innerHTML = `<div><div class="b-name"></div><div class="b-cost"></div></div><div class="b-count"></div>`;
-      row.addEventListener('click', e => this.buyBuilding(i, e.shiftKey ? 10 : this.buyN));
+      /* buy exactly what the row prices (×N selector); the old hidden
+         shift-click-for-10 lied once buys became all-or-nothing */
+      row.addEventListener('click', () => this.buyBuilding(i, this.buyN));
       row.addEventListener('mouseenter', () => this.tooltip({ kind: 'building', i }));
       row.addEventListener('mouseleave', () => this.tooltip(null));
       shop.appendChild(row);
@@ -350,13 +352,12 @@ CC.UI = class {
     CC.audio.ensure();
     if (this.worldMode) {
       /* intent only — the next snapshot carries the world's answer */
-      if (this.core.bank >= this.core.costOf(i, 1)) CC.audio.thunk();
+      if (this.core.bank >= this.core.costOf(i, n)) CC.audio.thunk();
       this.patch.send({ type: 'buy', b: i, n });
       return;
     }
-    let bought = 0;
-    while (bought < n && this.core.buy(i, 1)) bought++;
-    if (bought > 0) CC.audio.thunk();
+    /* all-or-nothing, exactly like the ×N price on the row (audit f9) */
+    if (this.core.buy(i, n)) CC.audio.thunk();
   }
 
   buyUpgrade(id) {
@@ -407,7 +408,8 @@ CC.UI = class {
 
   askPrestige() {
     if (this.awaitingWorld()) return;
-    const n = this.core.pendingSeeds();
+    const c = this.core;
+    const n = c.pendingSeeds();
     if (n < 1) return;
     const patch = this.worldMode;
     this.$('modal-title').textContent = patch ? '🌸 Send the WORLD to Seed?' : '🌸 Go to Seed?';
@@ -415,7 +417,11 @@ CC.UI = class {
       ? `This is the <b>shared garden</b>. Going to seed resets it for <b>every gardener on Earth</b> —`
       : `Let go of every plot, stall, and contract. The garden resets to bare soil —`) +
       ` but ribbons are kept, and everyone gains <b>${CC.fmt(n)} seed${n > 1 ? 's' : ''}</b>.` +
-      `<br><br>Each seed boosts all production by <b>+8%, forever</b>.` +
+      `<br><br>Each seed boosts all production by <b>+8%, forever</b>:` +
+      ` seed bonus ${(() => {
+        const a = this.fmtX(c.seedMult()), b = this.fmtX(1 + 0.08 * (c.seeds + n));
+        return a === b ? `${a}, stacking +8% deeper` : `${a} → <b>${b}</b>`;
+      })()}.` +
       (patch ? `<br><br><i>Your name will not be recorded. Your deed will be felt.</i>` : '');
     const yes = this.$('modal-yes');
     yes.textContent = `Go to seed (+${CC.fmt(n)})`;
@@ -425,12 +431,26 @@ CC.UI = class {
         this.patch.send({ type: 'prestige' });
         return; /* the server announces it to the world */
       }
+      const before = this.core.seedMult();
       const gained = this.core.prestige();
       CC.audio.seed();
-      this.toast(`🌸 Second spring. +${CC.fmt(gained)} seeds — production +${gained * 8}% forever.`);
+      const b = this.core.seedMult() / before;
+      this.toast(`🌸 Second spring. +${CC.fmt(gained)} seeds — ` + (b >= 1.0005
+        ? `seed bonus ${this.fmtX(b)}, forever.`
+        : `seed bonus now ${this.fmtX(this.core.seedMult())}.`));
       this.save();
     };
     this.$('modal').classList.remove('hidden');
+  }
+
+  /* Multiplier formatting: near-1 ratios keep 3 decimals (×1.008 must not
+     collapse to ×1.01 or, worse, a 10-digit raw percent — audit f6/f7),
+     mid-range gets 2, big ones go through CC.fmt (×22.68M). */
+  fmtX(v) {
+    if (v < 2) return '×' + v.toFixed(3);
+    /* 999.995..1000 would toFixed-round to the nonsense "×1000.00" */
+    if (v < 999.995) return '×' + (Number.isInteger(v) ? v : v.toFixed(2));
+    return '×' + CC.fmt(v);
   }
 
   /* ---------------- feedback ---------------- */
@@ -459,9 +479,19 @@ CC.UI = class {
         : `Lucky bundle! +${CC.fmt(ev.gain || 0)} carrots!`;
       this.toast(`🐇 Caught by a tender somewhere on Earth — ${what}`);
     } else if (ev.type === 'prestige') {
+      if (!(ev.gained > 0)) return; /* malformed event must not toast "+∞ seeds" */
       CC.audio.seed();
+      /* boost comes from the server (exact); older events fall back to
+         deriving it from the post-snapshot seed count */
+      const boost = ev.boost ||
+        (this.core.seedMult() / (1 + 0.08 * Math.max(0, this.core.seeds - ev.gained)));
+      /* at 100M+ seeds one prestige's ratio rounds to ×1.000 — announcing a
+         no-op is worse than saying the part that still means something */
+      const what = boost >= 1.0005
+        ? `seed bonus ${this.fmtX(boost)}, now ${this.fmtX(this.core.seedMult())}`
+        : `seed bonus now ${this.fmtX(this.core.seedMult())}`;
       this.toast(`🌸 SOMEONE SENT THE WHOLE GARDEN TO SEED. +${CC.fmt(ev.gained)} seeds ` +
-        `(+${ev.gained * 8}% forever) for everyone. A new spring begins.`);
+        `— ${what}. A new spring begins.`);
     } else if (ev.type === 'shed') {
       const u = CC.SHED.find(u => u.id === ev.id);
       if (!u) return;
@@ -566,7 +596,7 @@ CC.UI = class {
     this.$('buff-line').textContent = buff ? `⚡ ${buff.name} ×${buff.mult} — ${Math.ceil(buff.left)}s` : '';
 
     this.$('seed-line').textContent = c.seeds > 0
-      ? `🌸 ${CC.fmt(c.seeds)} seeds — +${c.seeds * 8}% forever` : '';
+      ? `🌸 ${CC.fmt(c.seeds)} seeds — ${this.fmtX(c.seedMult())} production, forever` : '';
 
     /* the Potting Shed (R13): balance always on the main screen, catalog
        behind its own screen; the button glows when the world can afford
@@ -649,8 +679,9 @@ CC.UI = class {
         `<div>Hand-pulled (clicks) <b>${CC.fmt(c.clicks)}</b></div>` +
         `<div>Plots &amp; contraptions <b>${CC.fmt(totalBuildings)}</b></div>` +
         `<div>Bumper crops 🌾 <b>${bumpers} (+${Math.round((Math.pow(CC.MILESTONE_MULT, bumpers) - 1) * 100)}%)</b></div>` +
-        `<div>Production bonus <b>×${c.globalMult().toFixed(2)}</b></div>` +
-        `<div>Next seed at <b>${CC.fmt(Math.pow(c.seedsEarnedTotal() + 1, 2) * 1e6)}</b></div>`;
+        `<div>Production bonus <b>${this.fmtX(c.globalMult())}${c.buffMult() > 1 ? ` · ⚡${this.fmtX(c.buffMult())}` : ''}</b></div>` +
+        `<div class="stat-sub">seeds ${this.fmtX(c.seedMult())} · ribbons ${this.fmtX(c.ribbonMult())} · rest ${this.fmtX(c.globalMult() / (c.seedMult() * c.ribbonMult()))}</div>` +
+        `<div>Next seed in <b>${CC.fmt(Math.max(0, c.nextSeedAt() - c.totalAllTime))} 🥕</b></div>`;
       if (html !== this._statHtml) {
         this._statHtml = html;
         this.$('stats').innerHTML = html;

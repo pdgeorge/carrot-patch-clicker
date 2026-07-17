@@ -19,6 +19,7 @@ import json
 import os
 import random
 import time
+import traceback
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -27,13 +28,25 @@ from fastapi.responses import FileResponse, JSONResponse
 from .economy import Economy, dist_dir, fmt, load_data
 from .tenders import TenderBook
 
-MAX_CLICKS_PER_MSG = 250     # anti-flood only, never game balance (DESIGN P4/R2):
-                             # far above any human, high enough that auto-clickers
-                             # work as intended — the economy makes clicks fade
+MAX_CLICKS_PER_MSG = 1000    # anti-flood only, never game balance (DESIGN P4/R2):
+                             # autoclickers are welcome (raised 250→1000, 2026-07)—
+                             # this ceiling only stops forged clicks-you-never-made
+                             # packets, not enthusiasm; the economy makes clicks fade
 MIN_MSG_INTERVAL = 0.75      # seconds between click batches per connection
 MAX_MSGS_PER_SEC = 10        # any message type, per connection
 SNAPSHOT_INTERVAL = 1.0
 SAVE_INTERVAL = 30.0
+
+
+def clamp_int(v: object, hi: int) -> int:
+    """Best-effort wire integer in [0, hi]. json.loads happily produces NaN,
+    Infinity, null, strings and lists — none of which may ever raise here,
+    because an exception would kill that client's websocket. Garbage is 0."""
+    try:
+        n = int(v)  # bools are ints, floats truncate, junk raises
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return max(0, min(n, hi))
 
 
 def state_file() -> Path:
@@ -110,8 +123,17 @@ class Patch:
                     else f"Lucky bundle! +{fmt(ev['gain'])} carrots!")
             return f"🐇 Caught by a tender somewhere on Earth — {what}"
         if ev["type"] == "prestige":
+            boost = ev.get("boost")
+            if boost is None or boost < 1.0005:  # at 100M+ seeds the ratio rounds to 1
+                what = "the seeds stack deeper"
+            elif boost < 2:
+                what = f"seed bonus ×{boost:.3f}"
+            elif boost < 1000:
+                what = f"seed bonus ×{boost:.2f}"
+            else:
+                what = f"seed bonus ×{fmt(boost)}"
             return (f"🌸 SOMEONE SENT THE WHOLE GARDEN TO SEED. +{fmt(ev['gained'])} seeds "
-                    f"(+{ev['gained'] * 8}% forever) for everyone. A new spring begins.")
+                    f"({what}) for everyone. A new spring begins.")
         if ev["type"] == "shed":
             u = next((u for u in d["shed"] if u["id"] == ev["id"]), None)
             return (f"🌱 A sprout was planted: {u['name']}! "
@@ -169,7 +191,7 @@ class Patch:
             if now - conn["last_click_msg"] < MIN_MSG_INTERVAL:
                 return None  # too chatty; batch harder
             conn["last_click_msg"] = now
-            n = max(0, min(int(msg.get("n", 0)), MAX_CLICKS_PER_MSG))
+            n = clamp_int(msg.get("n", 0), MAX_CLICKS_PER_MSG)
             if n:
                 eco.do_clicks(n)
                 self.click_window += n
@@ -179,7 +201,7 @@ class Patch:
         elif kind == "buy":
             b = msg.get("b")
             n = 10 if msg.get("n") == 10 else 1
-            if isinstance(b, int) and 0 <= b < len(eco.owned):
+            if isinstance(b, int) and not isinstance(b, bool) and 0 <= b < len(eco.owned):
                 bought = eco.buy(b, n)
                 if bought and conn.get("name"):
                     self.tenders.bump(conn["name"], buildings=bought)
@@ -212,9 +234,13 @@ class Patch:
                 self.emit({"type": "rabbitCaught", "kind": r["kind"], "gain": r.get("gain", 0)})
 
         elif kind == "prestige":
+            before = eco.seed_mult()
             gained = eco.prestige()
             if gained:
-                self.emit({"type": "prestige", "gained": gained})
+                # boost = the world's actual seed-bonus change; the old
+                # "+8N% forever" copy overstated it by orders of magnitude
+                self.emit({"type": "prestige", "gained": gained,
+                           "boost": eco.seed_mult() / before})
                 self.save()
 
 
@@ -289,7 +315,13 @@ def create_app() -> FastAPI:
                 except json.JSONDecodeError:
                     continue
                 if isinstance(msg, dict):
-                    reply = patch.handle(msg, conn)
+                    try:
+                        reply = patch.handle(msg, conn)
+                    except Exception:
+                        # a bad intent must never kill the socket — but a real
+                        # fault (save() I/O, sqlite) must never be invisible
+                        traceback.print_exc()
+                        continue
                     if reply:
                         await ws.send_text(json.dumps(reply))
         except WebSocketDisconnect:
