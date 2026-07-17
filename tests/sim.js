@@ -253,6 +253,19 @@ check(se2.season === 'homestead',
 se2.deserialize({ ...JSON.parse(JSON.stringify(se.serialize())), season: 'hax' });
 check(se2.season === 'homestead', 'junk seasons sanitize to homestead');
 
+/* theme packs (R18): one skin per season per time of day */
+console.log('\n=== theme packs ===');
+check(CC.SEASONS.every(s => CC.THEMES[s.id + '-day'] && CC.THEMES[s.id + '-night']),
+  'every season has a day and a night skin');
+check(CC.UI.prototype.themeId.call({ core: { season: 'endless-winter' }, dayNight: 'night' }) === 'homestead-night',
+  'unknown seasons fall back to the homestead skin');
+check(CC.UI.prototype.themeId.call({ core: { season: 'market' }, dayNight: 'day' }) === 'market-day',
+  'season + preference pick the pack');
+const cssTxt = fs.readFileSync(path.join(__dirname, '..', 'src', 'styles.css'), 'utf8');
+check(Object.keys(CC.THEMES).filter(t => t !== 'homestead-day')
+  .every(t => cssTxt.includes(`[data-theme="${t}"]`)),
+  'every non-default pack has a CSS block');
+
 /* growth-budget tripwire: every growth term is DERIVED FROM DATA (review
    f2 — a hardcoded term can never trip), so any data.js edit that makes
    the economy super-linear fails here */

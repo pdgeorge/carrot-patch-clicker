@@ -29,6 +29,31 @@ CC.audio = {
   seed() { [392, 523, 659, 880, 1175].forEach((f, i) => this.blip(f, 0.4, 'triangle', 0.1, null, i * 0.14)); },
 };
 
+/* Season theme packs (R18): every season owns a day/night pair. CSS lives
+   in styles.css under #cc-root[data-theme=…]; this table paints the canvas
+   backdrop + carrot. Season comes from the server (the whole world re-skins
+   together when the calendar turns); day/night is a per-player preference. */
+CC.THEMES = {
+  'homestead-day': { sky: ['#5a4a7a', '#c98a5a', '#e8b06a'], orb: [250, 60, 60, '255,240,190'],
+    moon: false, stars: false, hedge: '#31502e', soil: ['#4a3421', '#2a2016'],
+    body: ['#ff9232', '#d4570a'], tops: '#3f9142' },
+  'homestead-night': { sky: ['#0b1526', '#13233a', '#1b3247'], orb: [240, 52, 40, '223,232,244'],
+    moon: true, stars: true, hedge: '#152a22', soil: ['#1d2b26', '#0d1512'],
+    body: ['#ffa04a', '#c25a14'], tops: '#3f8f6a' },
+  'fair-day': { sky: ['#5f97c8', '#a8c8e0', '#e8d8a8'], orb: [245, 52, 55, '255,246,200'],
+    moon: false, stars: false, hedge: '#3f7a3a', soil: ['#5a4228', '#332618'],
+    body: ['#ff8832', '#d4570a'], tops: '#3f9142' },
+  'fair-night': { sky: ['#2a3052', '#3d3660', '#6b4a4e'], orb: [248, 40, 26, '255,222,150'],
+    moon: false, stars: true, hedge: '#26332c', soil: ['#41301e', '#241a10'],
+    body: ['#ff9232', '#d4570a'], tops: '#4a9a44' },
+  'market-day': { sky: ['#8ecae6', '#cfe6f0', '#f4e9c8'], orb: [242, 50, 62, '255,246,200'],
+    moon: false, stars: false, hedge: '#3f8a4a', soil: ['#6a4c2e', '#4a3420'],
+    body: ['#f2701d', '#c2490a'], tops: '#3f9142' },
+  'market-night': { sky: ['#231d3e', '#181230', '#2c1f3a'], orb: [238, 46, 34, '240,232,216'],
+    moon: true, stars: true, hedge: '#1f3326', soil: ['#302038', '#180f20'],
+    body: ['#ffb054', '#c86018'], tops: '#4a8a5a' },
+};
+
 CC.UI = class {
   constructor(core) {
     this.core = core;
@@ -58,6 +83,8 @@ CC.UI = class {
     this.core.mirrorBook = this.worldMode; /* the server's almanac is the book (R16) */
 
     this.buildStatic();
+    this.dayNight = this.pref('carrot-daynight') || 'auto'; /* ☀/🌙 is a display preference */
+    this.applyTheme();
     this.$('build-tag').textContent = `build ${CC.BUILD || 'dev'}`;
     this.load();
     this.bind();
@@ -209,38 +236,11 @@ CC.UI = class {
 
   /* ---------------- DOM scaffolding ---------------- */
   buildStatic() {
-    /* pre-render soil texture */
-    const c = document.createElement('canvas');
-    c.width = this.canvas.width; c.height = this.canvas.height;
-    const x = c.getContext('2d');
-    const soilY = 132;
-    const sky = x.createLinearGradient(0, 0, 0, soilY);
-    sky.addColorStop(0, '#5a4a7a');
-    sky.addColorStop(0.7, '#c98a5a');
-    sky.addColorStop(1, '#e8b06a');
-    x.fillStyle = sky;
-    x.fillRect(0, 0, c.width, soilY);
-    /* sun */
-    const sun = x.createRadialGradient(250, 60, 0, 250, 60, 60);
-    sun.addColorStop(0, 'rgba(255,240,190,0.95)');
-    sun.addColorStop(1, 'rgba(255,220,120,0)');
-    x.fillStyle = sun;
-    x.fillRect(180, 0, 140, 130);
-    /* hedge */
-    x.fillStyle = '#31502e';
-    x.fillRect(0, soilY - 16, c.width, 16);
-    const soil = x.createLinearGradient(0, soilY, 0, c.height);
-    soil.addColorStop(0, '#4a3421');
-    soil.addColorStop(1, '#2a2016');
-    x.fillStyle = soil;
-    x.fillRect(0, soilY, c.width, c.height - soilY);
-    for (let i = 0; i < 900; i++) {
-      const px = Math.random() * c.width, py = soilY + Math.random() * (c.height - soilY);
-      x.fillStyle = Math.random() < 0.5 ? 'rgba(0,0,0,0.15)' : 'rgba(190,150,100,0.08)';
-      x.fillRect(px, py, 1.5 + Math.random() * 2, 1.5 + Math.random() * 2);
-    }
-    this.bg = c;
-    this.soilY = soilY;
+    /* backdrop canvas — painted per-theme by paintBackdrop() (R18) */
+    this.bg = document.createElement('canvas');
+    this.bg.width = this.canvas.width;
+    this.bg.height = this.canvas.height;
+    this.soilY = 132;
 
     /* shop rows */
     const shop = this.$('shop');
@@ -327,6 +327,14 @@ CC.UI = class {
       CC.audio.ensure();
       CC.audio.muted = !CC.audio.muted;
       this.$('mute-btn').textContent = CC.audio.muted ? '🔇' : '🔊';
+    });
+    const dnLabel = () => (this.dayNight === 'auto' ? '🌗' : this.dayNight === 'day' ? '☀️' : '🌙');
+    this.$('daynight-btn').textContent = dnLabel();
+    this.$('daynight-btn').addEventListener('click', () => {
+      this.dayNight = this.dayNight === 'auto' ? 'day' : this.dayNight === 'day' ? 'night' : 'auto';
+      this.setPref('carrot-daynight', this.dayNight);
+      this.$('daynight-btn').textContent = dnLabel();
+      this.applyTheme();
     });
     this.$('wipe-btn').addEventListener('click', () => {
       if (this.t - this._wipeArm < 3) {
@@ -476,6 +484,67 @@ CC.UI = class {
       this.save();
     };
     this.$('modal').classList.remove('hidden');
+  }
+
+  /* ---------------- theme (R18) ---------------- */
+  themeId() {
+    const s = CC.THEMES[this.core.season + '-day'] ? this.core.season : 'homestead';
+    let dn = this.dayNight;
+    if (dn === 'auto') {
+      const h = new Date().getHours();
+      dn = h >= 7 && h < 19 ? 'day' : 'night';
+    }
+    return `${s}-${dn}`;
+  }
+
+  applyTheme() {
+    const t = this.themeId();
+    if (t === this._themeId) return;
+    this._themeId = t;
+    this.$('cc-root').dataset.theme = t;
+    this._pal = CC.THEMES[t] || CC.THEMES['homestead-day'];
+    this.paintBackdrop(this._pal);
+  }
+
+  paintBackdrop(pal) {
+    const c = this.bg, x = c.getContext('2d'), soilY = this.soilY;
+    const sky = x.createLinearGradient(0, 0, 0, soilY);
+    sky.addColorStop(0, pal.sky[0]);
+    sky.addColorStop(0.7, pal.sky[1]);
+    sky.addColorStop(1, pal.sky[2]);
+    x.fillStyle = sky;
+    x.fillRect(0, 0, c.width, soilY);
+    if (pal.stars) {
+      for (let i = 0; i < 46; i++) { /* deterministic scatter: repaints identically */
+        x.fillStyle = `rgba(255,255,255,${0.2 + ((i * 37) % 60) / 100})`;
+        x.fillRect((i * 97 + 13) % c.width, (i * 53 + 7) % (soilY - 30), 1.4, 1.4);
+      }
+    }
+    const [ox, oy, or, oc] = pal.orb;
+    const orb = x.createRadialGradient(ox, oy, 0, ox, oy, or);
+    orb.addColorStop(0, `rgba(${oc},0.95)`);
+    orb.addColorStop(1, `rgba(${oc},0)`);
+    x.fillStyle = orb;
+    x.fillRect(ox - or, 0, or * 2, soilY);
+    if (pal.moon) {
+      x.fillStyle = `rgb(${oc})`;
+      x.beginPath(); x.arc(ox, oy, 15, 0, Math.PI * 2); x.fill();
+      x.fillStyle = 'rgba(120,140,170,0.4)';
+      x.beginPath(); x.arc(ox - 5, oy - 4, 3.5, 0, Math.PI * 2);
+      x.arc(ox + 6, oy + 5, 2.4, 0, Math.PI * 2); x.fill();
+    }
+    x.fillStyle = pal.hedge;
+    x.fillRect(0, soilY - 16, c.width, 16);
+    const soil = x.createLinearGradient(0, soilY, 0, c.height);
+    soil.addColorStop(0, pal.soil[0]);
+    soil.addColorStop(1, pal.soil[1]);
+    x.fillStyle = soil;
+    x.fillRect(0, soilY, c.width, c.height - soilY);
+    for (let i = 0; i < 900; i++) { /* deterministic speckle, same reason */
+      const px = (i * 61 + 17) % c.width, py = soilY + ((i * 41 + 5) % (c.height - soilY));
+      x.fillStyle = i % 2 ? 'rgba(0,0,0,0.15)' : 'rgba(190,150,100,0.08)';
+      x.fillRect(px, py, 1.5 + (i % 3), 1.5 + ((i + 1) % 3));
+    }
   }
 
   /* Multiplier formatting: near-1 ratios keep 3 decimals (×1.008 must not
@@ -643,6 +712,7 @@ CC.UI = class {
 
   updateDOM() {
     const c = this.core;
+    this.applyTheme(); /* season turns and auto-day/night flips re-skin live */
     this.$('bank').textContent = CC.fmt(Math.floor(c.bank));
     this.$('cps').textContent = `${CC.fmt(c.cps())} per second · click for ${CC.fmt(c.clickPower())}`;
 
@@ -817,12 +887,13 @@ CC.UI = class {
     x.scale(2 - sq, sq);
 
     /* tops */
+    const pal = this._pal || CC.THEMES['homestead-day'];
     const nStems = 7;
     for (let i = 0; i < nStems; i++) {
       const f = i / (nStems - 1) - 0.5;
       const sway = Math.sin(this.t * 1.7 + i * 1.3) * 6;
       const h = (46 + Math.abs(f) * -14) * size;
-      x.strokeStyle = '#3f9142';
+      x.strokeStyle = pal.tops;
       x.lineWidth = 3 * size;
       x.beginPath();
       x.moveTo(f * 10 * size, -2);
@@ -845,8 +916,8 @@ CC.UI = class {
     x.scale(sq, 2 - sq);
     /* body */
     const grad = x.createLinearGradient(0, 0, 0, bodyLen);
-    grad.addColorStop(0, '#ff9232');
-    grad.addColorStop(1, '#d4570a');
+    grad.addColorStop(0, pal.body[0]);
+    grad.addColorStop(1, pal.body[1]);
     x.fillStyle = grad;
     x.beginPath();
     x.moveTo(-girth, 2);
@@ -927,5 +998,8 @@ if (typeof document !== 'undefined') {
     if (sprouts) game.core.sprouts += +sprouts; /* debug/testing (dev garden; the server ignores predictions) */
     const season = params.get('season');
     if (season) game.core.season = season; /* dev garden theme/bonus testing (R17) */
+    const dn = params.get('daynight');
+    if (dn === 'day' || dn === 'night') { game.dayNight = dn; } /* theme dev (R18) */
+    if (season || dn) game.applyTheme();
   });
 }

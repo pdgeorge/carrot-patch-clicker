@@ -6,16 +6,24 @@
    self-contained file. The wordmark's carrot-orange and leaf-green anchor
    the palette. */
 #cc-root {
+  /* Theme tokens (R18): the defaults ARE the Homestead-day skin (rustic
+     garden, Prize Almanac gilt). Season/day-night packs at the end of this
+     file override tokens under #cc-root[data-theme=…] — components never
+     hardcode a themed color. */
   --bg1: #221a0f;
   --bg2: #0f0b06;
+  --bg-glow: #35402a;
   --wood-dark: #241708;
   --wood: #3d2c17;
   --wood-lit: rgba(255, 214, 150, 0.12);
   --panel: rgba(46, 34, 19, 0.92);
   --panel-edge: #241708;
+  --row1: #4c3820;
+  --row2: #392a15;
   --paper: #ece0c2;
   --paper-2: #f4ead0;
   --paper-edge: #b09468;
+  --paper-lit: rgba(255, 250, 235, 0.6);
   --ink: #3b2b16;
   --ink-dim: #7a6748;
   --ink-carrot: #a3520e;
@@ -24,13 +32,35 @@
   --dim: #c0ac88;
   --carrot: #ff9232;
   --leaf: #6fbf5a;
+  --title: #d9a83f;
+  --ticker-bg1: #ece0c2;
+  --ticker-bg2: #ddcfa8;
+  --ticker-edge: #8a6a3d;
+  --ticker-ink: #5a4326;
+  --hero-edge: #4a3621;
+  --board1: #6b4a26;
+  --board2: #4a3218;
+  --board-ink: #f0e2c0;
+  --toast-bg1: #f4ead0;
+  --toast-bg2: #e2d4ae;
+  --toast-edge: #8a6a3d;
+  --toast-ink: #4a3418;
+  --btn1: #4a3621;
+  --btn2: #382714;
+  --patch-c: #9cc4e4;
+  --season-c: #e8c86a;
+  --seed-c: #eab8e4;
+  --sprout-c: #a8e6a0;
+  --buff-c: #ffd98a;
+  --locked: #333;
+  --locked-edge: #57503f;
   --serif: Georgia, 'Iowan Old Style', 'Palatino Linotype', Palatino, serif;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   background:
     url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/><feComponentTransfer><feFuncA type='linear' slope='0.05'/></feComponentTransfer></filter><rect width='140' height='140' filter='url(%23n)'/></svg>") repeat,
-    radial-gradient(ellipse 90% 60% at 50% -10%, #35402a 0%, transparent 60%),
+    radial-gradient(ellipse 90% 60% at 50% -10%, var(--bg-glow) 0%, transparent 60%),
     linear-gradient(180deg, var(--bg1) 0%, var(--bg2) 100%);
   color: var(--text);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -39,14 +69,14 @@
 
 /* ---------- news ticker: strip torn from the parish newsletter ---------- */
 #ticker {
-  background: linear-gradient(180deg, var(--paper) 0%, #ddcfa8 100%);
-  border-bottom: 3px solid #8a6a3d;
+  background: linear-gradient(180deg, var(--ticker-bg1) 0%, var(--ticker-bg2) 100%);
+  border-bottom: 3px solid var(--ticker-edge);
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
   padding: 7px 16px;
   font-family: var(--serif);
   font-size: 13.5px;
   font-style: italic;
-  color: #5a4326;
+  color: var(--ticker-ink);
   text-align: center;
   min-height: 31px;
   box-sizing: content-box;
@@ -85,9 +115,9 @@
   min-height: 250px;
   padding: 34px 8px; /* the png's frame is thin at stretched widths; 8px sits names snug to it (pd, eyeballed live) */
   box-sizing: border-box;
-  background: linear-gradient(160deg, #6b4a26, #4a3218);
+  background: linear-gradient(160deg, var(--board1), var(--board2));
   background-size: 100% 100%;
-  color: #f0e2c0;
+  color: var(--board-ink);
 }
 .board-half { flex: 1; min-width: 0; padding: 0 26px; display: flex; flex-direction: column; }
 .board-title {
@@ -146,18 +176,18 @@
 }
 #bank-label { color: var(--dim); font-family: var(--serif); font-size: 12px; letter-spacing: 0.2em; margin: 2px 0 4px; }
 #cps { color: var(--dim); font-size: 13px; font-variant-numeric: tabular-nums; }
-#buff-line { min-height: 20px; font-size: 12.5px; font-weight: 800; color: #ffd98a; margin-top: 3px; }
+#buff-line { min-height: 20px; font-size: 12.5px; font-weight: 800; color: var(--buff-c); margin-top: 3px; }
 #patch-line {
   font-size: 12px;
   font-weight: 700;
-  color: #9cc4e4;
+  color: var(--patch-c);
   margin-top: 4px;
   font-variant-numeric: tabular-nums;
 }
 #season-line {
   font-size: 11.5px;
   font-weight: 700;
-  color: #e8c86a;
+  color: var(--season-c);
   margin-top: 3px;
   min-height: 16px;
   font-variant-numeric: tabular-nums;
@@ -169,15 +199,15 @@
   margin: 8px auto 6px;
   border-radius: 6px;
   cursor: pointer;
-  border: 6px solid #4a3621;
+  border: 6px solid var(--hero-edge);
   box-sizing: border-box;
-  box-shadow: inset 0 0 0 1px #241708, 0 10px 30px rgba(0, 0, 0, 0.55);
+  box-shadow: inset 0 0 0 1px var(--panel-edge), 0 10px 30px rgba(0, 0, 0, 0.55);
   background: #1b2415;
   touch-action: manipulation;
 }
 #hero:active { transform: scale(0.995); }
-#seed-line { font-size: 12.5px; color: #eab8e4; min-height: 18px; }
-#sprout-line { font-size: 12.5px; color: #a8e6a0; min-height: 18px; font-variant-numeric: tabular-nums; }
+#seed-line { font-size: 12.5px; color: var(--seed-c); min-height: 18px; }
+#sprout-line { font-size: 12.5px; color: var(--sprout-c); min-height: 18px; font-variant-numeric: tabular-nums; }
 #prestige-btn {
   margin-top: 6px;
   width: 100%;
@@ -196,7 +226,7 @@
 #prestige-btn:active { transform: translateY(2px); box-shadow: inset 0 1px 0 rgba(255, 235, 250, 0.6), 0 1px 0 #6b3253; }
 .small-controls { margin-top: 10px; display: flex; gap: 6px; justify-content: center; }
 .small-controls button {
-  background: linear-gradient(180deg, #4a3621, #382714);
+  background: linear-gradient(180deg, var(--btn1), var(--btn2));
   border: 1px solid var(--panel-edge);
   color: var(--text);
   border-radius: 5px;
@@ -244,7 +274,7 @@
   overflow-y: auto;
   box-sizing: border-box;
   color: var(--ink);
-  box-shadow: inset 0 0 0 1px rgba(255, 250, 235, 0.6), inset 0 0 60px rgba(140, 100, 50, 0.18), 0 18px 50px rgba(0, 0, 0, 0.65);
+  box-shadow: inset 0 0 0 1px var(--paper-lit), inset 0 0 60px rgba(140, 100, 50, 0.18), 0 18px 50px rgba(0, 0, 0, 0.65);
 }
 #shed-box h2 {
   margin: 0 0 4px;
@@ -287,7 +317,7 @@
   font-weight: 800;
   font-size: 13px;
   cursor: pointer;
-  background: linear-gradient(180deg, #4a3621, #382714);
+  background: linear-gradient(180deg, var(--btn1), var(--btn2));
   color: var(--text);
   box-shadow: inset 0 1px 0 var(--wood-lit);
 }
@@ -297,7 +327,7 @@
   font-family: var(--serif);
   font-size: 11px;
   letter-spacing: 0.22em;
-  color: #d9b98a;
+  color: var(--title);
   margin: 14px 0 7px;
   font-weight: 700;
   border-bottom: 1px dashed rgba(200, 170, 120, 0.35);
@@ -345,10 +375,10 @@
   background: inherit;
   opacity: 0.7;
 }
-.ribbon.locked { background: #333 !important; opacity: 0.35; }
+.ribbon.locked { background: var(--locked) !important; opacity: 0.35; }
 
 /* the Almanac (R16): the world's book of deeds, one slot per page */
-#almanac-line { font-size: 11.5px; color: #d9b98a; margin: 0 0 6px; font-variant-numeric: tabular-nums; }
+#almanac-line { font-size: 11.5px; color: var(--title); margin: 0 0 6px; font-variant-numeric: tabular-nums; }
 #almanac-pages { display: flex; flex-wrap: wrap; gap: 4px; min-height: 18px; }
 #almanac-pages .a-page {
   width: 11px; height: 14px;
@@ -357,7 +387,7 @@
   border: 1px solid #b09468;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
-#almanac-pages .a-page.locked { background: #3a3225; border-color: #57503f; opacity: 0.4; }
+#almanac-pages .a-page.locked { background: var(--locked); border-color: var(--locked-edge); opacity: 0.4; }
 
 /* stats as a page from the almanac */
 #stats {
@@ -368,7 +398,7 @@
   font-size: 12.5px;
   line-height: 1.8;
   color: var(--ink-dim);
-  box-shadow: inset 0 0 0 1px rgba(255, 250, 235, 0.6), 0 2px 6px rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 0 1px var(--paper-lit), 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 #stats b { color: var(--ink); float: right; font-variant-numeric: tabular-nums; }
 #stats div { clear: both; }
@@ -387,7 +417,7 @@
   line-height: 1.5;
   color: var(--ink);
   z-index: 5;
-  box-shadow: inset 0 0 0 1px rgba(255, 250, 235, 0.6), 0 6px 16px rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 0 0 1px var(--paper-lit), 0 6px 16px rgba(0, 0, 0, 0.45);
 }
 #tooltip b { color: var(--ink-carrot); }
 #tooltip .flavor { font-family: var(--serif); font-style: italic; color: var(--ink-dim); }
@@ -395,7 +425,7 @@
 /* ---------- right: shop as wooden plank signs ---------- */
 .shop-head { display: flex; justify-content: space-between; align-items: center; }
 #buy-amount button {
-  background: linear-gradient(180deg, #4a3621, #382714);
+  background: linear-gradient(180deg, var(--btn1), var(--btn2));
   border: 1px solid var(--panel-edge);
   color: var(--dim);
   border-radius: 4px;
@@ -414,7 +444,7 @@
   background:
     linear-gradient(90deg, rgba(0, 0, 0, 0.14) 0%, transparent 5%, transparent 95%, rgba(0, 0, 0, 0.14) 100%),
     repeating-linear-gradient(180deg, rgba(0, 0, 0, 0) 0 5px, rgba(0, 0, 0, 0.05) 5px 6px),
-    linear-gradient(180deg, #4c3820, #392a15);
+    linear-gradient(180deg, var(--row1), var(--row2));
   border: 1px solid var(--panel-edge);
   border-radius: 5px 8px 6px 9px / 8px 5px 9px 6px;
   padding: 8px 12px;
@@ -452,15 +482,15 @@
 }
 /* kraft luggage tags on twine */
 .toast {
-  background: linear-gradient(180deg, var(--paper-2), #e2d4ae);
-  border: 1px solid #8a6a3d;
-  color: #4a3418;
+  background: linear-gradient(180deg, var(--toast-bg1), var(--toast-bg2));
+  border: 1px solid var(--toast-edge);
+  color: var(--toast-ink);
   border-radius: 3px;
   padding: 8px 18px;
   font-size: 13.5px;
   font-weight: 700;
   animation: toast-in 0.25s ease-out;
-  box-shadow: inset 0 0 0 1px rgba(255, 250, 235, 0.6), 0 6px 18px rgba(0, 0, 0, 0.55);
+  box-shadow: inset 0 0 0 1px var(--paper-lit), 0 6px 18px rgba(0, 0, 0, 0.55);
 }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-8px) rotate(-0.6deg); } }
 
@@ -478,7 +508,7 @@
   max-width: 430px;
   text-align: center;
   color: var(--ink);
-  box-shadow: inset 0 0 0 1px rgba(255, 250, 235, 0.6), inset 0 0 60px rgba(140, 100, 50, 0.18), 0 18px 50px rgba(0, 0, 0, 0.65);
+  box-shadow: inset 0 0 0 1px var(--paper-lit), inset 0 0 60px rgba(140, 100, 50, 0.18), 0 18px 50px rgba(0, 0, 0, 0.65);
 }
 #modal-box h2 { margin: 0 0 10px; font-family: var(--serif); color: #9c3f80; }
 #modal-box p { font-size: 14px; line-height: 1.6; color: var(--ink); }
@@ -498,7 +528,7 @@
   box-shadow: inset 0 1px 0 rgba(255, 235, 250, 0.6), 0 2px 0 #6b3253;
 }
 #modal-no {
-  background: linear-gradient(180deg, #4a3621, #382714);
+  background: linear-gradient(180deg, var(--btn1), var(--btn2));
   color: var(--text);
   border: 1px solid var(--panel-edge);
   box-shadow: inset 0 1px 0 var(--wood-lit);
@@ -518,3 +548,123 @@
 }
 
 .hidden { display: none !important; }
+
+/* ================================================================
+   Season theme packs (R18). data-theme = "<season>-<day|night>", set by
+   ui.js from the server's season + the player's ☀/🌙 preference. The
+   default token block above IS homestead-day. Light-ground packs also
+   retune the few shadows that were cut for dark ground.
+   ================================================================ */
+
+/* ---- Homestead night: the moonlit allotment ---- */
+#cc-root[data-theme="homestead-night"] {
+  --bg1: #0d1420; --bg2: #070b14; --bg-glow: #26365a;
+  --panel-edge: #10182a;
+  --row1: #223530; --row2: #16241f;
+  --wood-lit: rgba(134, 239, 196, 0.08);
+  --paper: #1b2636; --paper-2: #223047; --paper-edge: #3a4a66;
+  --paper-lit: rgba(255, 255, 255, 0.05);
+  --ink: #e6edf7; --ink-dim: #8fa3bd; --ink-carrot: #ffa04a; --ink-leaf: #86efc4;
+  --text: #e6edf7; --dim: #8fa3bd;
+  --carrot: #ffa04a; --leaf: #86efc4;
+  --title: #8fa3bd;
+  --ticker-bg1: #16202e; --ticker-bg2: #121a28; --ticker-edge: #2a3a52; --ticker-ink: #8fa3bd;
+  --hero-edge: #2a4a3c;
+  --board1: #3a3020; --board2: #241c10; --board-ink: #d8cfc0;
+  --toast-bg1: #1b2636; --toast-bg2: #141c2a; --toast-edge: #6a5a9a; --toast-ink: #e6edf7;
+  --btn1: #223047; --btn2: #182338;
+  --patch-c: #86efc4; --season-c: #c3b1f0; --seed-c: #c3b1f0; --sprout-c: #86efc4;
+  --locked: #24303f; --locked-edge: #3a4a5e;
+}
+
+/* ---- County Fair, daylight: canvas tents under a blue sky ---- */
+#cc-root[data-theme="fair-day"] {
+  --bg1: #5f97c8; --bg2: #e0cfa0; --bg-glow: #ffffff;
+  --panel-edge: #b89a68;
+  --row1: #f6ead2; --row2: #e8d6ac;
+  --wood-lit: rgba(255, 255, 255, 0.55);
+  --paper: #f6ead2; --paper-2: #fdf4de; --paper-edge: #d8c096;
+  --paper-lit: rgba(255, 255, 255, 0.7);
+  --ink: #58381c; --ink-dim: #8a6a48; --ink-carrot: #b04424; --ink-leaf: #3c7030;
+  --text: #4a3020; --dim: #7a6248;
+  --carrot: #e05a1a; --leaf: #3c7030;
+  --title: #b04424;
+  --ticker-bg1: #c8452c; --ticker-bg2: #b03a22; --ticker-edge: #7c2c1a; --ticker-ink: #fff3da;
+  --hero-edge: #c8452c;
+  --toast-bg1: #fdf4de; --toast-bg2: #f0e2c0; --toast-edge: #c8452c; --toast-ink: #58381c;
+  --btn1: #e8d6ac; --btn2: #d8c096;
+  --patch-c: #1f5c8e; --season-c: #b04424; --seed-c: #a8447e; --sprout-c: #3c7030;
+  --buff-c: #b06018;
+  --locked: #d0c2a0; --locked-edge: #b8a67e;
+}
+#cc-root[data-theme="fair-day"] .wordmark,
+#cc-root[data-theme="market-day"] .wordmark { text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6); }
+#cc-root[data-theme="fair-day"] #bank,
+#cc-root[data-theme="market-day"] #bank { text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7); }
+#cc-root[data-theme="fair-day"] .b-row .b-name,
+#cc-root[data-theme="market-day"] .b-row .b-name { text-shadow: none; }
+#cc-root[data-theme="fair-day"] .b-row .b-count,
+#cc-root[data-theme="market-day"] .b-row .b-count { color: rgba(90, 60, 20, 0.45); text-shadow: none; }
+#cc-root[data-theme="fair-day"] .panel-title,
+#cc-root[data-theme="market-day"] .panel-title { border-bottom-color: rgba(120, 90, 50, 0.35); }
+
+/* ---- County Fair, night: string lights against the dusk ---- */
+#cc-root[data-theme="fair-night"] {
+  --bg1: #222847; --bg2: #101323; --bg-glow: #4a3a60;
+  --panel-edge: #141a2e;
+  --row1: #2b3330; --row2: #1c2320;
+  --wood-lit: rgba(242, 239, 228, 0.08);
+  --paper: #f6ead2; --paper-2: #fdf4de; --paper-edge: #d8c096;
+  --ink: #58381c; --ink-dim: #8a6a48; --ink-carrot: #b04424; --ink-leaf: #3c7030;
+  --text: #f2ead6; --dim: #b9bfd8;
+  --carrot: #ff9860; --leaf: #a8d894;
+  --title: #e5b95e;
+  --ticker-bg1: #f6ead2; --ticker-bg2: #eeddb8; --ticker-edge: #58281a; --ticker-ink: #7c3c22;
+  --hero-edge: #c8452c;
+  --board1: #58281a; --board2: #3a1c12; --board-ink: #f2d492;
+  --toast-bg1: #c8452c; --toast-bg2: #b03a22; --toast-edge: #f2d492; --toast-ink: #fff3da;
+  --btn1: #58281a; --btn2: #401e12;
+  --patch-c: #92c8f0; --season-c: #e5b95e; --seed-c: #f0b8e0; --sprout-c: #a8d894;
+}
+
+/* ---- Market Days: the morning farmstand ---- */
+#cc-root[data-theme="market-day"] {
+  --bg1: #8ecae6; --bg2: #f2e6cc; --bg-glow: #ffffff;
+  --panel-edge: #d8c69c;
+  --row1: #fffdf6; --row2: #f7efdd;
+  --wood-lit: rgba(255, 255, 255, 0.7);
+  --paper: #fffdf6; --paper-2: #fff8ea; --paper-edge: #e4d4ae;
+  --paper-lit: rgba(255, 255, 255, 0.8);
+  --ink: #3a2f1d; --ink-dim: #8a7a56; --ink-carrot: #c2551a; --ink-leaf: #2e7d43;
+  --text: #3a2f1d; --dim: #6f6248;
+  --carrot: #f2701d; --leaf: #4c9a3f;
+  --title: #8a7a56;
+  --ticker-bg1: #2e7d43; --ticker-bg2: #256838; --ticker-edge: #1c4c28; --ticker-ink: #f2f7e8;
+  --hero-edge: #e4d4ae;
+  --toast-bg1: #fffdf6; --toast-bg2: #f7efdd; --toast-edge: #57a83c; --toast-ink: #2e6420;
+  --btn1: #f2e6cc; --btn2: #e4d4ae;
+  --patch-c: #1f6f9e; --season-c: #b04424; --seed-c: #a8447e; --sprout-c: #2e7d43;
+  --buff-c: #b06018;
+  --locked: #ddd2b8; --locked-edge: #c4b898;
+}
+
+/* ---- The Night Market: lanterns in the indigo ---- */
+#cc-root[data-theme="market-night"] {
+  --bg1: #231d3e; --bg2: #120e24; --bg-glow: #4a3466;
+  --panel-edge: #171230;
+  --row1: #2c2448; --row2: #231d3a;
+  --wood-lit: rgba(255, 190, 100, 0.1);
+  --paper: #2c2448; --paper-2: #342a52; --paper-edge: #5a4a80;
+  --paper-lit: rgba(255, 255, 255, 0.05);
+  --ink: #f0e8d8; --ink-dim: #a89ac0; --ink-carrot: #ffb054; --ink-leaf: #8fd098;
+  --text: #f0e8d8; --dim: #a89ac0;
+  --carrot: #ffb054; --leaf: #8fd098;
+  --title: #e8c86a;
+  --ticker-bg1: #2c2448; --ticker-bg2: #241d3c; --ticker-edge: #e8a83c; --ticker-ink: #e8c86a;
+  --hero-edge: #5a4a80;
+  --board1: #3a2c20; --board2: #241a10; --board-ink: #e8d8b8;
+  --toast-bg1: #2c2448; --toast-bg2: #231d3a; --toast-edge: #e8a83c; --toast-ink: #f0e8d8;
+  --btn1: #342a52; --btn2: #282045;
+  --patch-c: #8fd098; --season-c: #e8c86a; --seed-c: #d8a8e8; --sprout-c: #8fd098;
+  --locked: #241f38; --locked-edge: #443a60;
+}
