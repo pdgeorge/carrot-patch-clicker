@@ -147,6 +147,10 @@ pbad = Economy(load_data())
 pbad.deserialize(dict(bad))
 check(pbad.shed_level("l0") == 800 and pbad.shed_level("hax") == 0 and pbad.shed_level("p0") == 1,
       "forged shed levels clamp, unknown ids drop, legacy true survives")
+bad_season = Economy(load_data())
+bad_season.deserialize({"v": 1, "season": ["hax"], "seasonStart": {"no": 1}})
+check(bad_season.season == "homestead" and bad_season.season_start == 0.0,
+      "an unhashable forged season cannot crash the server (review f1)")
 check("fake" not in pbad.almanac and pbad.almanac.get("sd0") is True
       and math.isfinite(pbad.shed_cost("l0")) and math.isfinite(pbad.global_mult()),
       "junk almanac keys drop, real history stays, costs stay finite")

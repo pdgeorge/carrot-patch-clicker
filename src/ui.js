@@ -569,7 +569,7 @@ CC.UI = class {
       const each = b.cps * core.buildingMult(what.i) * core.globalMult();
       const owned = core.owned[what.i];
       const next = core.nextBumperAt(what.i);
-      tip.innerHTML = `<b>${b.name}</b> — ${CC.fmt(core.costOf(what.i, this.buyN))} 🥕` +
+      tip.innerHTML = `<b>${b.name}</b> — ${CC.fmt(Math.ceil(core.costOf(what.i, this.buyN)))} 🥕` +
         `<br>Each produces <b>${CC.fmt(each)}</b>/s` +
         (owned ? ` · ${owned} owned making ${CC.fmt(each * owned)}/s` : '') +
         (next ? `<br>🌾 Bumper crop at <b>${next}</b> owned: +1% to ALL production` : '<br>🌾 Every bumper crop harvested!') +
@@ -649,15 +649,22 @@ CC.UI = class {
     const buff = c.buffs[0];
     this.$('buff-line').textContent = buff ? `⚡ ${buff.name} ×${buff.mult} — ${Math.ceil(buff.left)}s` : '';
 
-    /* season (R17): the world's shared festival, clock always visible */
-    if (this.worldMode && this.patch && this.patch.everSynced) {
+    /* season (R17): the world's shared festival, clock always visible —
+       but only when the server actually runs a calendar (seasonEnds > 0;
+       a pre-R17 server must not produce a "0 days left" standing lie) */
+    if (this.worldMode && this.patch && this.patch.everSynced && this.patch.seasonEnds > 0) {
       const sd = c.seasonData();
       const sl = this.$('season-line');
+      sl.classList.remove('hidden');
       if (sd) {
-        const days = this.patch.seasonEnds
-          ? Math.max(0, Math.ceil((this.patch.seasonEnds - Date.now() / 1000) / 86400)) : 0;
-        sl.classList.remove('hidden');
+        /* clamp: client clocks skew — never show more than a full season
+           or negative time */
+        const days = Math.max(0, Math.min(CC.SEASON_DAYS,
+          Math.ceil((this.patch.seasonEnds - Date.now() / 1000) / 86400)));
         sl.textContent = `🎪 ${sd.name} — ${days} day${days === 1 ? '' : 's'} left · ${sd.bonus}`;
+      } else {
+        /* the server rotated into a season this build doesn't know */
+        sl.textContent = '🎪 A new season is on — refresh the page to join it!';
       }
     }
 
@@ -720,8 +727,10 @@ CC.UI = class {
         row.classList.toggle('cant', isNextMystery || c.bank < cost);
         const next = c.nextBumperAt(i);
         row.querySelector('.b-name').textContent = isNextMystery ? '???' : b.name;
+        /* ceil the label: fractional prices (1.15^n, Market discounts) must
+           never display cheaper than they charge */
         row.querySelector('.b-cost').textContent = isNextMystery ? ''
-          : `${CC.fmt(cost)} 🥕${this.buyN > 1 ? ` ×${this.buyN}` : ''}` +
+          : `${CC.fmt(Math.ceil(cost))} 🥕${this.buyN > 1 ? ` ×${this.buyN}` : ''}` +
             (c.owned[i] > 0 && next ? `  ·  🌾${c.owned[i]}/${next}` : '');
         row.querySelector('.b-count').textContent = c.owned[i] || '';
       });

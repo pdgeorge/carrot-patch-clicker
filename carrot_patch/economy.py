@@ -433,7 +433,10 @@ class Economy:
             if raw_al.get(pg["id"]):
                 self.almanac[pg["id"]] = True
         known_seasons = {x["id"] for x in self.d.get("seasons", [])}
-        self.season = s.get("season") if s.get("season") in known_seasons else "homestead"
+        raw_season = s.get("season")
+        # isinstance first: a forged list/dict is unhashable and `in set` raises
+        self.season = (raw_season if isinstance(raw_season, str) and raw_season in known_seasons
+                       else "homestead")
         raw_ss = s.get("seasonStart", 0)
         self.season_start = (min(float(raw_ss), time.time())
                              if isinstance(raw_ss, (int, float)) and not isinstance(raw_ss, bool)

@@ -191,9 +191,11 @@ class Patch:
                 if seasons:
                     idx = next((i for i, s in enumerate(seasons)
                                 if s["id"] == self.eco.season), 0)
+                    prev = self.eco.season
                     self.eco.season = seasons[(idx + steps) % len(seasons)]["id"]
                     self.eco.season_start += steps * period
-                    self.emit({"type": "season", "id": self.eco.season})
+                    if self.eco.season != prev:  # a 42-day catch-up can lap the wheel
+                        self.emit({"type": "season", "id": self.eco.season})
                     self.save()
 
             # golden rabbit lifecycle (global!)

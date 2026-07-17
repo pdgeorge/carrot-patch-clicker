@@ -248,7 +248,8 @@ check(se.cps() === seCps && se.costOf(0, 1) === seCost, 'unknown seasons behave 
 se.season = 'fair';
 const se2 = new CC.Core();
 se2.deserialize(JSON.parse(JSON.stringify(se.serialize())));
-check(se2.season === 'fair', 'the season survives the save');
+check(se2.season === 'homestead',
+  'the dev garden never persists a season — ?season= is per-session only');
 se2.deserialize({ ...JSON.parse(JSON.stringify(se.serialize())), season: 'hax' });
 check(se2.season === 'homestead', 'junk seasons sanitize to homestead');
 
@@ -265,7 +266,9 @@ for (const u of CC.SHED) {
   if (u.mult) beta += Math.log(u.mult) / Math.log(u.costGrowth);
   if (u.bmult) beta += Math.log(u.bmult) / Math.log(u.costGrowth) / CC.BUILDINGS.length;
 }
-check(beta < 0.75, `β-budget ${beta.toFixed(3)} < 0.75 (runaway inflation at 1)`);
+/* 0.62 pins the 2026-07 tail stretch: reverting to per-decade tail rungs
+   pushes β back to 0.639 and must trip here (runaway inflation at 1) */
+check(beta < 0.62, `β-budget ${beta.toFixed(3)} < 0.62`);
 
 /* dynamic projection: 300 modeled springs from the live state must
    DECELERATE (polynomial growth) — this is the tripwire that actually

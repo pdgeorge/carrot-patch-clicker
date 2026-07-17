@@ -362,7 +362,10 @@ CC.Core = class {
       clicks: this.clicks, owned: this.owned, bought: this.bought, seeds: this.seeds,
       sprouts: this.sprouts, shed: this.shed,
       prestiges: this.prestiges, rabbits: this.rabbits, sproutsSpent: this.sproutsSpent,
-      almanac: this.almanac, season: this.season,
+      almanac: this.almanac,
+      /* season deliberately NOT saved: the dev garden has no calendar, and a
+         ?season= theme test must never persist its bonus into the solo save;
+         the world's season lives in the server save (economy.py) */
       buffs: this.buffs.map(b => ({ ...b })), /* a frenzy survives a mid-buff reload */
       last: Date.now(),
     };
