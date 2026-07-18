@@ -84,6 +84,7 @@ CC.UI = class {
 
     this.buildStatic();
     this.dayNight = this.pref('carrot-daynight') || 'auto'; /* ☀/🌙 is a display preference */
+    this.autoClick = this.pref('carrot-autoclick') === '1'; /* RSI-friendly steady clicker */
     this.applyTheme();
     this.$('build-tag').textContent = `build ${CC.BUILD || 'dev'}`;
     this.load();
@@ -335,6 +336,17 @@ CC.UI = class {
       this.setPref('carrot-daynight', this.dayNight);
       this.$('daynight-btn').textContent = dnLabel();
       this.applyTheme();
+    });
+    const ab = this.$('auto-btn');
+    ab.classList.toggle('on', this.autoClick);
+    ab.addEventListener('click', () => {
+      CC.audio.ensure();
+      this.autoClick = !this.autoClick;
+      ab.classList.toggle('on', this.autoClick);
+      this.setPref('carrot-autoclick', this.autoClick ? '1' : '');
+      this.toast(this.autoClick
+        ? '🖱 Auto-click on — the garden pulls itself. Rest those wrists.'
+        : '🖱 Auto-click off.');
     });
     this.$('wipe-btn').addEventListener('click', () => {
       if (this.t - this._wipeArm < 3) {
@@ -682,16 +694,42 @@ CC.UI = class {
       for (const e of events) this.patchEvent(e);
     }
 
+    /* auto-click (accessibility): a steady 8/s with gentler feedback —
+       no per-click pop, one cumulative float per second */
+    if (this.autoClick && !this.awaitingWorld()) {
+      this._acT = (this._acT || 0) + dt;
+      while (this._acT >= 0.125) {
+        this._acT -= 0.125;
+        const g = this.core.click();
+        if (this.patchOn()) this.patch.pending++;
+        this.squash = Math.max(this.squash, 0.45);
+        this._acN = (this._acN || 0) + 1;
+        if (this._acN % 8 === 0) {
+          this.floats.push({ x: 160 + (Math.random() - 0.5) * 60, y: this.soilY - 46,
+            vy: -55, life: 1, text: `+${CC.fmt(g * 8)}` });
+        }
+      }
+    }
+
     /* golden rabbit lifecycle (locally scheduled only in the dev garden) */
     if (!this.worldMode && !this.rabbit && this.t >= this.nextRabbit) {
       this.rabbit = { x: -30, y: this.soilY - 14, dir: 1, born: this.t };
     }
     if (this.rabbit) {
       const r = this.rabbit;
-      r.x += r.dir * 55 * dt;
-      if (r.x > this.canvas.width - 20) r.dir = -1;
-      if (r.x < 20 && r.dir === -1) r.dir = 1;
-      if (this.t - r.born > (r.patchTtl || 12)) {
+      const ttl = r.patchTtl || 12;
+      /* a rabbit doesn't blink out of existence — with 2.5s left it warns
+         and bounds off toward the nearest hedge gap */
+      if (!r.leaving && this.t - r.born > ttl - 2.5) {
+        r.leaving = true;
+        r.dir = r.x < this.canvas.width / 2 ? -1 : 1;
+        this.toast('🐇 The golden rabbit is hopping away…');
+      }
+      r.x += r.dir * (r.leaving ? 170 : 55) * dt;
+      if (!r.leaving) {
+        if (r.x > this.canvas.width - 20) r.dir = -1;
+        if (r.x < 20 && r.dir === -1) r.dir = 1;
+      } else if (r.x < -40 || r.x > this.canvas.width + 40) {
         this.rabbit = null;
         this.nextRabbit = this.t + 75 + Math.random() * 105;
       }
@@ -877,8 +915,17 @@ CC.UI = class {
       x.fillRect(0, 0, W, H);
     }
 
-    /* the carrot: grows with lifetime harvest */
-    const size = 0.55 + Math.min(1.35, Math.log10(1 + c.totalAllTime) * 0.11);
+    /* the carrot: in the world it grows over the SEASON — a sprout at the
+       season's dawn, a prize giant by its end (bounds 0.7–1.9), resetting
+       when the calendar turns; the dev garden keeps lifetime growth */
+    let size;
+    if (this.worldMode && this.patch && this.patch.seasonEnds > 0) {
+      const period = CC.SEASON_DAYS * 86400;
+      const prog = Math.min(1, Math.max(0, 1 - (this.patch.seasonEnds - Date.now() / 1000) / period));
+      size = 0.7 + 1.2 * prog;
+    } else {
+      size = 0.55 + Math.min(1.35, Math.log10(1 + c.totalAllTime) * 0.11);
+    }
     const cx = W / 2, crownY = this.soilY + 4;
     const bodyLen = 120 * size, girth = 26 * size;
     const sq = 1 - this.squash * 0.12;

@@ -22,7 +22,7 @@ const BUILD_INPUTS = [
   'build.js',
   'src/styles.css', 'src/page.html',
   'src/data.js', 'src/core.js', 'src/net.js', 'src/ui.js',
-  'src/community_board.png', 'contributors.txt',
+  'contributors.txt',
   'carrot_patch/__init__.py', 'carrot_patch/economy.py', 'carrot_patch/main.py',
   'carrot_patch/tenders.py', 'carrot_patch/blocklist.txt',
 ];
@@ -35,10 +35,7 @@ const GARDENERS = readOpt('contributors.txt').toString('utf8').split('\n')
   .map(l => l.trim()).filter(l => l && !l.startsWith('#'));
 
 const JS_ORDER = ['data.js', 'core.js', 'net.js', 'ui.js'];
-const boardPng = readOpt('src/community_board.png');
-const css = read('styles.css') + (boardPng.length ? `
-#noticeboard { background-image: url(data:image/png;base64,${boardPng.toString('base64')}); }
-` : '');
+const css = read('styles.css'); /* the noticeboard is pure CSS now (R18) */
 const js = `globalThis.CC = globalThis.CC || {}; CC.BUILD = '${BUILD}'; `
   + `CC.GARDENERS = ${JSON.stringify(GARDENERS)};\n`
   + JS_ORDER.map(f => `/* ==== ${f} ==== */\n${read(f)}`).join('\n');

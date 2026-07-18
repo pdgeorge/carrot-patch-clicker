@@ -54,6 +54,8 @@
   --buff-c: #ffd98a;
   --locked: #333;
   --locked-edge: #57503f;
+  --felt1: #64735f;
+  --felt2: #4b584a;
   --serif: Georgia, 'Iowan Old Style', 'Palatino Linotype', Palatino, serif;
   min-height: 100vh;
   display: flex;
@@ -105,21 +107,43 @@
   #col-left, #col-right { width: 100%; }
 }
 
-/* ---------- the community noticeboard (DESIGN R11) ---------- */
-/* build.js swaps the fallback background for community_board.png (inlined
-   as a data URI) when src/community_board.png exists; the image's frame
-   and centre post delineate the two halves */
+/* ---------- the community noticeboard (DESIGN R11/R18) ---------- */
+/* a real pin board, drawn in CSS (community_board.png retired): grey-green
+   felt in a themed wooden frame, brass pins in the corners, a centre post
+   splitting the two halves */
 #noticeboard {
   display: flex;
   margin-top: 16px;
   min-height: 250px;
-  padding: 34px 8px; /* the png's frame is thin at stretched widths; 8px sits names snug to it (pd, eyeballed live) */
+  padding: 20px 16px;
   box-sizing: border-box;
-  background: linear-gradient(160deg, var(--board1), var(--board2));
-  background-size: 100% 100%;
+  position: relative;
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/><feComponentTransfer><feFuncA type='linear' slope='0.07'/></feComponentTransfer></filter><rect width='140' height='140' filter='url(%23n)'/></svg>") repeat,
+    linear-gradient(160deg, var(--felt1) 0%, var(--felt2) 100%);
+  border: 12px solid transparent;
+  border-image: linear-gradient(160deg, var(--board1), var(--board2)) 1;
+  box-shadow: inset 0 2px 12px rgba(0, 0, 0, 0.45), 0 4px 14px rgba(0, 0, 0, 0.35);
   color: var(--board-ink);
 }
+#noticeboard::before,
+#noticeboard::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f0d898, #a87c2c 70%);
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.5);
+}
+#noticeboard::before { left: 9px; }
+#noticeboard::after { right: 9px; }
 .board-half { flex: 1; min-width: 0; padding: 0 26px; display: flex; flex-direction: column; }
+.board-half + .board-half {
+  border-left: 8px solid var(--board2); /* the centre post */
+  box-shadow: -1px 0 0 rgba(0, 0, 0, 0.35), inset 3px 0 6px rgba(0, 0, 0, 0.25);
+}
 .board-title {
   font-family: var(--serif);
   font-weight: 800;
@@ -235,6 +259,7 @@
   font-size: 14px;
   box-shadow: inset 0 1px 0 var(--wood-lit);
 }
+.small-controls button.on { border-color: var(--carrot); box-shadow: inset 0 1px 0 var(--wood-lit), 0 0 8px rgba(255, 146, 50, 0.35); }
 
 /* ---------- the Potting Shed (R13) ---------- */
 #shed-btn {
@@ -575,6 +600,7 @@
   --btn1: #223047; --btn2: #182338;
   --patch-c: #86efc4; --season-c: #c3b1f0; --seed-c: #c3b1f0; --sprout-c: #86efc4;
   --locked: #24303f; --locked-edge: #3a4a5e;
+  --felt1: #3e4a44; --felt2: #2c3630;
 }
 
 /* ---- County Fair, daylight: canvas tents under a blue sky ---- */
@@ -667,4 +693,5 @@
   --btn1: #342a52; --btn2: #282045;
   --patch-c: #8fd098; --season-c: #e8c86a; --seed-c: #d8a8e8; --sprout-c: #8fd098;
   --locked: #241f38; --locked-edge: #443a60;
+  --felt1: #414a50; --felt2: #303a3e;
 }

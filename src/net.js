@@ -136,8 +136,14 @@ CC.Patch = class {
       /* the golden rabbit is global: server says whether one is loose */
       if (msg.rabbitTtl > 0 && !ui.rabbit) {
         ui.rabbit = { x: -30, y: ui.soilY - 14, dir: 1, born: ui.t, patchTtl: msg.rabbitTtl };
-      } else if (msg.rabbitTtl <= 0 && ui.rabbit) {
-        ui.rabbit = null;
+      } else if (msg.rabbitTtl > 0 && ui.rabbit) {
+        /* stay in step with the world's clock so the leaving-warning is timely */
+        ui.rabbit.patchTtl = msg.rabbitTtl;
+        ui.rabbit.born = ui.t;
+      } else if (msg.rabbitTtl <= 0 && ui.rabbit && !ui.rabbit.leaving) {
+        /* caught elsewhere or expired: bound away gracefully, don't blink out */
+        ui.rabbit.leaving = true;
+        ui.rabbit.dir = ui.rabbit.x < 160 ? -1 : 1;
       }
       ui.updatePatchLine();
     } else if (msg.type === 'event') {
