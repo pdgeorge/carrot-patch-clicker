@@ -236,6 +236,20 @@ CC.Core = class {
     return true;
   }
 
+  /* largest count the bank affords right now (R20 "Max"): invert the
+     geometric sum, then verify ±1 against costOf so float drift can never
+     overcharge; capped at 5000 to keep 1.15^n inside double range */
+  maxAffordable(i) {
+    const r = 1.15;
+    const s = this.seasonData();
+    const c0 = CC.BUILDINGS[i].cost * Math.pow(r, this.owned[i]) * (1 - ((s && s.priceOff) || 0));
+    if (this.bank < c0) return 0;
+    let m = Math.min(5000, Math.floor(Math.log(1 + this.bank * (r - 1) / c0) / Math.log(r)));
+    while (m > 0 && this.costOf(i, m) > this.bank) m--;
+    while (m < 5000 && this.costOf(i, m + 1) <= this.bank) m++;
+    return m;
+  }
+
   /* ---------- the Potting Shed (R13/R15) ---------- */
   /* Levels: a one-shot item goes 0→1; a `repeat` item climbs forever (or to
      `max`) at ceil(cost·costGrowth^level) sprouts. Pre-R15 saves stored

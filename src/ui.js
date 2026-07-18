@@ -313,10 +313,10 @@ CC.UI = class {
       this.doClick(mx, my);
     });
     this.$('buy-amount').addEventListener('click', e => {
-      if (e.target.dataset.n) {
-        this.buyN = +e.target.dataset.n;
-        for (const b of this.$('buy-amount').children) b.classList.toggle('on', +b.dataset.n === this.buyN);
-      }
+      const v = e.target.dataset.n;
+      if (!v) return;
+      this.buyN = v === 'max' ? 'max' : +v; /* ×1 · ×5 · ×10 · Max (R20) */
+      for (const b of this.$('buy-amount').children) b.classList.toggle('on', b.dataset.n === v);
     });
     this.$('shed-btn').addEventListener('click', () => this.$('shed').classList.remove('hidden'));
     this.$('shed-close').addEventListener('click', () => this.$('shed').classList.add('hidden'));
@@ -386,14 +386,16 @@ CC.UI = class {
   buyBuilding(i, n) {
     if (this.awaitingWorld()) return;
     CC.audio.ensure();
+    /* 'max' resolves against the bank as it stands — locally for the dev
+       garden, on the SERVER for the world (the shared bank moves) */
+    const count = n === 'max' ? this.core.maxAffordable(i) : n;
     if (this.worldMode) {
-      /* intent only — the next snapshot carries the world's answer */
-      if (this.core.bank >= this.core.costOf(i, n)) CC.audio.thunk();
+      if (count >= 1) CC.audio.thunk(); /* prediction; the snapshot settles it */
       this.patch.send({ type: 'buy', b: i, n });
       return;
     }
     /* all-or-nothing, exactly like the ×N price on the row (audit f9) */
-    if (this.core.buy(i, n)) CC.audio.thunk();
+    if (count >= 1 && this.core.buy(i, count)) CC.audio.thunk();
   }
 
   buyUpgrade(id) {
@@ -694,7 +696,8 @@ CC.UI = class {
       const each = b.cps * core.buildingMult(what.i) * core.globalMult();
       const owned = core.owned[what.i];
       const next = core.nextBumperAt(what.i);
-      tip.innerHTML = `<b>${b.name}</b> — ${CC.fmt(Math.ceil(core.costOf(what.i, this.buyN)))} 🥕` +
+      const tn = this.buyN === 'max' ? Math.max(1, core.maxAffordable(what.i)) : this.buyN;
+      tip.innerHTML = `<b>${b.name}</b> — ${CC.fmt(Math.ceil(core.costOf(what.i, tn)))} 🥕${tn > 1 ? ` ×${tn}` : ''}` +
         `<br>Each produces <b>${CC.fmt(each)}</b>/s` +
         (owned ? ` · ${owned} owned making ${CC.fmt(each * owned)}/s` : '') +
         (next ? `<br>🌾 Bumper crop at <b>${next}</b> owned: +1% to ALL production` : '<br>🌾 Every bumper crop harvested!') +
@@ -931,14 +934,17 @@ CC.UI = class {
         if (known) revealed++;
         row.classList.toggle('hidden', !known && !isNextMystery);
         row.classList.toggle('mystery', isNextMystery);
-        const cost = c.costOf(i, this.buyN);
+        /* Max shows what it would actually buy right now (≥1 so an
+           unaffordable row still shows the single price, greyed) */
+        const bn = this.buyN === 'max' ? Math.max(1, c.maxAffordable(i)) : this.buyN;
+        const cost = c.costOf(i, bn);
         row.classList.toggle('cant', isNextMystery || c.bank < cost);
         const next = c.nextBumperAt(i);
         row.querySelector('.b-name').textContent = isNextMystery ? '???' : b.name;
         /* ceil the label: fractional prices (1.15^n, Market discounts) must
            never display cheaper than they charge */
         row.querySelector('.b-cost').textContent = isNextMystery ? ''
-          : `${CC.fmt(Math.ceil(cost))} 🥕${this.buyN > 1 ? ` ×${this.buyN}` : ''}` +
+          : `${CC.fmt(Math.ceil(cost))} 🥕${bn > 1 ? ` ×${bn}` : ''}` +
             (c.owned[i] > 0 && next ? `  ·  🌾${c.owned[i]}/${next}` : '');
         row.querySelector('.b-count').textContent = c.owned[i] || '';
       });

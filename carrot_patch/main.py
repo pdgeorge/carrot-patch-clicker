@@ -285,9 +285,17 @@ class Patch:
 
         elif kind == "buy":
             b = msg.get("b")
-            n = 10 if msg.get("n") == 10 else 1
             if isinstance(b, int) and not isinstance(b, bool) and 0 <= b < len(eco.owned):
-                bought = eco.buy(b, n)
+                raw_n = msg.get("n")
+                if raw_n == "max":
+                    # Max resolves HERE, against the bank as it is now —
+                    # the shared bank moves between click and arrival (R20)
+                    n = eco.max_affordable(b)
+                elif raw_n in (5, 10) and not isinstance(raw_n, bool):
+                    n = int(raw_n)
+                else:
+                    n = 1
+                bought = eco.buy(b, n) if n else 0
                 if bought and conn.get("name"):
                     self.tenders.bump(conn["name"], buildings=bought)
 
