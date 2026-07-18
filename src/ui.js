@@ -760,11 +760,22 @@ CC.UI = class {
         this._acT -= 0.125;
         const g = this.core.click();
         if (this.patchOn()) this.patch.pending++;
-        this.squash = Math.max(this.squash, 0.45);
         this._acN = (this._acN || 0) + 1;
         if (this._acN % 8 === 0) {
+          /* one visible pull per second — a distinct squash synced with the
+             +N float — instead of an 8 Hz vibration (the clicks themselves
+             still land every 125 ms; only the animation breathes slower) */
+          this.squash = Math.max(this.squash, 0.8);
           this.floats.push({ x: 160 + (Math.random() - 0.5) * 60, y: this.soilY - 46,
             vy: -55, life: 1, text: `+${CC.fmt(g * 8)}` });
+          for (let i = 0; i < 3; i++) {
+            this.particles.push({
+              x: 160 + (Math.random() - 0.5) * 30, y: this.soilY + 6,
+              vx: (Math.random() - 0.5) * 110, vy: -70 - Math.random() * 80,
+              life: 0.6 + Math.random() * 0.3,
+              col: Math.random() < 0.6 ? '#5a4128' : '#ff9232',
+            });
+          }
         }
       }
     }
