@@ -281,6 +281,9 @@ check(vz.visitorReward('parsnip', () => 0.1).kind === 'embargo'
 vz.buffs = [];
 const coup = vz.visitorReward('parsnip', () => 0.9);
 check(coup.kind === 'coup' && coup.gain > 0 && vz.stalls === 2, 'a good gamble pays the world');
+const zc = new CC.Core(); /* freshly prestiged world: bank 0, cps 0 */
+check(zc.visitorReward('parsnip', () => 0.9).gain >= 20,
+  'a coup never pays a humiliating +0 (click-power floor)');
 const cpsBefore = vz.cps();
 vz.buffs.push({ name: CC.WEATHER[0].name, mult: CC.WEATHER[0].mult, left: CC.WEATHER[0].dur });
 check(Math.abs(vz.cps() / cpsBefore - CC.WEATHER[0].mult) < 1e-9,

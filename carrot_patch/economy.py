@@ -29,6 +29,17 @@ def dist_dir() -> Path:
     return here.parent / "dist"
 
 
+def _cnt(v) -> int:
+    """A world counter from a save: non-negative int, or 0 for any garbage
+    ("abc", 1e999, None, lists) — a corrupt-but-parsable save must never
+    keep the server from booting (review; mirror of core.js Math.floor||0)."""
+    try:
+        n = int(v)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return max(0, n)
+
+
 def load_data() -> dict:
     with open(dist_dir() / "patch-data.json", encoding="utf-8") as f:
         return json.load(f)
@@ -333,7 +344,10 @@ class Economy:
             if rng() < 0.4:
                 self.buffs.append({"name": "Parsnip Embargo", "mult": 0.5, "left": 45.0})
                 return {"kind": "embargo"}
-            gain = min(self.bank * 0.25, self.cps() * 900) + self.cps() * 90
+            # same floor as the rabbit's bundle: a coup right after a world
+            # prestige must never pay a humiliating +0 (review)
+            gain = max(self.click_power() * 20,
+                       min(self.bank * 0.25, self.cps() * 900) + self.cps() * 90)
             self.earn(gain)
             return {"kind": "coup", "gain": gain}
         return self.rabbit_reward(rng)  # the golden classic
@@ -449,12 +463,12 @@ class Economy:
                 lv = 0
             if lv > 0:
                 self.shed[u["id"]] = min(lv, u.get("max", 800))
-        self.prestiges = max(0, int(s.get("prestiges", 0) or 0))
-        self.rabbits = max(0, int(s.get("rabbits", 0) or 0))
-        self.sprouts_spent = max(0, s.get("sproutsSpent", 0) or 0)
-        self.tins = max(0, int(s.get("tins", 0) or 0))
-        self.stalls = max(0, int(s.get("stalls", 0) or 0))
-        self.weathers = max(0, int(s.get("weathers", 0) or 0))
+        self.prestiges = _cnt(s.get("prestiges", 0))
+        self.rabbits = _cnt(s.get("rabbits", 0))
+        self.sprouts_spent = _cnt(s.get("sproutsSpent", 0))
+        self.tins = _cnt(s.get("tins", 0))
+        self.stalls = _cnt(s.get("stalls", 0))
+        self.weathers = _cnt(s.get("weathers", 0))
         # known page ids are historical fact and stay latched; junk ids
         # would mint ×1.02 each forever — dropped
         self.almanac = {}

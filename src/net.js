@@ -134,19 +134,36 @@ CC.Patch = class {
       this.online = msg.online;
       this.clickRate = msg.clickRate;
       /* visitors are global (R19): the server says who is in the patch.
-         Pre-R19 servers only speak rabbitTtl — treat that as a golden one. */
+         Pre-R19 servers only speak rabbitTtl — treat that as a golden one.
+         The snapshot always arrives BEFORE the spawn event, so ARRIVAL is
+         detected here: loud when the previous snapshot showed an empty
+         patch, quiet on joins/resyncs mid-visit (review F1). */
       const vis = msg.visitor || (msg.rabbitTtl > 0 ? { kind: 'rabbit', ttl: msg.rabbitTtl } : null);
-      if (vis && vis.ttl > 0 && !ui.visitor) {
-        ui.spawnVisitor(vis.kind, vis.ttl, true /* quiet: a resync, not an arrival */);
-      } else if (vis && vis.ttl > 0 && ui.visitor && ui.visitor.kind === vis.kind) {
-        /* stay in step with the world's clock so the leaving-warning is timely */
-        ui.visitor.patchTtl = vis.ttl;
-        ui.visitor.born = ui.t;
-      } else if (!vis && ui.visitor && !ui.visitor.leaving) {
-        /* caught elsewhere or expired: bound away gracefully, don't blink out */
-        ui.visitor.leaving = true;
-        ui.visitor.dir = ui.visitor.x < 160 ? -1 : 1;
+      const v = ui.visitor;
+      if (vis && vis.ttl > 0) {
+        if (v && v.gone) {
+          /* dismissed locally (caught / walked off); wait for the server */
+        } else if (!v) {
+          ui.spawnVisitor(vis.kind, vis.ttl, !this._patchWasEmpty);
+        } else if (v.kind !== vis.kind) {
+          /* swapped while this tab looked away (hidden tabs pause rAF) —
+             never leave a stale sprite that clicks into the wrong gamble */
+          ui.spawnVisitor(vis.kind, vis.ttl, false);
+        } else {
+          v.patchTtl = vis.ttl;
+          v.born = ui.t; /* stay in step with the world's clock */
+        }
+      } else if (v) {
+        if (v.gone) ui.visitor = null;            /* the server agrees it's over */
+        else if (!v.leaving) {                    /* caught elsewhere or expired */
+          v.leaving = true;
+          v.dir = v.x < 160 ? -1 : 1;
+        }
       }
+      this._patchWasEmpty = !vis;
+      c.tins = s.tins || 0;                       /* mirror the R19 counters */
+      c.stalls = s.stalls || 0;
+      c.weathers = s.weathers || 0;
       ui.updatePatchLine();
     } else if (msg.type === 'event') {
       /* structured world event (F1): ui decides words, sound, pixels */

@@ -305,7 +305,10 @@ CC.Core = class {
         this.buffs.push({ name: 'Parsnip Embargo', mult: 0.5, left: 45 });
         return { kind: 'embargo' };
       }
-      const gain = Math.min(this.bank * 0.25, this.cps() * 900) + this.cps() * 90;
+      /* same floor as the rabbit's bundle: a coup right after a world
+         prestige must never pay a humiliating +0 (review) */
+      const gain = Math.max(this.clickPower() * 20,
+        Math.min(this.bank * 0.25, this.cps() * 900) + this.cps() * 90);
       this.earn(gain);
       return { kind: 'coup', gain };
     }

@@ -1592,7 +1592,7 @@
    "mult": 1.05,
    "rabbitRate": 2,
    "line": "Bunting up, judges out, rabbits everywhere.",
-   "bonus": "golden rabbits visit twice as often · +5% production"
+   "bonus": "visitors call twice as often · +5% production"
   },
   {
    "id": "market",

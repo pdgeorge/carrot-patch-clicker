@@ -218,7 +218,7 @@ CC.SEASONS = [
     bonus: 'the classic garden — pure growing' },
   { id: 'fair', name: 'the County Fair', mult: 1.05, rabbitRate: 2,
     line: 'Bunting up, judges out, rabbits everywhere.',
-    bonus: 'golden rabbits visit twice as often · +5% production' },
+    bonus: 'visitors call twice as often · +5% production' },
   { id: 'market', name: 'Market Days', priceOff: 0.10,
     line: 'Stalls at dawn, prices chalked before sunrise.',
     bonus: 'every building 10% off' },

@@ -391,10 +391,17 @@ def create_app() -> FastAPI:
         patch.clients.add(ws)
         conn = {"last_click_msg": 0.0, "msg_times": []}
         try:
+            # the greeting must carry the live visitor too, or a reconnect
+            # mid-visit makes the client walk it off and respawn it (review)
+            vttl0 = (max(0.0, patch.visitor["until"] - time.monotonic())
+                     if patch.visitor else 0)
             await ws.send_text(json.dumps({
                 "type": "snapshot", "state": patch.eco.snapshot(),
                 "online": len(patch.clients), "clickRate": patch.click_rate,
-                "rabbitTtl": 0,
+                "visitor": ({"kind": patch.visitor["kind"], "ttl": vttl0}
+                            if patch.visitor else None),
+                "rabbitTtl": (vttl0 if patch.visitor
+                              and patch.visitor["kind"] in ("rabbit", "tin") else 0),
             }))
             while True:
                 raw = await ws.receive_text()

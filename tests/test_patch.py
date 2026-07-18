@@ -142,7 +142,8 @@ check(not mism2, f"fmt tie parity to 50k ({len(mism2)} mismatches: {mism2[:5]})"
 # corrupt saves are data, not authority (review F1: OverflowError killed the server)
 bad = {"v": 1, "bank": 0, "totalAllTime": 0, "totalRun": 0, "clicks": 0, "owned": [],
        "bought": {}, "seeds": 0, "sprouts": 0,
-       "shed": {"l0": 1e18, "hax": 5, "p0": True}, "almanac": {"fake": True, "sd0": True}}
+       "shed": {"l0": 1e18, "hax": 5, "p0": True}, "almanac": {"fake": True, "sd0": True},
+       "tins": "abc", "stalls": 1e999, "weathers": None, "prestiges": [3]}
 pbad = Economy(load_data())
 pbad.deserialize(dict(bad))
 check(pbad.shed_level("l0") == 800 and pbad.shed_level("hax") == 0 and pbad.shed_level("p0") == 1,
@@ -154,6 +155,8 @@ check(bad_season.season == "homestead" and bad_season.season_start == 0.0,
 check("fake" not in pbad.almanac and pbad.almanac.get("sd0") is True
       and math.isfinite(pbad.shed_cost("l0")) and math.isfinite(pbad.global_mult()),
       "junk almanac keys drop, real history stays, costs stay finite")
+check(pbad.tins == 0 and pbad.stalls == 0 and pbad.weathers == 0 and pbad.prestiges == 0,
+      "garbage counters zero out instead of crashing the boot (review)")
 
 # R14: Fair Circuit ribbon parity + the new fmt units, in both engines
 print("\n=== the Fair Circuit (R14) ===")
@@ -288,8 +291,10 @@ c.earn(1e6); c.buy(0, 20);
 const t = c.visitorReward('tin');
 const e = c.visitorReward('parsnip', () => 0.1);   // forced embargo
 const g = c.visitorReward('parsnip', () => 0.9);   // forced coup
+const z = new CC.Core();                            // freshly prestiged: floor binds
+const zg = z.visitorReward('parsnip', () => 0.9).gain;
 console.log(JSON.stringify({ t: t.kind, e: e.kind, g: g.kind, gain: g.gain,
-  tins: c.tins, stalls: c.stalls, bank: c.bank, buffs: c.buffs.length }));
+  tins: c.tins, stalls: c.stalls, bank: c.bank, buffs: c.buffs.length, zg }));
 """
 js_vis = json.loads(subprocess.run(
     ["node", "-e", JS_VIS, str(ROOT)], capture_output=True, text=True, check=True).stdout)
@@ -308,6 +313,9 @@ check(gv["kind"] == js_vis["g"] == "coup"
       and abs(pv.bank - js_vis["bank"]) <= 1e-9 * js_vis["bank"],
       "coup: identical windfall and bank in both engines")
 check(pv.stalls == js_vis["stalls"] == 2, "two gambles on the record")
+pz = Economy(load_data())
+zgp = pz.visitor_reward("parsnip", lambda: 0.9)["gain"]
+check(zgp == js_vis["zg"] and zgp >= 20, "zero-state coup floor identical in both engines")
 
 # ---------- 1a'. bulk buys all-or-nothing in both engines (audit f9) ----------
 print("\n=== bulk buys all-or-nothing parity ===")
@@ -434,6 +442,7 @@ with TestClient(app) as client:
         check(snap["online"] == 1, "presence counts one gardener")
         check(snap["state"].get("season") == "homestead" and snap["state"].get("seasonEnds", 0) > 0,
               "snapshot carries the season and its clock")
+        check("visitor" in snap, "the greeting speaks visitor (review: reconnect mid-visit)")
 
         # click batching: an absurd batch is clamped to the anti-flood
         # ceiling (1000 — anti-flood only, never game balance; DESIGN R2)

@@ -36,22 +36,22 @@ CC.audio = {
 CC.THEMES = {
   'homestead-day': { sky: ['#5a4a7a', '#c98a5a', '#e8b06a'], orb: [250, 60, 60, '255,240,190'],
     moon: false, stars: false, hedge: '#31502e', soil: ['#4a3421', '#2a2016'],
-    body: ['#ff9232', '#d4570a'], tops: '#3f9142' },
+    body: ['#ff9232', '#d4570a'], tops: '#3f9142', rain: 'rgba(150,180,215,0.4)' },
   'homestead-night': { sky: ['#0b1526', '#13233a', '#1b3247'], orb: [240, 52, 40, '223,232,244'],
     moon: true, stars: true, hedge: '#152a22', soil: ['#1d2b26', '#0d1512'],
-    body: ['#ffa04a', '#c25a14'], tops: '#3f8f6a' },
+    body: ['#ffa04a', '#c25a14'], tops: '#3f8f6a', rain: 'rgba(185,215,245,0.36)' },
   'fair-day': { sky: ['#5f97c8', '#a8c8e0', '#e8d8a8'], orb: [245, 52, 55, '255,246,200'],
     moon: false, stars: false, hedge: '#3f7a3a', soil: ['#5a4228', '#332618'],
-    body: ['#ff8832', '#d4570a'], tops: '#3f9142' },
+    body: ['#ff8832', '#d4570a'], tops: '#3f9142', rain: 'rgba(55,85,125,0.4)' },
   'fair-night': { sky: ['#2a3052', '#3d3660', '#6b4a4e'], orb: [248, 40, 26, '255,222,150'],
     moon: false, stars: true, hedge: '#26332c', soil: ['#41301e', '#241a10'],
-    body: ['#ff9232', '#d4570a'], tops: '#4a9a44' },
+    body: ['#ff9232', '#d4570a'], tops: '#4a9a44', rain: 'rgba(185,215,245,0.36)' },
   'market-day': { sky: ['#8ecae6', '#cfe6f0', '#f4e9c8'], orb: [242, 50, 62, '255,246,200'],
     moon: false, stars: false, hedge: '#3f8a4a', soil: ['#6a4c2e', '#4a3420'],
-    body: ['#f2701d', '#c2490a'], tops: '#3f9142' },
+    body: ['#f2701d', '#c2490a'], tops: '#3f9142', rain: 'rgba(55,85,125,0.4)' },
   'market-night': { sky: ['#231d3e', '#181230', '#2c1f3a'], orb: [238, 46, 34, '240,232,216'],
     moon: true, stars: true, hedge: '#1f3326', soil: ['#302038', '#180f20'],
-    body: ['#ffb054', '#c86018'], tops: '#4a8a5a' },
+    body: ['#ffb054', '#c86018'], tops: '#4a8a5a', rain: 'rgba(185,215,245,0.36)' },
 };
 
 CC.UI = class {
@@ -305,7 +305,8 @@ CC.UI = class {
       const rect = this.canvas.getBoundingClientRect();
       const mx = (e.clientX - rect.left) * (this.canvas.width / rect.width);
       const my = (e.clientY - rect.top) * (this.canvas.height / rect.height);
-      if (this.visitor && Math.hypot(mx - this.visitor.x, my - this.visitor.y) < 34) {
+      if (this.visitor && !this.visitor.gone
+        && Math.hypot(mx - this.visitor.x, my - this.visitor.y) < 34) {
         this.catchVisitor();
         return;
       }
@@ -477,7 +478,9 @@ CC.UI = class {
       /* worldMode, not patchOn: during a re-sync gap the solo reward path
          must never run against predicted world state */
       this.patch.send({ type: 'catch' });
-      this.visitor = null; /* server will announce who-caught-what */
+      /* tombstone, not null: an in-flight snapshot still carries the
+         visitor and would ghost-respawn it (review F2) */
+      this.visitor.gone = true;
       return;
     }
     const kind = this.visitor.kind;
@@ -773,7 +776,7 @@ CC.UI = class {
       const pick = CC.VISITORS.find(v => (w -= v.weight) < 0) || CC.VISITORS[0];
       this.spawnVisitor(pick.id, pick.ttl);
     }
-    if (this.visitor) {
+    if (this.visitor && !this.visitor.gone) {
       const r = this.visitor;
       const ttl = r.patchTtl || 12;
       /* a visitor doesn't blink out of existence — with 2.5s left it warns
@@ -791,9 +794,15 @@ CC.UI = class {
         if (r.x > this.canvas.width - 20) r.dir = -1;
         if (r.x < 20 && r.dir === -1) r.dir = 1;
       } else if (r.x < -40 || r.x > this.canvas.width + 40) {
-        this.visitor = null;
-        this.nextVisitor = this.t + CC.VISITOR_GAP[0] +
-          Math.random() * (CC.VISITOR_GAP[1] - CC.VISITOR_GAP[0]);
+        if (this.worldMode) {
+          /* tombstone until the server agrees, or a snapshot would
+             resurrect it at the hedge and re-warn (review F2) */
+          r.gone = true;
+        } else {
+          this.visitor = null;
+          this.nextVisitor = this.t + CC.VISITOR_GAP[0] +
+            Math.random() * (CC.VISITOR_GAP[1] - CC.VISITOR_GAP[0]);
+        }
       }
     }
 
@@ -989,10 +998,14 @@ CC.UI = class {
     const x = this.ctx, W = this.canvas.width, H = this.canvas.height;
     x.drawImage(this.bg, 0, 0);
     const c = this.core;
+    const pal = this._pal || CC.THEMES['homestead-day'];
 
-    /* frenzy glow */
+    /* buff glow: frenzy pulses orange; mere weather washes cool blue */
     if (c.buffMult() > 1) {
-      x.fillStyle = `rgba(255,150,40,${0.08 + Math.sin(this.t * 6) * 0.05})`;
+      const frenzy = c.buffs.some(b => b.mult >= 7);
+      x.fillStyle = frenzy
+        ? `rgba(255,150,40,${0.08 + Math.sin(this.t * 6) * 0.05})`
+        : `rgba(110,150,200,${0.05 + Math.sin(this.t * 3) * 0.03})`;
       x.fillRect(0, 0, W, H);
     }
 
@@ -1003,9 +1016,9 @@ CC.UI = class {
     if (this.worldMode && this.patch && this.patch.seasonEnds > 0) {
       const period = CC.SEASON_DAYS * 86400;
       const prog = Math.min(1, Math.max(0, 1 - (this.patch.seasonEnds - Date.now() / 1000) / period));
-      size = 0.7 + 1.2 * prog;
+      size = 0.7 + 1.1 * prog; /* cap 1.8: the tip must not clip the frame */
     } else {
-      size = 0.55 + Math.min(1.35, Math.log10(1 + c.totalAllTime) * 0.11);
+      size = 0.55 + Math.min(1.25, Math.log10(1 + c.totalAllTime) * 0.11);
     }
     const cx = W / 2, crownY = this.soilY + 4;
     const bodyLen = 120 * size, girth = 26 * size;
@@ -1015,7 +1028,6 @@ CC.UI = class {
     x.scale(2 - sq, sq);
 
     /* tops */
-    const pal = this._pal || CC.THEMES['homestead-day'];
     const nStems = 7;
     for (let i = 0; i < nStems; i++) {
       const f = i / (nStems - 1) - 0.5;
@@ -1071,7 +1083,7 @@ CC.UI = class {
     x.restore();
 
     /* the visitor (R19): golden rabbit, its tin impostor, or the stall */
-    if (this.visitor) {
+    if (this.visitor && !this.visitor.gone) {
       const r = this.visitor;
       x.save();
       if (r.kind === 'parsnip') {
@@ -1131,16 +1143,17 @@ CC.UI = class {
       x.restore();
     }
 
-    /* gentle rain (R19): drawn only while the weather buff runs */
+    /* gentle rain (R19): drawn only while the weather buff runs; streaks
+       slant the way they drift, in a per-theme ink so light skies show it */
     if (c.buffs.some(b => CC.WEATHER.some(w => w.name === b.name))) {
-      x.strokeStyle = 'rgba(180,210,240,0.3)';
+      x.strokeStyle = pal.rain || 'rgba(180,210,240,0.34)';
       x.lineWidth = 1.2;
       for (let i = 0; i < 42; i++) {
         const rx = ((i * 89 + this.t * 130 * (1 + (i % 3) * 0.15)) % (W + 30)) - 15;
         const ry = (i * 53 + this.t * 340) % H;
         x.beginPath();
         x.moveTo(rx, ry);
-        x.lineTo(rx - 2.5, ry + 9);
+        x.lineTo(rx + 2.5, ry + 9);
         x.stroke();
       }
     }
