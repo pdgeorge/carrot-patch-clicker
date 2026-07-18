@@ -6,12 +6,6 @@ Window Boxes, Rabbit Union contracts, and eventually the Carrot Singularity.
 Buildings, upgrades, golden-rabbit rewards, and prestige are all global: if
 someone buys it or wins it, the whole planet has it.
 
-**[DESIGN.md](DESIGN.md) is the north star** — the vision, the principles,
-and (per principle P3) a table of **every limit and magic number in the
-game**, with its value, location, and reason. If a rule surprised you
-("why does that player have so many carrots?"), the answer must be findable
-there; if it isn't, that's a bug — file it.
-
 This repo is fully self-contained: the browser game, the authoritative
 FastAPI world server, the build script, and the test suites. It is designed
 to be **cloned into a host website as a plugin** — the host just checks the
@@ -31,7 +25,7 @@ Opening `carrot_patch/dist/clicker.html` as a plain `file://` page runs the
 working on UX without the server. It is a development tool, not a mode
 players can reach: a served page is always the shared world, and shows
 "reaching the carrot patch…" rather than going solo if the server is
-unreachable (DESIGN P6).
+unreachable.
 
 `node build.js` prints a 7-char **build id** (a content hash of all game
 sources) and the page shows the same id bottom-right. To confirm a deploy
@@ -69,7 +63,6 @@ Env vars: `CARROT_PATCH_STATE` (world save file), `CARROT_PATCH_DIST`
 > they're "connected". Also make sure your reverse proxy forwards WebSocket
 > upgrades (nginx: `proxy_set_header Upgrade/Connection`), or every player
 > will be stuck at "reaching the carrot patch…" forever.
-> See [DESIGN R7](DESIGN.md#known-gaps--roadmap).
 
 ## How the multiplayer works
 
@@ -78,7 +71,7 @@ Env vars: `CARROT_PATCH_STATE` (world save file), `CARROT_PATCH_DIST`
   core, fed from the same `patch-data.json` — is the only thing that mutates
   state. Snapshots broadcast to every client once per second, including a
   full one the moment you connect — connecting **is** loading.
-- **Auto-clickers are welcome** (DESIGN principle P4). Clients batch clicks
+- **Auto-clickers are welcome** 
   into one message per second, so fast clicking costs no extra bandwidth.
   The economy — not a cap — is what makes raw clicking fade in the mid game
   (and come back via the CpS-click-upgrade + frenzy combo). The only server
@@ -87,6 +80,10 @@ Env vars: `CARROT_PATCH_STATE` (world save file), `CARROT_PATCH_DIST`
   the frenzy for everyone.
 - **Go to Seed prestiges the entire planet.** The confirmation dialog is
   appropriately dramatic. Seeds and ribbons persist forever.
+- **Every seed also mints a sprout** — the spendable twin currency. Seeds are never spent (+8% each, forever); sprouts are
+  spent at the **Potting Shed** on permanent perks that survive prestige.
+  The catalog is completable: every item is strictly positive, so the only
+  communal decision is what the world buys first.
 - **The community noticeboard** (under the carrot): sign it with a name and
   your clicks + buildings join the world's top-10 **Tenders**; the
   **Gardeners** half lists the people who built the game — add yourself to
@@ -94,8 +91,6 @@ Env vars: `CARROT_PATCH_STATE` (world save file), `CARROT_PATCH_DIST`
   blocklist, and grant nothing but glory (seeds are never shown: going to
   seed stays anonymous).
 
-All rate limits and game numbers are documented in the
-[Tunables table in DESIGN.md](DESIGN.md#tunables--limits).
 
 ## Where the game is saved
 
@@ -112,12 +107,12 @@ All rate limits and game numbers are documented in the
   earnings at half rate capped at 8 h. Served pages never read or write
   localStorage — world state lives on the server, and the two gardens
   never merge.
-- **Silent disconnects self-heal** (DESIGN R1): the server heartbeats a
+- **Silent disconnects self-heal**: the server heartbeats a
   snapshot every second, so if nothing arrives for 5 s — or the tab wakes
   from sleep — the client redials and re-syncs automatically, showing
   "re-syncing…" in the patch line meanwhile. A served page that has never
   reached the server shows "reaching the carrot patch…" and retries forever
-  — it never falls back to a private game (DESIGN R9).
+  — it never falls back to a private game.
 
 ## Tests — run both before PRing
 
@@ -132,8 +127,7 @@ The parity suite is what lets the economy live in two languages: if you
 change game numbers in `src/data.js`, run `node build.js` (regenerates
 `patch-data.json`) and both sides stay identical by construction. That
 includes gating: upgrades take a declarative `unlock: [...]` list (own N
-of a building, lifetime harvest, seeds, clicks, other upgrades — see
-[Unlock conditions in DESIGN.md](DESIGN.md#unlock-conditions)), so new
+of a building, lifetime harvest, seeds, clicks, other upgrades, so new
 content — however it's gated — is a `data.js`-only change. If you
 change **formulas** in `src/core.js`, you must mirror the change in
 `carrot_patch/economy.py` — the parity test will fail until you do.
@@ -146,8 +140,7 @@ change **formulas** in `src/core.js`, you must mirror the change in
 - `carrot_patch/dist/` — built client + game data (committed, so hosts
   don't need node)
 - `tests/` — pacing sim (node) and parity/protocol suite (python)
-- `docs/` — reports and audits, e.g. [what-lives-where.md](docs/what-lives-where.md)
-  (where each subsystem *actually* lives vs. where DESIGN.md says it should)
+- `docs/` — reports and audits, etc.
 
 Extracted from the [Carrot-simulator](../Carrot-simulator) project's
 `carrot-clicker-simulator` branch, where this game was first grown.

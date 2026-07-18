@@ -10,12 +10,17 @@
       <div id="bank-label">carrots</div>
       <div id="cps">0 per second</div>
       <div id="patch-line" class="hidden"></div>
+      <div id="season-line" class="hidden"></div>
       <div id="buff-line"></div>
       <canvas id="hero" width="320" height="360"></canvas>
       <div id="seed-line"></div>
+      <div id="sprout-line"></div>
       <button id="prestige-btn" class="hidden">🌸 Go to Seed</button>
+      <button id="shed-btn" class="hidden">🌱 The Potting Shed</button>
       <div class="small-controls">
         <button id="mute-btn" title="toggle sound">🔊</button>
+        <button id="daynight-btn" title="day / night / auto">🌗</button>
+        <button id="auto-btn" title="auto-click — rest those wrists">🖱</button>
         <button id="wipe-btn" title="wipe save (hold to confirm)">🗑</button>
       </div>
     </section>
@@ -25,6 +30,9 @@
       <div id="upgrades"></div>
       <div class="panel-title">TROPHY SHELF</div>
       <div id="ribbons"></div>
+      <div class="panel-title">THE ALMANAC</div>
+      <div id="almanac-line"></div>
+      <div id="almanac-pages"></div>
       <div class="panel-title">STATS</div>
       <div id="stats"></div>
       <div id="tooltip" class="hidden"></div>
@@ -59,6 +67,16 @@
   <div id="toasts"></div>
 
   <div id="build-tag" title="build id — changes whenever any game source changes"></div>
+
+  <div id="shed" class="hidden">
+    <div id="shed-box">
+      <h2>🌱 THE POTTING SHED</h2>
+      <p id="shed-sub">Seeds are forever. Sprouts are for planting.</p>
+      <div id="shed-balance"></div>
+      <div id="shed-items"></div>
+      <button id="shed-close">Back to the garden</button>
+    </div>
+  </div>
 
   <div id="modal" class="hidden">
     <div id="modal-box">

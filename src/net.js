@@ -113,23 +113,57 @@ CC.Patch = class {
       this.everSynced = true;
       const s = msg.state;
       c.bank = s.bank;
+      c.totalRun = s.totalRun;          /* before totalAllTime: its setter derives lifetimeBase from the run */
       c.totalAllTime = s.totalAllTime;
-      c.totalRun = s.totalRun;
       c.clicks = s.clicks;
       c.owned = s.owned.slice();
       c.bought = s.bought;
       c.seeds = s.seeds;
+      /* pre-R13 server: mirror the save migration (sprouts backlog = seeds) */
+      c.sprouts = s.sprouts !== undefined ? s.sprouts : (s.seeds || 0);
+      c.shed = s.shed || {};
+      c.prestiges = s.prestiges || 0;   /* R15 counters gate keystone visibility */
+      c.rabbits = s.rabbits || 0;
+      c.sproutsSpent = s.sproutsSpent || 0;
+      c.almanac = s.almanac || {};      /* R16: the server's book is the book */
+      c.season = s.season || 'homestead'; /* R17: one world, one season */
+      this.seasonEnds = s.seasonEnds || 0;
       c.buffs = s.buffs.map(b => ({ ...b }));
       c._ribbonCount = c.ribbons().length;
       c._bumperSeen = CC.BUILDINGS.map((_, i) => c.bumperCount(i));
       this.online = msg.online;
       this.clickRate = msg.clickRate;
-      /* the golden rabbit is global: server says whether one is loose */
-      if (msg.rabbitTtl > 0 && !ui.rabbit) {
-        ui.rabbit = { x: -30, y: ui.soilY - 14, dir: 1, born: ui.t, patchTtl: msg.rabbitTtl };
-      } else if (msg.rabbitTtl <= 0 && ui.rabbit) {
-        ui.rabbit = null;
+      /* visitors are global (R19): the server says who is in the patch.
+         Pre-R19 servers only speak rabbitTtl — treat that as a golden one.
+         The snapshot always arrives BEFORE the spawn event, so ARRIVAL is
+         detected here: loud when the previous snapshot showed an empty
+         patch, quiet on joins/resyncs mid-visit (review F1). */
+      const vis = msg.visitor || (msg.rabbitTtl > 0 ? { kind: 'rabbit', ttl: msg.rabbitTtl } : null);
+      const v = ui.visitor;
+      if (vis && vis.ttl > 0) {
+        if (v && v.gone) {
+          /* dismissed locally (caught / walked off); wait for the server */
+        } else if (!v) {
+          ui.spawnVisitor(vis.kind, vis.ttl, !this._patchWasEmpty);
+        } else if (v.kind !== vis.kind) {
+          /* swapped while this tab looked away (hidden tabs pause rAF) —
+             never leave a stale sprite that clicks into the wrong gamble */
+          ui.spawnVisitor(vis.kind, vis.ttl, false);
+        } else {
+          v.patchTtl = vis.ttl;
+          v.born = ui.t; /* stay in step with the world's clock */
+        }
+      } else if (v) {
+        if (v.gone) ui.visitor = null;            /* the server agrees it's over */
+        else if (!v.leaving) {                    /* caught elsewhere or expired */
+          v.leaving = true;
+          v.dir = v.x < 160 ? -1 : 1;
+        }
       }
+      this._patchWasEmpty = !vis;
+      c.tins = s.tins || 0;                       /* mirror the R19 counters */
+      c.stalls = s.stalls || 0;
+      c.weathers = s.weathers || 0;
       ui.updatePatchLine();
     } else if (msg.type === 'event') {
       /* structured world event (F1): ui decides words, sound, pixels */
@@ -139,9 +173,12 @@ CC.Patch = class {
     } else if (msg.type === 'toast') {
       /* legacy prose for pre-F1 clients — this client renders 'event'
          instead; ignoring avoids double toasts during the transition */
+    } else if (msg.type === 'visitor') {
+      if (!ui.visitor) ui.spawnVisitor(msg.kind, msg.ttl);
     } else if (msg.type === 'rabbit') {
-      ui.rabbit = { x: -30, y: ui.soilY - 14, dir: 1, born: ui.t, patchTtl: msg.ttl };
-      ui.toast('🐇 A golden rabbit is loose in the patch — first click catches it!');
+      /* legacy spawn from a pre-R19 server (new servers send 'visitor'
+         first, so this stays a no-op for them) */
+      if (!ui.visitor) ui.spawnVisitor('rabbit', msg.ttl);
     }
   }
 

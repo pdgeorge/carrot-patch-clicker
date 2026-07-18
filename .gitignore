@@ -1,5 +1,8 @@
 __pycache__/
 carrot_patch/patch_state.json
 carrot_patch/patch_state.tmp
+carrot_patch/patch_state_tenders.db
 node_modules/
 .venv/
+.server.pid
+server.log

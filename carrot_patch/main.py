@@ -19,6 +19,7 @@ import json
 import os
 import random
 import time
+import traceback
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -27,13 +28,25 @@ from fastapi.responses import FileResponse, JSONResponse
 from .economy import Economy, dist_dir, fmt, load_data
 from .tenders import TenderBook
 
-MAX_CLICKS_PER_MSG = 250     # anti-flood only, never game balance (DESIGN P4/R2):
-                             # far above any human, high enough that auto-clickers
-                             # work as intended — the economy makes clicks fade
+MAX_CLICKS_PER_MSG = 1000    # anti-flood only, never game balance (DESIGN P4/R2):
+                             # autoclickers are welcome (raised 250→1000, 2026-07)—
+                             # this ceiling only stops forged clicks-you-never-made
+                             # packets, not enthusiasm; the economy makes clicks fade
 MIN_MSG_INTERVAL = 0.75      # seconds between click batches per connection
 MAX_MSGS_PER_SEC = 10        # any message type, per connection
 SNAPSHOT_INTERVAL = 1.0
 SAVE_INTERVAL = 30.0
+
+
+def clamp_int(v: object, hi: int) -> int:
+    """Best-effort wire integer in [0, hi]. json.loads happily produces NaN,
+    Infinity, null, strings and lists — none of which may ever raise here,
+    because an exception would kill that client's websocket. Garbage is 0."""
+    try:
+        n = int(v)  # bools are ints, floats truncate, junk raises
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return max(0, min(n, hi))
 
 
 def state_file() -> Path:
@@ -60,9 +73,19 @@ class Patch:
         self.clients: set[WebSocket] = set()
         self.click_window = 0          # clicks landed in the current snapshot window
         self.click_rate = 0            # last window's global clicks/sec, for display
-        self.rabbit: dict | None = None
-        self.next_rabbit = time.monotonic() + random.uniform(60, 150)
+        self.visitor: dict | None = None  # R19: {kind, until} — one guest at a time
+        self.next_visitor = time.monotonic() + self.visitor_wait(
+            *self.eco.d.get("visitorFirst", [60, 150]))
+        self.next_weather = time.monotonic() + random.uniform(
+            *self.eco.d.get("weatherGap", [600, 1500]))
         self._pending: list[dict] = []  # extra events to broadcast with next snapshot
+        if not self.eco.season_start:  # R17: the calendar starts the day it ships
+            self.eco.season_start = time.time()
+
+    def visitor_wait(self, lo: float, hi: float) -> float:
+        """Seconds until the next visitor — Fair season livens the garden."""
+        rate = (self.eco.season_data() or {}).get("rabbitRate", 1)
+        return random.uniform(lo, hi) / rate
 
     # ---------- persistence ----------
     def save(self) -> None:
@@ -70,6 +93,16 @@ class Patch:
         tmp = target.with_suffix(".tmp")
         tmp.write_text(json.dumps(self.eco.serialize()))
         tmp.replace(target)
+
+    def save_soon(self) -> None:
+        """Durable-ish save for hot paths: at most one write per 5 s — a
+        launch-day shed spree is hundreds of purchases, and a synchronous
+        atomic write per purchase stalls the loop (review). The 30 s
+        autosave, prestige saves and shutdown cover the gaps."""
+        now = time.monotonic()
+        if now - getattr(self, "_last_soon", 0.0) > 5.0:
+            self._last_soon = now
+            self.save()
 
     # ---------- broadcast ----------
     async def broadcast(self, msg: dict) -> None:
@@ -110,8 +143,47 @@ class Patch:
                     else f"Lucky bundle! +{fmt(ev['gain'])} carrots!")
             return f"🐇 Caught by a tender somewhere on Earth — {what}"
         if ev["type"] == "prestige":
+            boost = ev.get("boost")
+            if boost is None or boost < 1.0005:  # at 100M+ seeds the ratio rounds to 1
+                what = "the seeds stack deeper"
+            elif boost < 2:
+                what = f"seed bonus ×{boost:.3f}"
+            elif boost < 1000:
+                what = f"seed bonus ×{boost:.2f}"
+            else:
+                what = f"seed bonus ×{fmt(boost)}"
             return (f"🌸 SOMEONE SENT THE WHOLE GARDEN TO SEED. +{fmt(ev['gained'])} seeds "
-                    f"(+{ev['gained'] * 8}% forever) for everyone. A new spring begins.")
+                    f"({what}) for everyone. A new spring begins.")
+        if ev["type"] == "weather":
+            w = next((x for x in d.get("weather", []) if x["id"] == ev["id"]), None)
+            return (f"🌦 {w['name']} drifts across the whole garden — "
+                    f"×{w['mult']} production for {w['dur']}s.") if w else None
+        if ev["type"] == "visitorCaught":
+            out = ev.get("out")
+            if out == "tin":
+                return "🥫 Clank. The tin rabbit. Somewhere, the parsnip man giggles."
+            if out == "coup":
+                return (f"🥕📈 Market coup! The Parsnip Man's stall folds — "
+                        f"+{fmt(ev.get('gain', 0))} carrots for everyone!")
+            if out == "embargo":
+                return "🥀 Parsnip embargo! Production ×0.5 for 45 seconds. He got us this time."
+            return None
+        if ev["type"] == "season":
+            s = next((x for x in d.get("seasons", []) if x["id"] == ev["id"]), None)
+            return f"🎪 A new season begins: {s['name']}! {s['bonus']}." if s else None
+        if ev["type"] == "almanac":
+            pg = next((p for p in d["almanac"] if p["id"] == ev["id"]), None)
+            return (f"📖 A page is written in the Almanac: {pg['name']}. "
+                    f"(+{round((d['almanacMult'] - 1) * 100)}% production, forever)") if pg else None
+        if ev["type"] == "shed":
+            u = next((u for u in d["shed"] if u["id"] == ev["id"]), None)
+            if not u:
+                return None
+            lv = ev.get("lv", 1)
+            what = f" → Lv {lv}!" if u.get("repeat") else "!"
+            eff = (f" +{round((u['mult'] - 1) * 100)}% production, forever."
+                   if u.get("mult") else "")
+            return f"🌱 A sprout was planted: {u['name']}{what}{eff}"
         return None
 
     # ---------- main loop ----------
@@ -127,23 +199,62 @@ class Patch:
             for ev in self.eco.tick(dt):
                 self.emit(ev)
 
-            # golden rabbit lifecycle (global!)
-            if self.rabbit and now > self.rabbit["until"]:
-                self.rabbit = None
-                self.next_rabbit = now + random.uniform(90, 240)
-            if not self.rabbit and now >= self.next_rabbit:
-                self.rabbit = {"id": random.randrange(1 << 30), "until": now + 12.0}
-                self._pending.append({"type": "rabbit", "ttl": 12.0})
+            # seasons rotate on real time (R17); the server owns the calendar
+            period = self.eco.d.get("seasonDays", 14) * 86400.0
+            wall = time.time()
+            if self.eco.season_start and wall - self.eco.season_start >= period:
+                steps = int((wall - self.eco.season_start) // period)
+                seasons = self.eco.d.get("seasons", [])
+                if seasons:
+                    idx = next((i for i, s in enumerate(seasons)
+                                if s["id"] == self.eco.season), 0)
+                    prev = self.eco.season
+                    self.eco.season = seasons[(idx + steps) % len(seasons)]["id"]
+                    self.eco.season_start += steps * period
+                    if self.eco.season != prev:  # a 42-day catch-up can lap the wheel
+                        self.emit({"type": "season", "id": self.eco.season})
+                    self.save()
+
+            # visitor lifecycle (R19, global): rabbits golden and tin, the
+            # Parsnip Man's stall — one data table, one clock
+            gap = self.eco.d.get("visitorGap", [90, 240])
+            if self.visitor and now > self.visitor["until"]:
+                self.visitor = None
+                self.next_visitor = now + self.visitor_wait(*gap)
+            if not self.visitor and now >= self.next_visitor:
+                vs = self.eco.d.get("visitors") or [{"id": "rabbit", "ttl": 12}]
+                v = random.choices(vs, weights=[x.get("weight", 1) for x in vs])[0]
+                ttl = float(v.get("ttl", 12))
+                self.visitor = {"kind": v["id"], "until": now + ttl}
+                self._pending.append({"type": "visitor", "kind": v["id"], "ttl": ttl})
+                if v["id"] in ("rabbit", "tin"):  # stale tabs see gold — tin fools them too
+                    self._pending.append({"type": "rabbit", "ttl": ttl})
+
+            # weather (R19): it simply happens to everyone at once
+            if now >= self.next_weather:
+                self.next_weather = now + random.uniform(
+                    *self.eco.d.get("weatherGap", [600, 1500]))
+                ws = self.eco.d.get("weather") or []
+                if ws:
+                    w = random.choices(ws, weights=[x.get("weight", 1) for x in ws])[0]
+                    self.eco.buffs.append(
+                        {"name": w["name"], "mult": w["mult"], "left": float(w["dur"])})
+                    self.eco.weathers += 1
+                    self.emit({"type": "weather", "id": w["id"]})
 
             self.click_rate = round(self.click_window / max(dt, 0.001))
             self.click_window = 0
 
+            vttl = max(0.0, self.visitor["until"] - now) if self.visitor else 0
             snap = {
                 "type": "snapshot",
                 "state": self.eco.snapshot(),
                 "online": len(self.clients),
                 "clickRate": self.click_rate,
-                "rabbitTtl": max(0.0, self.rabbit["until"] - now) if self.rabbit else 0,
+                "visitor": {"kind": self.visitor["kind"], "ttl": vttl} if self.visitor else None,
+                # legacy field: stale tabs only understand golden rabbits (tin
+                # rides along — the decoy fools them exactly as intended)
+                "rabbitTtl": vttl if self.visitor and self.visitor["kind"] in ("rabbit", "tin") else 0,
             }
             await self.broadcast(snap)
             for ev in self._pending:
@@ -165,7 +276,7 @@ class Patch:
             if now - conn["last_click_msg"] < MIN_MSG_INTERVAL:
                 return None  # too chatty; batch harder
             conn["last_click_msg"] = now
-            n = max(0, min(int(msg.get("n", 0)), MAX_CLICKS_PER_MSG))
+            n = clamp_int(msg.get("n", 0), MAX_CLICKS_PER_MSG)
             if n:
                 eco.do_clicks(n)
                 self.click_window += n
@@ -175,7 +286,7 @@ class Patch:
         elif kind == "buy":
             b = msg.get("b")
             n = 10 if msg.get("n") == 10 else 1
-            if isinstance(b, int) and 0 <= b < len(eco.owned):
+            if isinstance(b, int) and not isinstance(b, bool) and 0 <= b < len(eco.owned):
                 bought = eco.buy(b, n)
                 if bought and conn.get("name"):
                     self.tenders.bump(conn["name"], buildings=bought)
@@ -193,17 +304,39 @@ class Patch:
             if eco.buy_upgrade(uid):
                 self.emit({"type": "upgrade", "id": uid})
 
+        elif kind == "shed":
+            # the Potting Shed (R13/R15): spend the world's sprouts on a perk level
+            uid = str(msg.get("id", ""))[:16]
+            if eco.buy_shed(uid):
+                lv = eco.shed_level(uid)
+                item = next((u for u in eco.d["shed"] if u["id"] == uid), None)
+                # ladders announce milestones only (level 1 and every 10th) —
+                # a spree must not paint ten toasts a second on every screen;
+                # levels stay visible to everyone through the snapshot anyway
+                if not (item and item.get("repeat")) or lv == 1 or lv % 10 == 0:
+                    self.emit({"type": "shed", "id": uid, "lv": lv})
+                self.save_soon()
+
         elif kind == "catch":
-            if self.rabbit and now <= self.rabbit["until"]:
-                self.rabbit = None
-                self.next_rabbit = now + random.uniform(90, 240)
-                r = eco.rabbit_reward()
-                self.emit({"type": "rabbitCaught", "kind": r["kind"], "gain": r.get("gain", 0)})
+            if self.visitor and now <= self.visitor["until"]:
+                v = self.visitor["kind"]
+                self.visitor = None
+                self.next_visitor = now + self.visitor_wait(
+                    *eco.d.get("visitorGap", [90, 240]))
+                r = eco.visitor_reward(v)
+                if v == "rabbit":
+                    self.emit({"type": "rabbitCaught", "kind": r["kind"], "gain": r.get("gain", 0)})
+                else:
+                    self.emit({"type": "visitorCaught", "v": v, "out": r["kind"], "gain": r.get("gain", 0)})
 
         elif kind == "prestige":
+            before = eco.seed_mult()
             gained = eco.prestige()
             if gained:
-                self.emit({"type": "prestige", "gained": gained})
+                # boost = the world's actual seed-bonus change; the old
+                # "+8N% forever" copy overstated it by orders of magnitude
+                self.emit({"type": "prestige", "gained": gained,
+                           "boost": eco.seed_mult() / before})
                 self.save()
 
 
@@ -258,10 +391,17 @@ def create_app() -> FastAPI:
         patch.clients.add(ws)
         conn = {"last_click_msg": 0.0, "msg_times": []}
         try:
+            # the greeting must carry the live visitor too, or a reconnect
+            # mid-visit makes the client walk it off and respawn it (review)
+            vttl0 = (max(0.0, patch.visitor["until"] - time.monotonic())
+                     if patch.visitor else 0)
             await ws.send_text(json.dumps({
                 "type": "snapshot", "state": patch.eco.snapshot(),
                 "online": len(patch.clients), "clickRate": patch.click_rate,
-                "rabbitTtl": 0,
+                "visitor": ({"kind": patch.visitor["kind"], "ttl": vttl0}
+                            if patch.visitor else None),
+                "rabbitTtl": (vttl0 if patch.visitor
+                              and patch.visitor["kind"] in ("rabbit", "tin") else 0),
             }))
             while True:
                 raw = await ws.receive_text()
@@ -278,7 +418,13 @@ def create_app() -> FastAPI:
                 except json.JSONDecodeError:
                     continue
                 if isinstance(msg, dict):
-                    reply = patch.handle(msg, conn)
+                    try:
+                        reply = patch.handle(msg, conn)
+                    except Exception:
+                        # a bad intent must never kill the socket — but a real
+                        # fault (save() I/O, sqlite) must never be invisible
+                        traceback.print_exc()
+                        continue
                     if reply:
                         await ws.send_text(json.dumps(reply))
         except WebSocketDisconnect:
