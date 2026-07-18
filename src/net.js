@@ -133,17 +133,19 @@ CC.Patch = class {
       c._bumperSeen = CC.BUILDINGS.map((_, i) => c.bumperCount(i));
       this.online = msg.online;
       this.clickRate = msg.clickRate;
-      /* the golden rabbit is global: server says whether one is loose */
-      if (msg.rabbitTtl > 0 && !ui.rabbit) {
-        ui.rabbit = { x: -30, y: ui.soilY - 14, dir: 1, born: ui.t, patchTtl: msg.rabbitTtl };
-      } else if (msg.rabbitTtl > 0 && ui.rabbit) {
+      /* visitors are global (R19): the server says who is in the patch.
+         Pre-R19 servers only speak rabbitTtl — treat that as a golden one. */
+      const vis = msg.visitor || (msg.rabbitTtl > 0 ? { kind: 'rabbit', ttl: msg.rabbitTtl } : null);
+      if (vis && vis.ttl > 0 && !ui.visitor) {
+        ui.spawnVisitor(vis.kind, vis.ttl, true /* quiet: a resync, not an arrival */);
+      } else if (vis && vis.ttl > 0 && ui.visitor && ui.visitor.kind === vis.kind) {
         /* stay in step with the world's clock so the leaving-warning is timely */
-        ui.rabbit.patchTtl = msg.rabbitTtl;
-        ui.rabbit.born = ui.t;
-      } else if (msg.rabbitTtl <= 0 && ui.rabbit && !ui.rabbit.leaving) {
+        ui.visitor.patchTtl = vis.ttl;
+        ui.visitor.born = ui.t;
+      } else if (!vis && ui.visitor && !ui.visitor.leaving) {
         /* caught elsewhere or expired: bound away gracefully, don't blink out */
-        ui.rabbit.leaving = true;
-        ui.rabbit.dir = ui.rabbit.x < 160 ? -1 : 1;
+        ui.visitor.leaving = true;
+        ui.visitor.dir = ui.visitor.x < 160 ? -1 : 1;
       }
       ui.updatePatchLine();
     } else if (msg.type === 'event') {
@@ -154,9 +156,12 @@ CC.Patch = class {
     } else if (msg.type === 'toast') {
       /* legacy prose for pre-F1 clients — this client renders 'event'
          instead; ignoring avoids double toasts during the transition */
+    } else if (msg.type === 'visitor') {
+      if (!ui.visitor) ui.spawnVisitor(msg.kind, msg.ttl);
     } else if (msg.type === 'rabbit') {
-      ui.rabbit = { x: -30, y: ui.soilY - 14, dir: 1, born: ui.t, patchTtl: msg.ttl };
-      ui.toast('🐇 A golden rabbit is loose in the patch — first click catches it!');
+      /* legacy spawn from a pre-R19 server (new servers send 'visitor'
+         first, so this stays a no-op for them) */
+      if (!ui.visitor) ui.spawnVisitor('rabbit', msg.ttl);
     }
   }
 

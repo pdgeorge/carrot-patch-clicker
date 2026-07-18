@@ -73,14 +73,17 @@ class Patch:
         self.clients: set[WebSocket] = set()
         self.click_window = 0          # clicks landed in the current snapshot window
         self.click_rate = 0            # last window's global clicks/sec, for display
-        self.rabbit: dict | None = None
-        self.next_rabbit = time.monotonic() + self.rabbit_wait(60, 150)
+        self.visitor: dict | None = None  # R19: {kind, until} — one guest at a time
+        self.next_visitor = time.monotonic() + self.visitor_wait(
+            *self.eco.d.get("visitorFirst", [60, 150]))
+        self.next_weather = time.monotonic() + random.uniform(
+            *self.eco.d.get("weatherGap", [600, 1500]))
         self._pending: list[dict] = []  # extra events to broadcast with next snapshot
         if not self.eco.season_start:  # R17: the calendar starts the day it ships
             self.eco.season_start = time.time()
 
-    def rabbit_wait(self, lo: float, hi: float) -> float:
-        """Seconds until the next golden rabbit — Fair season doubles the visits."""
+    def visitor_wait(self, lo: float, hi: float) -> float:
+        """Seconds until the next visitor — Fair season livens the garden."""
         rate = (self.eco.season_data() or {}).get("rabbitRate", 1)
         return random.uniform(lo, hi) / rate
 
@@ -151,6 +154,20 @@ class Patch:
                 what = f"seed bonus ×{fmt(boost)}"
             return (f"🌸 SOMEONE SENT THE WHOLE GARDEN TO SEED. +{fmt(ev['gained'])} seeds "
                     f"({what}) for everyone. A new spring begins.")
+        if ev["type"] == "weather":
+            w = next((x for x in d.get("weather", []) if x["id"] == ev["id"]), None)
+            return (f"🌦 {w['name']} drifts across the whole garden — "
+                    f"×{w['mult']} production for {w['dur']}s.") if w else None
+        if ev["type"] == "visitorCaught":
+            out = ev.get("out")
+            if out == "tin":
+                return "🥫 Clank. The tin rabbit. Somewhere, the parsnip man giggles."
+            if out == "coup":
+                return (f"🥕📈 Market coup! The Parsnip Man's stall folds — "
+                        f"+{fmt(ev.get('gain', 0))} carrots for everyone!")
+            if out == "embargo":
+                return "🥀 Parsnip embargo! Production ×0.5 for 45 seconds. He got us this time."
+            return None
         if ev["type"] == "season":
             s = next((x for x in d.get("seasons", []) if x["id"] == ev["id"]), None)
             return f"🎪 A new season begins: {s['name']}! {s['bonus']}." if s else None
@@ -198,23 +215,46 @@ class Patch:
                         self.emit({"type": "season", "id": self.eco.season})
                     self.save()
 
-            # golden rabbit lifecycle (global!)
-            if self.rabbit and now > self.rabbit["until"]:
-                self.rabbit = None
-                self.next_rabbit = now + self.rabbit_wait(90, 240)
-            if not self.rabbit and now >= self.next_rabbit:
-                self.rabbit = {"id": random.randrange(1 << 30), "until": now + 12.0}
-                self._pending.append({"type": "rabbit", "ttl": 12.0})
+            # visitor lifecycle (R19, global): rabbits golden and tin, the
+            # Parsnip Man's stall — one data table, one clock
+            gap = self.eco.d.get("visitorGap", [90, 240])
+            if self.visitor and now > self.visitor["until"]:
+                self.visitor = None
+                self.next_visitor = now + self.visitor_wait(*gap)
+            if not self.visitor and now >= self.next_visitor:
+                vs = self.eco.d.get("visitors") or [{"id": "rabbit", "ttl": 12}]
+                v = random.choices(vs, weights=[x.get("weight", 1) for x in vs])[0]
+                ttl = float(v.get("ttl", 12))
+                self.visitor = {"kind": v["id"], "until": now + ttl}
+                self._pending.append({"type": "visitor", "kind": v["id"], "ttl": ttl})
+                if v["id"] in ("rabbit", "tin"):  # stale tabs see gold — tin fools them too
+                    self._pending.append({"type": "rabbit", "ttl": ttl})
+
+            # weather (R19): it simply happens to everyone at once
+            if now >= self.next_weather:
+                self.next_weather = now + random.uniform(
+                    *self.eco.d.get("weatherGap", [600, 1500]))
+                ws = self.eco.d.get("weather") or []
+                if ws:
+                    w = random.choices(ws, weights=[x.get("weight", 1) for x in ws])[0]
+                    self.eco.buffs.append(
+                        {"name": w["name"], "mult": w["mult"], "left": float(w["dur"])})
+                    self.eco.weathers += 1
+                    self.emit({"type": "weather", "id": w["id"]})
 
             self.click_rate = round(self.click_window / max(dt, 0.001))
             self.click_window = 0
 
+            vttl = max(0.0, self.visitor["until"] - now) if self.visitor else 0
             snap = {
                 "type": "snapshot",
                 "state": self.eco.snapshot(),
                 "online": len(self.clients),
                 "clickRate": self.click_rate,
-                "rabbitTtl": max(0.0, self.rabbit["until"] - now) if self.rabbit else 0,
+                "visitor": {"kind": self.visitor["kind"], "ttl": vttl} if self.visitor else None,
+                # legacy field: stale tabs only understand golden rabbits (tin
+                # rides along — the decoy fools them exactly as intended)
+                "rabbitTtl": vttl if self.visitor and self.visitor["kind"] in ("rabbit", "tin") else 0,
             }
             await self.broadcast(snap)
             for ev in self._pending:
@@ -278,11 +318,16 @@ class Patch:
                 self.save_soon()
 
         elif kind == "catch":
-            if self.rabbit and now <= self.rabbit["until"]:
-                self.rabbit = None
-                self.next_rabbit = now + self.rabbit_wait(90, 240)
-                r = eco.rabbit_reward()
-                self.emit({"type": "rabbitCaught", "kind": r["kind"], "gain": r.get("gain", 0)})
+            if self.visitor and now <= self.visitor["until"]:
+                v = self.visitor["kind"]
+                self.visitor = None
+                self.next_visitor = now + self.visitor_wait(
+                    *eco.d.get("visitorGap", [90, 240]))
+                r = eco.visitor_reward(v)
+                if v == "rabbit":
+                    self.emit({"type": "rabbitCaught", "kind": r["kind"], "gain": r.get("gain", 0)})
+                else:
+                    self.emit({"type": "visitorCaught", "v": v, "out": r["kind"], "gain": r.get("gain", 0)})
 
         elif kind == "prestige":
             before = eco.seed_mult()

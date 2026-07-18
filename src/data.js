@@ -322,6 +322,13 @@ CC.ALMANAC = [];
   page('dz3', 'Nursery Moonrise', 'A second moon, and it waters things.', { shed: 'p12' });
   page('dz4', 'The Keystone Arch', 'Five stones, one shed, no gaps.',
     { shed: 'p4' }, { shed: 'p5' }, { shed: 'p6' }, { shed: 'p7' }, { shed: 'p8' });
+  /* visitors & weather (R19) */
+  page('vt0', 'Fooled Once', 'Clank.', { tins: 1 });
+  page('vt1', 'A Collection of Clanks', 'Twenty-five tin rabbits. The shelf grows heavy with shame.', { tins: 25 });
+  page('vt2', 'Connoisseur of Decoys', 'One hundred. At this point it is on purpose.', { tins: 100 });
+  page('vp0', 'The First Gamble', 'The stall appeared. Somebody dared, for all of us.', { stalls: 1 });
+  page('vp1', 'Fifty Market Mornings', 'The Parsnip Man respects you now. Somehow that is worse.', { stalls: 50 });
+  page('vw0', 'Rain on Record', 'The first recorded gentle rain. Everyone just stood in it.', { weathers: 1 });
 })();
 
 /* Ribbons: permanent multipliers at lifetime-harvest milestones (your trophy shelf). */
@@ -454,3 +461,26 @@ CC.RABBIT_NEWS = [
   'A golden rabbit was seen! Clicked, negotiated with, and befriended.',
   'The golden rabbit strikes a deal. Everyone profits. Mostly you.',
 ];
+
+/* Visitors (R19): things that appear in the patch and want clicking. ONE
+   scheduler each side (server clock in main.py, dev-garden clock in ui.js)
+   reads THIS table — the rabbit's old two-brains split (audit F2) ends
+   here. Rewards live in the engine pair (visitorReward). weight = spawn
+   odds; ttl = seconds on screen. The tin rabbit is announced as golden on
+   purpose: the joke is the clank. */
+CC.VISITORS = [
+  { id: 'rabbit', weight: 10, ttl: 12 },   /* the classic: frenzy or bundle */
+  { id: 'tin', weight: 2, ttl: 12 },       /* a decoy; counts toward the Almanac */
+  { id: 'parsnip', weight: 3, ttl: 20 },   /* risk-reward: 60% coup, 40% embargo */
+];
+CC.VISITOR_FIRST = [60, 150];  /* seconds until a fresh world's first visitor */
+CC.VISITOR_GAP = [90, 240];    /* between visitors (fair season divides by rabbitRate) */
+
+/* Weather (R19): passive world events — nobody needs to click, it simply
+   happens to everyone at once. Implemented as ordinary timed buffs, so
+   even stale clients see it in their buff line. */
+CC.WEATHER = [
+  { id: 'rain', name: 'Gentle Rain', mult: 2, dur: 90, weight: 6,
+    line: 'A fine rain, always at the perfect moment.' },
+];
+CC.WEATHER_GAP = [600, 1500];  /* seconds between weather rolls */

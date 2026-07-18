@@ -800,7 +800,7 @@ html, body { margin: 0; padding: 0; }
 </div>
 
 <script>
-globalThis.CC = globalThis.CC || {}; CC.BUILD = 'b7a8d1b'; CC.GARDENERS = ["pdgeorge","Claude Fable 5"];
+globalThis.CC = globalThis.CC || {}; CC.BUILD = '810e6b8'; CC.GARDENERS = ["pdgeorge","Claude Fable 5"];
 /* ==== data.js ==== */
 /* Carrot Clicker — content: buildings, upgrades, ribbons, news. */
 globalThis.CC = globalThis.CC || {};
@@ -1126,6 +1126,13 @@ CC.ALMANAC = [];
   page('dz3', 'Nursery Moonrise', 'A second moon, and it waters things.', { shed: 'p12' });
   page('dz4', 'The Keystone Arch', 'Five stones, one shed, no gaps.',
     { shed: 'p4' }, { shed: 'p5' }, { shed: 'p6' }, { shed: 'p7' }, { shed: 'p8' });
+  /* visitors & weather (R19) */
+  page('vt0', 'Fooled Once', 'Clank.', { tins: 1 });
+  page('vt1', 'A Collection of Clanks', 'Twenty-five tin rabbits. The shelf grows heavy with shame.', { tins: 25 });
+  page('vt2', 'Connoisseur of Decoys', 'One hundred. At this point it is on purpose.', { tins: 100 });
+  page('vp0', 'The First Gamble', 'The stall appeared. Somebody dared, for all of us.', { stalls: 1 });
+  page('vp1', 'Fifty Market Mornings', 'The Parsnip Man respects you now. Somehow that is worse.', { stalls: 50 });
+  page('vw0', 'Rain on Record', 'The first recorded gentle rain. Everyone just stood in it.', { weathers: 1 });
 })();
 
 /* Ribbons: permanent multipliers at lifetime-harvest milestones (your trophy shelf). */
@@ -1259,6 +1266,29 @@ CC.RABBIT_NEWS = [
   'The golden rabbit strikes a deal. Everyone profits. Mostly you.',
 ];
 
+/* Visitors (R19): things that appear in the patch and want clicking. ONE
+   scheduler each side (server clock in main.py, dev-garden clock in ui.js)
+   reads THIS table — the rabbit's old two-brains split (audit F2) ends
+   here. Rewards live in the engine pair (visitorReward). weight = spawn
+   odds; ttl = seconds on screen. The tin rabbit is announced as golden on
+   purpose: the joke is the clank. */
+CC.VISITORS = [
+  { id: 'rabbit', weight: 10, ttl: 12 },   /* the classic: frenzy or bundle */
+  { id: 'tin', weight: 2, ttl: 12 },       /* a decoy; counts toward the Almanac */
+  { id: 'parsnip', weight: 3, ttl: 20 },   /* risk-reward: 60% coup, 40% embargo */
+];
+CC.VISITOR_FIRST = [60, 150];  /* seconds until a fresh world's first visitor */
+CC.VISITOR_GAP = [90, 240];    /* between visitors (fair season divides by rabbitRate) */
+
+/* Weather (R19): passive world events — nobody needs to click, it simply
+   happens to everyone at once. Implemented as ordinary timed buffs, so
+   even stale clients see it in their buff line. */
+CC.WEATHER = [
+  { id: 'rain', name: 'Gentle Rain', mult: 2, dur: 90, weight: 6,
+    line: 'A fine rain, always at the perfect moment.' },
+];
+CC.WEATHER_GAP = [600, 1500];  /* seconds between weather rolls */
+
 /* ==== core.js ==== */
 /* Carrot Clicker — pure game core: economy, upgrades, buffs, prestige, save.
    No DOM access; fully drivable headless (see clicker/test/sim.js). */
@@ -1294,6 +1324,9 @@ CC.Core = class {
     this.prestiges = 0;           /* world counters (R15): deeds since records began */
     this.rabbits = 0;
     this.sproutsSpent = 0;
+    this.tins = 0;                /* R19 visitor counters: clanks, gambles, rains */
+    this.stalls = 0;
+    this.weathers = 0;
     this.almanac = {};            /* Almanac page id -> true; latches forever (R16) */
     this.mirrorBook = false;      /* world mode: the server's almanac is the book —
                                      a mirroring client must never latch its own */
@@ -1358,6 +1391,9 @@ CC.Core = class {
     if (c.sproutsSpent !== undefined) return this.sproutsSpent >= c.sproutsSpent;
     if (c.shedLv !== undefined) return this.shedLevel(c.shedLv) >= (c.n || 1);
     if (c.upgradesOwned !== undefined) return Object.keys(this.bought).length >= c.upgradesOwned;
+    if (c.tins !== undefined) return this.tins >= c.tins;
+    if (c.stalls !== undefined) return this.stalls >= c.stalls;
+    if (c.weathers !== undefined) return this.weathers >= c.weathers;
     if (c.heirloomEvery !== undefined) {
       return CC.SHED.every(u => !u.resprout || this.shedLevel(u.id) >= c.heirloomEvery);
     }
@@ -1547,6 +1583,27 @@ CC.Core = class {
     return { kind: 'lucky', gain, text: `Lucky bundle! +${CC.fmt(gain)} carrots!` };
   }
 
+  /* One reward dispatch for every patch visitor (R19). The tin rabbit is
+     a decoy: it pays nothing but the Almanac remembers. The Parsnip Man's
+     stall is the world's shared gamble — one click decides for everyone. */
+  visitorReward(kind, rng = Math.random) {
+    if (kind === 'tin') {
+      this.tins++;
+      return { kind: 'tin' };
+    }
+    if (kind === 'parsnip') {
+      this.stalls++;
+      if (rng() < 0.4) {
+        this.buffs.push({ name: 'Parsnip Embargo', mult: 0.5, left: 45 });
+        return { kind: 'embargo' };
+      }
+      const gain = Math.min(this.bank * 0.25, this.cps() * 900) + this.cps() * 90;
+      this.earn(gain);
+      return { kind: 'coup', gain };
+    }
+    return this.rabbitReward(rng); /* the golden classic */
+  }
+
   /* ---------- prestige ---------- */
   seedsEarnedTotal() { return Math.floor(Math.sqrt(this.totalAllTime / 1e6)); }
   pendingSeeds() { return Math.max(0, this.seedsEarnedTotal() - this.seeds); }
@@ -1624,6 +1681,7 @@ CC.Core = class {
       clicks: this.clicks, owned: this.owned, bought: this.bought, seeds: this.seeds,
       sprouts: this.sprouts, shed: this.shed,
       prestiges: this.prestiges, rabbits: this.rabbits, sproutsSpent: this.sproutsSpent,
+      tins: this.tins, stalls: this.stalls, weathers: this.weathers,
       almanac: this.almanac,
       /* season deliberately NOT saved: the dev garden has no calendar, and a
          ?season= theme test must never persist its bonus into the solo save;
@@ -1657,6 +1715,9 @@ CC.Core = class {
     this.prestiges = Math.max(0, Math.floor(s.prestiges) || 0);
     this.rabbits = Math.max(0, Math.floor(s.rabbits) || 0);
     this.sproutsSpent = Math.max(0, s.sproutsSpent || 0);
+    this.tins = Math.max(0, Math.floor(s.tins) || 0);
+    this.stalls = Math.max(0, Math.floor(s.stalls) || 0);
+    this.weathers = Math.max(0, Math.floor(s.weathers) || 0);
     /* known page ids are historical fact and stay latched; junk ids would
        mint ×1.02 each forever — dropped */
     this.almanac = {};
@@ -1820,17 +1881,19 @@ CC.Patch = class {
       c._bumperSeen = CC.BUILDINGS.map((_, i) => c.bumperCount(i));
       this.online = msg.online;
       this.clickRate = msg.clickRate;
-      /* the golden rabbit is global: server says whether one is loose */
-      if (msg.rabbitTtl > 0 && !ui.rabbit) {
-        ui.rabbit = { x: -30, y: ui.soilY - 14, dir: 1, born: ui.t, patchTtl: msg.rabbitTtl };
-      } else if (msg.rabbitTtl > 0 && ui.rabbit) {
+      /* visitors are global (R19): the server says who is in the patch.
+         Pre-R19 servers only speak rabbitTtl — treat that as a golden one. */
+      const vis = msg.visitor || (msg.rabbitTtl > 0 ? { kind: 'rabbit', ttl: msg.rabbitTtl } : null);
+      if (vis && vis.ttl > 0 && !ui.visitor) {
+        ui.spawnVisitor(vis.kind, vis.ttl, true /* quiet: a resync, not an arrival */);
+      } else if (vis && vis.ttl > 0 && ui.visitor && ui.visitor.kind === vis.kind) {
         /* stay in step with the world's clock so the leaving-warning is timely */
-        ui.rabbit.patchTtl = msg.rabbitTtl;
-        ui.rabbit.born = ui.t;
-      } else if (msg.rabbitTtl <= 0 && ui.rabbit && !ui.rabbit.leaving) {
+        ui.visitor.patchTtl = vis.ttl;
+        ui.visitor.born = ui.t;
+      } else if (!vis && ui.visitor && !ui.visitor.leaving) {
         /* caught elsewhere or expired: bound away gracefully, don't blink out */
-        ui.rabbit.leaving = true;
-        ui.rabbit.dir = ui.rabbit.x < 160 ? -1 : 1;
+        ui.visitor.leaving = true;
+        ui.visitor.dir = ui.visitor.x < 160 ? -1 : 1;
       }
       ui.updatePatchLine();
     } else if (msg.type === 'event') {
@@ -1841,9 +1904,12 @@ CC.Patch = class {
     } else if (msg.type === 'toast') {
       /* legacy prose for pre-F1 clients — this client renders 'event'
          instead; ignoring avoids double toasts during the transition */
+    } else if (msg.type === 'visitor') {
+      if (!ui.visitor) ui.spawnVisitor(msg.kind, msg.ttl);
     } else if (msg.type === 'rabbit') {
-      ui.rabbit = { x: -30, y: ui.soilY - 14, dir: 1, born: ui.t, patchTtl: msg.ttl };
-      ui.toast('🐇 A golden rabbit is loose in the patch — first click catches it!');
+      /* legacy spawn from a pre-R19 server (new servers send 'visitor'
+         first, so this stays a no-op for them) */
+      if (!ui.visitor) ui.spawnVisitor('rabbit', msg.ttl);
     }
   }
 
@@ -1928,8 +1994,9 @@ CC.UI = class {
     this.particles = [];
     this.floats = [];
     this.buyN = 1;
-    this.rabbit = null;
-    this.nextRabbit = 40 + Math.random() * 60;
+    this.visitor = null; /* R19: {kind, x, y, dir, born, patchTtl, leaving} */
+    this.nextVisitor = CC.VISITOR_FIRST[0] +
+      Math.random() * (CC.VISITOR_FIRST[1] - CC.VISITOR_FIRST[0]);
     this.tickerT = 0;
     this._upgSig = null; this._shopSig = null; this._shedSig = null;
     this._wipeArm = 0;
@@ -2167,8 +2234,8 @@ CC.UI = class {
       const rect = this.canvas.getBoundingClientRect();
       const mx = (e.clientX - rect.left) * (this.canvas.width / rect.width);
       const my = (e.clientY - rect.top) * (this.canvas.height / rect.height);
-      if (this.rabbit && Math.hypot(mx - this.rabbit.x, my - this.rabbit.y) < 34) {
-        this.catchRabbit();
+      if (this.visitor && Math.hypot(mx - this.visitor.x, my - this.visitor.y) < 34) {
+        this.catchVisitor();
         return;
       }
       this.doClick(mx, my);
@@ -2307,21 +2374,51 @@ CC.UI = class {
     }
   }
 
-  catchRabbit() {
+  /* every visitor arrives the same way; the tin rabbit is DELIBERATELY
+     announced with the golden line — the joke is the clank (R19) */
+  spawnVisitor(kind, ttl, quiet) {
+    this.visitor = { kind, x: -30, y: this.soilY - 14, dir: 1, born: this.t, patchTtl: ttl };
+    if (quiet) return;
+    this.toast(kind === 'parsnip'
+      ? '🥕⁉ The Parsnip Man has set up a stall in the patch — first click decides for everyone…'
+      : '🐇 A golden rabbit is loose in the patch — first click catches it!');
+  }
+
+  /* one renderer for visitor outcomes, local or world (F1 discipline) */
+  visitorResult(r) {
+    if (r.kind === 'tin') {
+      CC.audio.thunk();
+      this.toast('🥫 Clank. The tin rabbit. Somewhere, the parsnip man giggles.');
+    } else if (r.kind === 'coup') {
+      CC.audio.fanfare();
+      this.toast(`🥕📈 Market coup! The stall folds — +${CC.fmt(r.gain || 0)} carrots for everyone!`);
+    } else if (r.kind === 'embargo') {
+      CC.audio.thunk();
+      this.toast('🥀 Parsnip embargo! Production ×0.5 for 45 seconds. He got us this time.');
+    } else { /* frenzy / lucky — the golden classic */
+      CC.audio.rabbit();
+      this.toast(`🐇 ${r.text}`);
+    }
+  }
+
+  catchVisitor() {
     if (this.worldMode) {
       /* worldMode, not patchOn: during a re-sync gap the solo reward path
          must never run against predicted world state */
       this.patch.send({ type: 'catch' });
-      this.rabbit = null; /* server will announce who-caught-what */
+      this.visitor = null; /* server will announce who-caught-what */
       return;
     }
-    const r = this.core.rabbitReward();
-    this.rabbit = null;
-    this.nextRabbit = this.t + 75 + Math.random() * 105;
-    CC.audio.rabbit();
-    this.toast(`🐇 ${r.text}`);
-    this.$('ticker-text').textContent = CC.RABBIT_NEWS[Math.floor(Math.random() * CC.RABBIT_NEWS.length)];
-    this.tickerT = -6;
+    const kind = this.visitor.kind;
+    const r = this.core.visitorReward(kind);
+    this.visitor = null;
+    this.nextVisitor = this.t + CC.VISITOR_GAP[0] +
+      Math.random() * (CC.VISITOR_GAP[1] - CC.VISITOR_GAP[0]);
+    this.visitorResult(r);
+    if (kind === 'rabbit') {
+      this.$('ticker-text').textContent = CC.RABBIT_NEWS[Math.floor(Math.random() * CC.RABBIT_NEWS.length)];
+      this.tickerT = -6;
+    }
   }
 
   askPrestige() {
@@ -2457,6 +2554,13 @@ CC.UI = class {
         ? 'RABBIT FRENZY! Production ×7 for 30 seconds!'
         : `Lucky bundle! +${CC.fmt(ev.gain || 0)} carrots!`;
       this.toast(`🐇 Caught by a tender somewhere on Earth — ${what}`);
+    } else if (ev.type === 'visitorCaught') {
+      this.visitorResult({ kind: ev.out, gain: ev.gain });
+    } else if (ev.type === 'weather') {
+      const w = CC.WEATHER.find(x => x.id === ev.id);
+      if (!w) return;
+      CC.audio.upgrade();
+      this.toast(`🌦 ${w.name} drifts across the whole garden — ×${w.mult} production for ${w.dur}s. ${w.line}`);
     } else if (ev.type === 'prestige') {
       if (!(ev.gained > 0)) return; /* malformed event must not toast "+∞ seeds" */
       CC.audio.seed();
@@ -2574,27 +2678,52 @@ CC.UI = class {
       }
     }
 
-    /* golden rabbit lifecycle (locally scheduled only in the dev garden) */
-    if (!this.worldMode && !this.rabbit && this.t >= this.nextRabbit) {
-      this.rabbit = { x: -30, y: this.soilY - 14, dir: 1, born: this.t };
+    /* visitor lifecycle (locally scheduled only in the dev garden, from
+       the same data table the server reads — one brain, two clocks) */
+    if (!this.worldMode && !this.visitor && this.t >= this.nextVisitor) {
+      let w = CC.VISITORS.reduce((s, v) => s + v.weight, 0) * Math.random();
+      const pick = CC.VISITORS.find(v => (w -= v.weight) < 0) || CC.VISITORS[0];
+      this.spawnVisitor(pick.id, pick.ttl);
     }
-    if (this.rabbit) {
-      const r = this.rabbit;
+    if (this.visitor) {
+      const r = this.visitor;
       const ttl = r.patchTtl || 12;
-      /* a rabbit doesn't blink out of existence — with 2.5s left it warns
-         and bounds off toward the nearest hedge gap */
+      /* a visitor doesn't blink out of existence — with 2.5s left it warns
+         and makes for the nearest hedge gap */
       if (!r.leaving && this.t - r.born > ttl - 2.5) {
         r.leaving = true;
         r.dir = r.x < this.canvas.width / 2 ? -1 : 1;
-        this.toast('🐇 The golden rabbit is hopping away…');
+        this.toast(r.kind === 'parsnip'
+          ? '🥕 The Parsnip Man is folding up his stall…'
+          : '🐇 The golden rabbit is hopping away…');
       }
-      r.x += r.dir * (r.leaving ? 170 : 55) * dt;
+      const pace = r.kind === 'parsnip' ? 25 : 55;
+      r.x += r.dir * (r.leaving ? 170 : pace) * dt;
       if (!r.leaving) {
         if (r.x > this.canvas.width - 20) r.dir = -1;
         if (r.x < 20 && r.dir === -1) r.dir = 1;
       } else if (r.x < -40 || r.x > this.canvas.width + 40) {
-        this.rabbit = null;
-        this.nextRabbit = this.t + 75 + Math.random() * 105;
+        this.visitor = null;
+        this.nextVisitor = this.t + CC.VISITOR_GAP[0] +
+          Math.random() * (CC.VISITOR_GAP[1] - CC.VISITOR_GAP[0]);
+      }
+    }
+
+    /* weather rolls locally in the dev garden (the world's rolls arrive
+       as buffs in snapshots + a weather event) */
+    if (!this.worldMode) {
+      if (this.nextWeather === undefined) {
+        this.nextWeather = this.t + CC.WEATHER_GAP[0] +
+          Math.random() * (CC.WEATHER_GAP[1] - CC.WEATHER_GAP[0]);
+      }
+      if (this.t >= this.nextWeather) {
+        this.nextWeather = this.t + CC.WEATHER_GAP[0] +
+          Math.random() * (CC.WEATHER_GAP[1] - CC.WEATHER_GAP[0]);
+        let w = CC.WEATHER.reduce((s, x) => s + x.weight, 0) * Math.random();
+        const pick = CC.WEATHER.find(x => (w -= x.weight) < 0) || CC.WEATHER[0];
+        this.core.buffs.push({ name: pick.name, mult: pick.mult, left: pick.dur });
+        this.core.weathers++;
+        this.patchEvent({ type: 'weather', id: pick.id });
       }
     }
 
@@ -2852,29 +2981,79 @@ CC.UI = class {
     x.fill();
     x.restore();
 
-    /* golden rabbit */
-    if (this.rabbit) {
-      const r = this.rabbit;
-      const hop = -Math.abs(Math.sin(this.t * 8)) * 9;
+    /* the visitor (R19): golden rabbit, its tin impostor, or the stall */
+    if (this.visitor) {
+      const r = this.visitor;
       x.save();
-      x.translate(r.x, r.y + hop);
-      if (r.dir === -1) x.scale(-1, 1);
-      const glow = x.createRadialGradient(0, 0, 0, 0, 0, 30);
-      glow.addColorStop(0, 'rgba(255,215,90,0.55)');
-      glow.addColorStop(1, 'rgba(255,215,90,0)');
-      x.fillStyle = glow;
-      x.beginPath(); x.arc(0, 0, 30, 0, Math.PI * 2); x.fill();
-      x.fillStyle = '#e8c25a';
-      x.beginPath(); x.ellipse(0, 0, 14, 9, 0, 0, Math.PI * 2); x.fill();
-      x.beginPath(); x.ellipse(12, -5, 7, 6, 0, 0, Math.PI * 2); x.fill();
-      x.fillStyle = '#d4a83a';
-      x.beginPath(); x.ellipse(10, -14, 2.2, 7, -0.15, 0, Math.PI * 2); x.fill();
-      x.beginPath(); x.ellipse(14, -13.5, 2.2, 6.5, 0.2, 0, Math.PI * 2); x.fill();
-      x.fillStyle = '#fff8e0';
-      x.beginPath(); x.arc(-13, -1, 3.5, 0, Math.PI * 2); x.fill();
-      x.fillStyle = '#2a221a';
-      x.beginPath(); x.arc(13.5, -6, 1.1, 0, Math.PI * 2); x.fill();
+      if (r.kind === 'parsnip') {
+        /* the Parsnip Man: a pale root in a small hat, lugging his stall */
+        x.translate(r.x, r.y + 2);
+        if (r.dir === -1) x.scale(-1, 1);
+        x.fillStyle = '#e8ddb8';
+        x.beginPath();
+        x.moveTo(-7, -22);
+        x.quadraticCurveTo(-9, 0, -1, 16);
+        x.lineTo(1, 16);
+        x.quadraticCurveTo(9, 0, 7, -22);
+        x.closePath(); x.fill();
+        x.strokeStyle = 'rgba(120,105,60,0.4)';
+        x.lineWidth = 1.4;
+        for (let k = 1; k <= 3; k++) {
+          x.beginPath(); x.moveTo(-6 + k, -20 + k * 9); x.lineTo(6 - k, -20 + k * 9); x.stroke();
+        }
+        x.fillStyle = '#3f7d33';
+        x.beginPath(); x.ellipse(0, -24, 6, 3.4, 0, 0, Math.PI * 2); x.fill();
+        x.fillStyle = '#4a3018'; /* the hat above the greens — quite formal */
+        x.beginPath(); x.ellipse(0, -29, 8, 2.4, 0, 0, Math.PI * 2); x.fill();
+        x.fillRect(-4, -36, 8, 7);
+        x.fillStyle = '#2a221a';
+        x.beginPath(); x.arc(-3, -16, 1.1, 0, Math.PI * 2); x.arc(3, -16, 1.1, 0, Math.PI * 2); x.fill();
+        /* the stall: a plank on legs with a striped awning */
+        x.fillStyle = '#6b4a26';
+        x.fillRect(10, -6, 26, 3);
+        x.fillRect(12, -3, 3, 18);
+        x.fillRect(31, -3, 3, 18);
+        for (let k = 0; k < 4; k++) {
+          x.fillStyle = k % 2 ? '#c8452c' : '#f6ead2';
+          x.fillRect(9 + k * 7, -14, 7, 5);
+        }
+      } else {
+        /* rabbit — golden, or tin if you squint (that is the con) */
+        const tin = r.kind === 'tin';
+        const hop = -Math.abs(Math.sin(this.t * (tin ? 6.2 : 8))) * (tin ? 7 : 9);
+        x.translate(r.x, r.y + hop);
+        if (r.dir === -1) x.scale(-1, 1);
+        const glow = x.createRadialGradient(0, 0, 0, 0, 0, 30);
+        glow.addColorStop(0, tin ? 'rgba(215,215,190,0.38)' : 'rgba(255,215,90,0.55)');
+        glow.addColorStop(1, 'rgba(255,215,90,0)');
+        x.fillStyle = glow;
+        x.beginPath(); x.arc(0, 0, 30, 0, Math.PI * 2); x.fill();
+        x.fillStyle = tin ? '#cfc9a8' : '#e8c25a';
+        x.beginPath(); x.ellipse(0, 0, 14, 9, 0, 0, Math.PI * 2); x.fill();
+        x.beginPath(); x.ellipse(12, -5, 7, 6, 0, 0, Math.PI * 2); x.fill();
+        x.fillStyle = tin ? '#a8a488' : '#d4a83a';
+        x.beginPath(); x.ellipse(10, -14, 2.2, 7, -0.15, 0, Math.PI * 2); x.fill();
+        x.beginPath(); x.ellipse(14, -13.5, 2.2, 6.5, 0.2, 0, Math.PI * 2); x.fill();
+        x.fillStyle = tin ? '#f2f2ea' : '#fff8e0';
+        x.beginPath(); x.arc(-13, -1, 3.5, 0, Math.PI * 2); x.fill();
+        x.fillStyle = '#2a221a';
+        x.beginPath(); x.arc(13.5, -6, 1.1, 0, Math.PI * 2); x.fill();
+      }
       x.restore();
+    }
+
+    /* gentle rain (R19): drawn only while the weather buff runs */
+    if (c.buffs.some(b => CC.WEATHER.some(w => w.name === b.name))) {
+      x.strokeStyle = 'rgba(180,210,240,0.3)';
+      x.lineWidth = 1.2;
+      for (let i = 0; i < 42; i++) {
+        const rx = ((i * 89 + this.t * 130 * (1 + (i % 3) * 0.15)) % (W + 30)) - 15;
+        const ry = (i * 53 + this.t * 340) % H;
+        x.beginPath();
+        x.moveTo(rx, ry);
+        x.lineTo(rx - 2.5, ry + 9);
+        x.stroke();
+      }
     }
 
     /* particles */
@@ -2911,6 +3090,11 @@ if (typeof document !== 'undefined') {
     const dn = params.get('daynight');
     if (dn === 'day' || dn === 'night') { game.dayNight = dn; } /* theme dev (R18) */
     if (season || dn) game.applyTheme();
+    const vis = params.get('visitor'); /* dev garden: summon a visitor now (R19) */
+    if (vis && !game.worldMode && CC.VISITORS.some(v => v.id === vis)) {
+      game.spawnVisitor(vis, CC.VISITORS.find(v => v.id === vis).ttl);
+      game.visitor.x = 120; /* mid-patch, ready for sprite work */
+    }
   });
 }
 

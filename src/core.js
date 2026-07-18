@@ -32,6 +32,9 @@ CC.Core = class {
     this.prestiges = 0;           /* world counters (R15): deeds since records began */
     this.rabbits = 0;
     this.sproutsSpent = 0;
+    this.tins = 0;                /* R19 visitor counters: clanks, gambles, rains */
+    this.stalls = 0;
+    this.weathers = 0;
     this.almanac = {};            /* Almanac page id -> true; latches forever (R16) */
     this.mirrorBook = false;      /* world mode: the server's almanac is the book —
                                      a mirroring client must never latch its own */
@@ -96,6 +99,9 @@ CC.Core = class {
     if (c.sproutsSpent !== undefined) return this.sproutsSpent >= c.sproutsSpent;
     if (c.shedLv !== undefined) return this.shedLevel(c.shedLv) >= (c.n || 1);
     if (c.upgradesOwned !== undefined) return Object.keys(this.bought).length >= c.upgradesOwned;
+    if (c.tins !== undefined) return this.tins >= c.tins;
+    if (c.stalls !== undefined) return this.stalls >= c.stalls;
+    if (c.weathers !== undefined) return this.weathers >= c.weathers;
     if (c.heirloomEvery !== undefined) {
       return CC.SHED.every(u => !u.resprout || this.shedLevel(u.id) >= c.heirloomEvery);
     }
@@ -285,6 +291,27 @@ CC.Core = class {
     return { kind: 'lucky', gain, text: `Lucky bundle! +${CC.fmt(gain)} carrots!` };
   }
 
+  /* One reward dispatch for every patch visitor (R19). The tin rabbit is
+     a decoy: it pays nothing but the Almanac remembers. The Parsnip Man's
+     stall is the world's shared gamble — one click decides for everyone. */
+  visitorReward(kind, rng = Math.random) {
+    if (kind === 'tin') {
+      this.tins++;
+      return { kind: 'tin' };
+    }
+    if (kind === 'parsnip') {
+      this.stalls++;
+      if (rng() < 0.4) {
+        this.buffs.push({ name: 'Parsnip Embargo', mult: 0.5, left: 45 });
+        return { kind: 'embargo' };
+      }
+      const gain = Math.min(this.bank * 0.25, this.cps() * 900) + this.cps() * 90;
+      this.earn(gain);
+      return { kind: 'coup', gain };
+    }
+    return this.rabbitReward(rng); /* the golden classic */
+  }
+
   /* ---------- prestige ---------- */
   seedsEarnedTotal() { return Math.floor(Math.sqrt(this.totalAllTime / 1e6)); }
   pendingSeeds() { return Math.max(0, this.seedsEarnedTotal() - this.seeds); }
@@ -362,6 +389,7 @@ CC.Core = class {
       clicks: this.clicks, owned: this.owned, bought: this.bought, seeds: this.seeds,
       sprouts: this.sprouts, shed: this.shed,
       prestiges: this.prestiges, rabbits: this.rabbits, sproutsSpent: this.sproutsSpent,
+      tins: this.tins, stalls: this.stalls, weathers: this.weathers,
       almanac: this.almanac,
       /* season deliberately NOT saved: the dev garden has no calendar, and a
          ?season= theme test must never persist its bonus into the solo save;
@@ -395,6 +423,9 @@ CC.Core = class {
     this.prestiges = Math.max(0, Math.floor(s.prestiges) || 0);
     this.rabbits = Math.max(0, Math.floor(s.rabbits) || 0);
     this.sproutsSpent = Math.max(0, s.sproutsSpent || 0);
+    this.tins = Math.max(0, Math.floor(s.tins) || 0);
+    this.stalls = Math.max(0, Math.floor(s.stalls) || 0);
+    this.weathers = Math.max(0, Math.floor(s.weathers) || 0);
     /* known page ids are historical fact and stay latched; junk ids would
        mint ×1.02 each forever — dropped */
     this.almanac = {};

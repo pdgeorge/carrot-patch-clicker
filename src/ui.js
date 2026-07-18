@@ -65,8 +65,9 @@ CC.UI = class {
     this.particles = [];
     this.floats = [];
     this.buyN = 1;
-    this.rabbit = null;
-    this.nextRabbit = 40 + Math.random() * 60;
+    this.visitor = null; /* R19: {kind, x, y, dir, born, patchTtl, leaving} */
+    this.nextVisitor = CC.VISITOR_FIRST[0] +
+      Math.random() * (CC.VISITOR_FIRST[1] - CC.VISITOR_FIRST[0]);
     this.tickerT = 0;
     this._upgSig = null; this._shopSig = null; this._shedSig = null;
     this._wipeArm = 0;
@@ -304,8 +305,8 @@ CC.UI = class {
       const rect = this.canvas.getBoundingClientRect();
       const mx = (e.clientX - rect.left) * (this.canvas.width / rect.width);
       const my = (e.clientY - rect.top) * (this.canvas.height / rect.height);
-      if (this.rabbit && Math.hypot(mx - this.rabbit.x, my - this.rabbit.y) < 34) {
-        this.catchRabbit();
+      if (this.visitor && Math.hypot(mx - this.visitor.x, my - this.visitor.y) < 34) {
+        this.catchVisitor();
         return;
       }
       this.doClick(mx, my);
@@ -444,21 +445,51 @@ CC.UI = class {
     }
   }
 
-  catchRabbit() {
+  /* every visitor arrives the same way; the tin rabbit is DELIBERATELY
+     announced with the golden line — the joke is the clank (R19) */
+  spawnVisitor(kind, ttl, quiet) {
+    this.visitor = { kind, x: -30, y: this.soilY - 14, dir: 1, born: this.t, patchTtl: ttl };
+    if (quiet) return;
+    this.toast(kind === 'parsnip'
+      ? '🥕⁉ The Parsnip Man has set up a stall in the patch — first click decides for everyone…'
+      : '🐇 A golden rabbit is loose in the patch — first click catches it!');
+  }
+
+  /* one renderer for visitor outcomes, local or world (F1 discipline) */
+  visitorResult(r) {
+    if (r.kind === 'tin') {
+      CC.audio.thunk();
+      this.toast('🥫 Clank. The tin rabbit. Somewhere, the parsnip man giggles.');
+    } else if (r.kind === 'coup') {
+      CC.audio.fanfare();
+      this.toast(`🥕📈 Market coup! The stall folds — +${CC.fmt(r.gain || 0)} carrots for everyone!`);
+    } else if (r.kind === 'embargo') {
+      CC.audio.thunk();
+      this.toast('🥀 Parsnip embargo! Production ×0.5 for 45 seconds. He got us this time.');
+    } else { /* frenzy / lucky — the golden classic */
+      CC.audio.rabbit();
+      this.toast(`🐇 ${r.text}`);
+    }
+  }
+
+  catchVisitor() {
     if (this.worldMode) {
       /* worldMode, not patchOn: during a re-sync gap the solo reward path
          must never run against predicted world state */
       this.patch.send({ type: 'catch' });
-      this.rabbit = null; /* server will announce who-caught-what */
+      this.visitor = null; /* server will announce who-caught-what */
       return;
     }
-    const r = this.core.rabbitReward();
-    this.rabbit = null;
-    this.nextRabbit = this.t + 75 + Math.random() * 105;
-    CC.audio.rabbit();
-    this.toast(`🐇 ${r.text}`);
-    this.$('ticker-text').textContent = CC.RABBIT_NEWS[Math.floor(Math.random() * CC.RABBIT_NEWS.length)];
-    this.tickerT = -6;
+    const kind = this.visitor.kind;
+    const r = this.core.visitorReward(kind);
+    this.visitor = null;
+    this.nextVisitor = this.t + CC.VISITOR_GAP[0] +
+      Math.random() * (CC.VISITOR_GAP[1] - CC.VISITOR_GAP[0]);
+    this.visitorResult(r);
+    if (kind === 'rabbit') {
+      this.$('ticker-text').textContent = CC.RABBIT_NEWS[Math.floor(Math.random() * CC.RABBIT_NEWS.length)];
+      this.tickerT = -6;
+    }
   }
 
   askPrestige() {
@@ -594,6 +625,13 @@ CC.UI = class {
         ? 'RABBIT FRENZY! Production ×7 for 30 seconds!'
         : `Lucky bundle! +${CC.fmt(ev.gain || 0)} carrots!`;
       this.toast(`🐇 Caught by a tender somewhere on Earth — ${what}`);
+    } else if (ev.type === 'visitorCaught') {
+      this.visitorResult({ kind: ev.out, gain: ev.gain });
+    } else if (ev.type === 'weather') {
+      const w = CC.WEATHER.find(x => x.id === ev.id);
+      if (!w) return;
+      CC.audio.upgrade();
+      this.toast(`🌦 ${w.name} drifts across the whole garden — ×${w.mult} production for ${w.dur}s. ${w.line}`);
     } else if (ev.type === 'prestige') {
       if (!(ev.gained > 0)) return; /* malformed event must not toast "+∞ seeds" */
       CC.audio.seed();
@@ -711,27 +749,52 @@ CC.UI = class {
       }
     }
 
-    /* golden rabbit lifecycle (locally scheduled only in the dev garden) */
-    if (!this.worldMode && !this.rabbit && this.t >= this.nextRabbit) {
-      this.rabbit = { x: -30, y: this.soilY - 14, dir: 1, born: this.t };
+    /* visitor lifecycle (locally scheduled only in the dev garden, from
+       the same data table the server reads — one brain, two clocks) */
+    if (!this.worldMode && !this.visitor && this.t >= this.nextVisitor) {
+      let w = CC.VISITORS.reduce((s, v) => s + v.weight, 0) * Math.random();
+      const pick = CC.VISITORS.find(v => (w -= v.weight) < 0) || CC.VISITORS[0];
+      this.spawnVisitor(pick.id, pick.ttl);
     }
-    if (this.rabbit) {
-      const r = this.rabbit;
+    if (this.visitor) {
+      const r = this.visitor;
       const ttl = r.patchTtl || 12;
-      /* a rabbit doesn't blink out of existence — with 2.5s left it warns
-         and bounds off toward the nearest hedge gap */
+      /* a visitor doesn't blink out of existence — with 2.5s left it warns
+         and makes for the nearest hedge gap */
       if (!r.leaving && this.t - r.born > ttl - 2.5) {
         r.leaving = true;
         r.dir = r.x < this.canvas.width / 2 ? -1 : 1;
-        this.toast('🐇 The golden rabbit is hopping away…');
+        this.toast(r.kind === 'parsnip'
+          ? '🥕 The Parsnip Man is folding up his stall…'
+          : '🐇 The golden rabbit is hopping away…');
       }
-      r.x += r.dir * (r.leaving ? 170 : 55) * dt;
+      const pace = r.kind === 'parsnip' ? 25 : 55;
+      r.x += r.dir * (r.leaving ? 170 : pace) * dt;
       if (!r.leaving) {
         if (r.x > this.canvas.width - 20) r.dir = -1;
         if (r.x < 20 && r.dir === -1) r.dir = 1;
       } else if (r.x < -40 || r.x > this.canvas.width + 40) {
-        this.rabbit = null;
-        this.nextRabbit = this.t + 75 + Math.random() * 105;
+        this.visitor = null;
+        this.nextVisitor = this.t + CC.VISITOR_GAP[0] +
+          Math.random() * (CC.VISITOR_GAP[1] - CC.VISITOR_GAP[0]);
+      }
+    }
+
+    /* weather rolls locally in the dev garden (the world's rolls arrive
+       as buffs in snapshots + a weather event) */
+    if (!this.worldMode) {
+      if (this.nextWeather === undefined) {
+        this.nextWeather = this.t + CC.WEATHER_GAP[0] +
+          Math.random() * (CC.WEATHER_GAP[1] - CC.WEATHER_GAP[0]);
+      }
+      if (this.t >= this.nextWeather) {
+        this.nextWeather = this.t + CC.WEATHER_GAP[0] +
+          Math.random() * (CC.WEATHER_GAP[1] - CC.WEATHER_GAP[0]);
+        let w = CC.WEATHER.reduce((s, x) => s + x.weight, 0) * Math.random();
+        const pick = CC.WEATHER.find(x => (w -= x.weight) < 0) || CC.WEATHER[0];
+        this.core.buffs.push({ name: pick.name, mult: pick.mult, left: pick.dur });
+        this.core.weathers++;
+        this.patchEvent({ type: 'weather', id: pick.id });
       }
     }
 
@@ -989,29 +1052,79 @@ CC.UI = class {
     x.fill();
     x.restore();
 
-    /* golden rabbit */
-    if (this.rabbit) {
-      const r = this.rabbit;
-      const hop = -Math.abs(Math.sin(this.t * 8)) * 9;
+    /* the visitor (R19): golden rabbit, its tin impostor, or the stall */
+    if (this.visitor) {
+      const r = this.visitor;
       x.save();
-      x.translate(r.x, r.y + hop);
-      if (r.dir === -1) x.scale(-1, 1);
-      const glow = x.createRadialGradient(0, 0, 0, 0, 0, 30);
-      glow.addColorStop(0, 'rgba(255,215,90,0.55)');
-      glow.addColorStop(1, 'rgba(255,215,90,0)');
-      x.fillStyle = glow;
-      x.beginPath(); x.arc(0, 0, 30, 0, Math.PI * 2); x.fill();
-      x.fillStyle = '#e8c25a';
-      x.beginPath(); x.ellipse(0, 0, 14, 9, 0, 0, Math.PI * 2); x.fill();
-      x.beginPath(); x.ellipse(12, -5, 7, 6, 0, 0, Math.PI * 2); x.fill();
-      x.fillStyle = '#d4a83a';
-      x.beginPath(); x.ellipse(10, -14, 2.2, 7, -0.15, 0, Math.PI * 2); x.fill();
-      x.beginPath(); x.ellipse(14, -13.5, 2.2, 6.5, 0.2, 0, Math.PI * 2); x.fill();
-      x.fillStyle = '#fff8e0';
-      x.beginPath(); x.arc(-13, -1, 3.5, 0, Math.PI * 2); x.fill();
-      x.fillStyle = '#2a221a';
-      x.beginPath(); x.arc(13.5, -6, 1.1, 0, Math.PI * 2); x.fill();
+      if (r.kind === 'parsnip') {
+        /* the Parsnip Man: a pale root in a small hat, lugging his stall */
+        x.translate(r.x, r.y + 2);
+        if (r.dir === -1) x.scale(-1, 1);
+        x.fillStyle = '#e8ddb8';
+        x.beginPath();
+        x.moveTo(-7, -22);
+        x.quadraticCurveTo(-9, 0, -1, 16);
+        x.lineTo(1, 16);
+        x.quadraticCurveTo(9, 0, 7, -22);
+        x.closePath(); x.fill();
+        x.strokeStyle = 'rgba(120,105,60,0.4)';
+        x.lineWidth = 1.4;
+        for (let k = 1; k <= 3; k++) {
+          x.beginPath(); x.moveTo(-6 + k, -20 + k * 9); x.lineTo(6 - k, -20 + k * 9); x.stroke();
+        }
+        x.fillStyle = '#3f7d33';
+        x.beginPath(); x.ellipse(0, -24, 6, 3.4, 0, 0, Math.PI * 2); x.fill();
+        x.fillStyle = '#4a3018'; /* the hat above the greens — quite formal */
+        x.beginPath(); x.ellipse(0, -29, 8, 2.4, 0, 0, Math.PI * 2); x.fill();
+        x.fillRect(-4, -36, 8, 7);
+        x.fillStyle = '#2a221a';
+        x.beginPath(); x.arc(-3, -16, 1.1, 0, Math.PI * 2); x.arc(3, -16, 1.1, 0, Math.PI * 2); x.fill();
+        /* the stall: a plank on legs with a striped awning */
+        x.fillStyle = '#6b4a26';
+        x.fillRect(10, -6, 26, 3);
+        x.fillRect(12, -3, 3, 18);
+        x.fillRect(31, -3, 3, 18);
+        for (let k = 0; k < 4; k++) {
+          x.fillStyle = k % 2 ? '#c8452c' : '#f6ead2';
+          x.fillRect(9 + k * 7, -14, 7, 5);
+        }
+      } else {
+        /* rabbit — golden, or tin if you squint (that is the con) */
+        const tin = r.kind === 'tin';
+        const hop = -Math.abs(Math.sin(this.t * (tin ? 6.2 : 8))) * (tin ? 7 : 9);
+        x.translate(r.x, r.y + hop);
+        if (r.dir === -1) x.scale(-1, 1);
+        const glow = x.createRadialGradient(0, 0, 0, 0, 0, 30);
+        glow.addColorStop(0, tin ? 'rgba(215,215,190,0.38)' : 'rgba(255,215,90,0.55)');
+        glow.addColorStop(1, 'rgba(255,215,90,0)');
+        x.fillStyle = glow;
+        x.beginPath(); x.arc(0, 0, 30, 0, Math.PI * 2); x.fill();
+        x.fillStyle = tin ? '#cfc9a8' : '#e8c25a';
+        x.beginPath(); x.ellipse(0, 0, 14, 9, 0, 0, Math.PI * 2); x.fill();
+        x.beginPath(); x.ellipse(12, -5, 7, 6, 0, 0, Math.PI * 2); x.fill();
+        x.fillStyle = tin ? '#a8a488' : '#d4a83a';
+        x.beginPath(); x.ellipse(10, -14, 2.2, 7, -0.15, 0, Math.PI * 2); x.fill();
+        x.beginPath(); x.ellipse(14, -13.5, 2.2, 6.5, 0.2, 0, Math.PI * 2); x.fill();
+        x.fillStyle = tin ? '#f2f2ea' : '#fff8e0';
+        x.beginPath(); x.arc(-13, -1, 3.5, 0, Math.PI * 2); x.fill();
+        x.fillStyle = '#2a221a';
+        x.beginPath(); x.arc(13.5, -6, 1.1, 0, Math.PI * 2); x.fill();
+      }
       x.restore();
+    }
+
+    /* gentle rain (R19): drawn only while the weather buff runs */
+    if (c.buffs.some(b => CC.WEATHER.some(w => w.name === b.name))) {
+      x.strokeStyle = 'rgba(180,210,240,0.3)';
+      x.lineWidth = 1.2;
+      for (let i = 0; i < 42; i++) {
+        const rx = ((i * 89 + this.t * 130 * (1 + (i % 3) * 0.15)) % (W + 30)) - 15;
+        const ry = (i * 53 + this.t * 340) % H;
+        x.beginPath();
+        x.moveTo(rx, ry);
+        x.lineTo(rx - 2.5, ry + 9);
+        x.stroke();
+      }
     }
 
     /* particles */
@@ -1048,5 +1161,10 @@ if (typeof document !== 'undefined') {
     const dn = params.get('daynight');
     if (dn === 'day' || dn === 'night') { game.dayNight = dn; } /* theme dev (R18) */
     if (season || dn) game.applyTheme();
+    const vis = params.get('visitor'); /* dev garden: summon a visitor now (R19) */
+    if (vis && !game.worldMode && CC.VISITORS.some(v => v.id === vis)) {
+      game.spawnVisitor(vis, CC.VISITORS.find(v => v.id === vis).ttl);
+      game.visitor.x = 120; /* mid-patch, ready for sprite work */
+    }
   });
 }

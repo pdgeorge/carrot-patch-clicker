@@ -276,6 +276,39 @@ psea.season = "market"
 check(abs(psea.cost_of(0, 10) - js_sea["marketCost"]) <= 1e-9 * js_sea["marketCost"],
       "market-season price parity")
 
+# ---------- 1g. R19: visitor reward parity ----------
+print("\n=== visitors (R19) ===")
+JS_VIS = r"""
+const fs = require('fs'), path = require('path'), vm = require('vm');
+for (const f of ['data.js', 'core.js']) {
+  vm.runInThisContext(fs.readFileSync(path.join(process.argv[1], 'src', f), 'utf8'));
+}
+const c = new CC.Core();
+c.earn(1e6); c.buy(0, 20);
+const t = c.visitorReward('tin');
+const e = c.visitorReward('parsnip', () => 0.1);   // forced embargo
+const g = c.visitorReward('parsnip', () => 0.9);   // forced coup
+console.log(JSON.stringify({ t: t.kind, e: e.kind, g: g.kind, gain: g.gain,
+  tins: c.tins, stalls: c.stalls, bank: c.bank, buffs: c.buffs.length }));
+"""
+js_vis = json.loads(subprocess.run(
+    ["node", "-e", JS_VIS, str(ROOT)], capture_output=True, text=True, check=True).stdout)
+pv = Economy(load_data())
+pv.earn(1e6)
+pv.buy(0, 20)
+tv = pv.visitor_reward("tin")
+ev = pv.visitor_reward("parsnip", lambda: 0.1)
+gv = pv.visitor_reward("parsnip", lambda: 0.9)
+check(tv["kind"] == js_vis["t"] == "tin" and pv.tins == js_vis["tins"] == 1,
+      "tin: a clank in both engines, once")
+check(ev["kind"] == js_vis["e"] == "embargo" and len(pv.buffs) == js_vis["buffs"] == 1
+      and pv.buffs[0]["mult"] == 0.5, "embargo: same debuff both sides")
+check(gv["kind"] == js_vis["g"] == "coup"
+      and abs(gv["gain"] - js_vis["gain"]) <= 1e-9 * max(1.0, js_vis["gain"])
+      and abs(pv.bank - js_vis["bank"]) <= 1e-9 * js_vis["bank"],
+      "coup: identical windfall and bank in both engines")
+check(pv.stalls == js_vis["stalls"] == 2, "two gambles on the record")
+
 # ---------- 1a'. bulk buys all-or-nothing in both engines (audit f9) ----------
 print("\n=== bulk buys all-or-nothing parity ===")
 JS_AO = r"""
@@ -492,12 +525,28 @@ with TestClient(app) as client:
 
         # golden rabbit: force one and catch it
         time.sleep(1.0)  # clear MAX_MSGS_PER_SEC — the shed intents above used the window
-        patch.rabbit = {"id": 1, "until": time.monotonic() + 10}
+        patch.visitor = {"kind": "rabbit", "until": time.monotonic() + 10}
         before = patch.eco.bank
         ws.send_json({"type": "catch"})
         time.sleep(0.05)
-        caught = patch.rabbit is None and (patch.eco.bank > before or patch.eco.buff_mult() > 1)
+        caught = patch.visitor is None and (patch.eco.bank > before or patch.eco.buff_mult() > 1)
         check(caught, "rabbit catch pays out (frenzy or bundle)")
+
+        # R19: the tin rabbit clanks — no payout, but the Almanac remembers
+        time.sleep(0.2)
+        patch.visitor = {"kind": "tin", "until": time.monotonic() + 10}
+        before = patch.eco.bank
+        ws.send_json({"type": "catch"})
+        time.sleep(0.05)
+        check(patch.visitor is None and patch.eco.tins == 1 and patch.eco.bank == before,
+              "tin rabbit pays nothing and counts one clank")
+
+        # R19: weather simply happens — a buff lands on the whole world
+        patch.next_weather = 0.0
+        time.sleep(1.3)
+        check(any(b["name"] == "Gentle Rain" for b in patch.eco.buffs)
+              and patch.eco.weathers == 1,
+              "gentle rain drifts in as an ordinary buff, on the record")
 
         # broadcast loop pushes snapshots, and the rabbit catch goes out
         # both as a structured event (F1) and as legacy prose (for pre-F1

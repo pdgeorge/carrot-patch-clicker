@@ -191,8 +191,8 @@ check(!bad.almanac.fake && bad.almanac.sd0 === true
 
 /* the Almanac (R16): deeds latch forever, once, and compound */
 console.log('\n=== the Almanac ===');
-check(CC.ALMANAC.length === 72, `72 pages in the catalog (got ${CC.ALMANAC.length})`);
-check(new Set(CC.ALMANAC.map(p => p.id)).size === 72, 'page ids unique');
+check(CC.ALMANAC.length === 78, `78 pages in the catalog (got ${CC.ALMANAC.length})`);
+check(new Set(CC.ALMANAC.map(p => p.id)).size === 78, 'page ids unique');
 const al = new CC.Core();
 al.seeds = 100;
 check(al.almanacCount() === 0, 'nothing latches without a tick');
@@ -265,6 +265,33 @@ const cssTxt = fs.readFileSync(path.join(__dirname, '..', 'src', 'styles.css'), 
 check(Object.keys(CC.THEMES).filter(t => t !== 'homestead-day')
   .every(t => cssTxt.includes(`[data-theme="${t}"]`)),
   'every non-default pack has a CSS block');
+
+/* visitors & weather (R19) */
+console.log('\n=== visitors & weather ===');
+check(CC.VISITORS.some(v => v.id === 'rabbit') && CC.VISITORS.every(v => v.weight > 0 && v.ttl > 0),
+  'visitor table is sane and the classic is present');
+const vz = new CC.Core();
+vz.earn(1e6); vz.buy(0, 20);
+const bank0 = vz.bank;
+check(vz.visitorReward('tin').kind === 'tin' && vz.tins === 1 && vz.bank === bank0,
+  'the tin rabbit pays nothing and counts one clank');
+check(vz.visitorReward('parsnip', () => 0.1).kind === 'embargo'
+  && vz.buffs.some(b => b.name === 'Parsnip Embargo' && b.mult === 0.5),
+  'a bad gamble is a 45s half-speed embargo');
+vz.buffs = [];
+const coup = vz.visitorReward('parsnip', () => 0.9);
+check(coup.kind === 'coup' && coup.gain > 0 && vz.stalls === 2, 'a good gamble pays the world');
+const cpsBefore = vz.cps();
+vz.buffs.push({ name: CC.WEATHER[0].name, mult: CC.WEATHER[0].mult, left: CC.WEATHER[0].dur });
+check(Math.abs(vz.cps() / cpsBefore - CC.WEATHER[0].mult) < 1e-9,
+  'gentle rain doubles production while it lasts');
+vz.weathers = 3;
+const vz2 = new CC.Core();
+vz2.deserialize(JSON.parse(JSON.stringify(vz.serialize())));
+check(vz2.tins === 1 && vz2.stalls === 2 && vz2.weathers === 3, 'visitor counters survive the save');
+vz.tins = 25;
+vz.tick(0.01);
+check(vz.almanac['vt1'] === true, 'the Almanac collects the clanks');
 
 /* growth-budget tripwire: every growth term is DERIVED FROM DATA (review
    f2 — a hardcoded term can never trip), so any data.js edit that makes

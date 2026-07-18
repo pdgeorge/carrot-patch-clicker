@@ -49,6 +49,9 @@ class Economy:
         self.prestiges: int = 0        # world counters (R15): deeds since records began
         self.rabbits: int = 0
         self.sprouts_spent: int = 0
+        self.tins: int = 0             # R19 visitor counters: clanks, gambles, rains
+        self.stalls: int = 0
+        self.weathers: int = 0
         self.almanac: dict = {}        # Almanac page id -> True; latches forever (R16)
         self.season: str = "homestead"  # R17: the server owns the calendar
         self.season_start: float = 0.0  # epoch of the current season's dawn
@@ -116,6 +119,12 @@ class Economy:
             return self.shed_level(c["shedLv"]) >= c.get("n", 1)
         if "upgradesOwned" in c:
             return len(self.bought) >= c["upgradesOwned"]
+        if "tins" in c:
+            return self.tins >= c["tins"]
+        if "stalls" in c:
+            return self.stalls >= c["stalls"]
+        if "weathers" in c:
+            return self.weathers >= c["weathers"]
         if "heirloomEvery" in c:
             return all(self.shed_level(u["id"]) >= c["heirloomEvery"]
                        for u in self.d["shed"] if u.get("resprout"))
@@ -312,6 +321,23 @@ class Economy:
         self.earn(gain)
         return {"kind": "lucky", "gain": gain, "text": f"Lucky bundle! +{fmt(gain)} carrots!"}
 
+    def visitor_reward(self, kind: str, rng=random.random) -> dict:
+        """One reward dispatch for every patch visitor (R19); mirror of
+        core.js visitorReward. The tin rabbit pays nothing but the Almanac
+        remembers; the Parsnip Man's stall is the world's shared gamble."""
+        if kind == "tin":
+            self.tins += 1
+            return {"kind": "tin"}
+        if kind == "parsnip":
+            self.stalls += 1
+            if rng() < 0.4:
+                self.buffs.append({"name": "Parsnip Embargo", "mult": 0.5, "left": 45.0})
+                return {"kind": "embargo"}
+            gain = min(self.bank * 0.25, self.cps() * 900) + self.cps() * 90
+            self.earn(gain)
+            return {"kind": "coup", "gain": gain}
+        return self.rabbit_reward(rng)  # the golden classic
+
     # ---------- prestige ----------
     def seeds_earned_total(self) -> int:
         return int(math.sqrt(self.total_all_time / 1e6))
@@ -389,6 +415,7 @@ class Economy:
             "sprouts": self.sprouts, "shed": self.shed,
             "prestiges": self.prestiges, "rabbits": self.rabbits,
             "sproutsSpent": self.sprouts_spent, "almanac": self.almanac,
+            "tins": self.tins, "stalls": self.stalls, "weathers": self.weathers,
             "season": self.season, "seasonStart": self.season_start,
             "saved": time.time(),
         }
@@ -425,6 +452,9 @@ class Economy:
         self.prestiges = max(0, int(s.get("prestiges", 0) or 0))
         self.rabbits = max(0, int(s.get("rabbits", 0) or 0))
         self.sprouts_spent = max(0, s.get("sproutsSpent", 0) or 0)
+        self.tins = max(0, int(s.get("tins", 0) or 0))
+        self.stalls = max(0, int(s.get("stalls", 0) or 0))
+        self.weathers = max(0, int(s.get("weathers", 0) or 0))
         # known page ids are historical fact and stay latched; junk ids
         # would mint ×1.02 each forever — dropped
         self.almanac = {}
@@ -464,6 +494,7 @@ class Economy:
             "sprouts": self.sprouts, "shed": self.shed,
             "prestiges": self.prestiges, "rabbits": self.rabbits,
             "sproutsSpent": self.sprouts_spent,  # clients gate keystone visibility on these
+            "tins": self.tins, "stalls": self.stalls, "weathers": self.weathers,
             "almanac": self.almanac,
             "season": self.season,
             "seasonEnds": (self.season_start + self.d.get("seasonDays", 14) * 86400.0

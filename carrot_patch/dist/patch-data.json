@@ -1516,6 +1516,66 @@
      "shed": "p8"
     }
    ]
+  },
+  {
+   "id": "vt0",
+   "name": "Fooled Once",
+   "flavor": "Clank.",
+   "unlock": [
+    {
+     "tins": 1
+    }
+   ]
+  },
+  {
+   "id": "vt1",
+   "name": "A Collection of Clanks",
+   "flavor": "Twenty-five tin rabbits. The shelf grows heavy with shame.",
+   "unlock": [
+    {
+     "tins": 25
+    }
+   ]
+  },
+  {
+   "id": "vt2",
+   "name": "Connoisseur of Decoys",
+   "flavor": "One hundred. At this point it is on purpose.",
+   "unlock": [
+    {
+     "tins": 100
+    }
+   ]
+  },
+  {
+   "id": "vp0",
+   "name": "The First Gamble",
+   "flavor": "The stall appeared. Somebody dared, for all of us.",
+   "unlock": [
+    {
+     "stalls": 1
+    }
+   ]
+  },
+  {
+   "id": "vp1",
+   "name": "Fifty Market Mornings",
+   "flavor": "The Parsnip Man respects you now. Somehow that is worse.",
+   "unlock": [
+    {
+     "stalls": 50
+    }
+   ]
+  },
+  {
+   "id": "vw0",
+   "name": "Rain on Record",
+   "flavor": "The first recorded gentle rain. Everyone just stood in it.",
+   "unlock": [
+    {
+     "weathers": 1
+    }
+   ]
   }
  ],
  "almanacMult": 1.02,
@@ -1542,5 +1602,44 @@
    "bonus": "every building 10% off"
   }
  ],
- "seasonDays": 14
+ "seasonDays": 14,
+ "visitors": [
+  {
+   "id": "rabbit",
+   "weight": 10,
+   "ttl": 12
+  },
+  {
+   "id": "tin",
+   "weight": 2,
+   "ttl": 12
+  },
+  {
+   "id": "parsnip",
+   "weight": 3,
+   "ttl": 20
+  }
+ ],
+ "visitorFirst": [
+  60,
+  150
+ ],
+ "visitorGap": [
+  90,
+  240
+ ],
+ "weather": [
+  {
+   "id": "rain",
+   "name": "Gentle Rain",
+   "mult": 2,
+   "dur": 90,
+   "weight": 6,
+   "line": "A fine rain, always at the perfect moment."
+  }
+ ],
+ "weatherGap": [
+  600,
+  1500
+ ]
 }
