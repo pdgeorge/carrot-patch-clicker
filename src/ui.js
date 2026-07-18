@@ -253,7 +253,7 @@ CC.UI = class {
       /* buy exactly what the row prices (×N selector); the old hidden
          shift-click-for-10 lied once buys became all-or-nothing */
       row.addEventListener('click', () => this.buyBuilding(i, this.buyN));
-      row.addEventListener('mouseenter', () => this.tooltip({ kind: 'building', i }));
+      row.addEventListener('mouseenter', () => this.tooltip({ kind: 'building', i }, row));
       row.addEventListener('mouseleave', () => this.tooltip(null));
       shop.appendChild(row);
       return row;
@@ -280,7 +280,7 @@ CC.UI = class {
     this.almanacEls = CC.ALMANAC.map(pg => {
       const el = document.createElement('div');
       el.className = 'a-page locked';
-      el.addEventListener('mouseenter', () => this.tooltip({ kind: 'almanac', pg }));
+      el.addEventListener('mouseenter', () => this.tooltip({ kind: 'almanac', pg }, el));
       el.addEventListener('mouseleave', () => this.tooltip(null));
       abox.appendChild(el);
       return el;
@@ -292,7 +292,7 @@ CC.UI = class {
       const el = document.createElement('div');
       el.className = 'ribbon locked';
       el.style.background = r.color;
-      el.addEventListener('mouseenter', () => this.tooltip({ kind: 'ribbon', r }));
+      el.addEventListener('mouseenter', () => this.tooltip({ kind: 'ribbon', r }, el));
       el.addEventListener('mouseleave', () => this.tooltip(null));
       shelf.appendChild(el);
       return el;
@@ -323,7 +323,7 @@ CC.UI = class {
       if (e.target === this.$('shed')) this.$('shed').classList.add('hidden');
     });
     this.$('prestige-btn').addEventListener('click', () => this.askPrestige());
-    this.$('prestige-btn').addEventListener('mouseenter', () => this.tooltip({ kind: 'prestige' }));
+    this.$('prestige-btn').addEventListener('mouseenter', () => this.tooltip({ kind: 'prestige' }, this.$('prestige-btn')));
     this.$('prestige-btn').addEventListener('mouseleave', () => this.tooltip(null));
     this.$('mute-btn').addEventListener('click', () => {
       CC.audio.ensure();
@@ -676,11 +676,14 @@ CC.UI = class {
     setTimeout(() => el.remove(), 5000);
   }
 
-  tooltip(what) {
+  /* a floating note pinned beside the hovered element (never in the
+     document flow): prefer the left side, fall back right, clamp to the
+     viewport; hidden entirely when nothing is hovered */
+  tooltip(what, el) {
     const tip = this.$('tooltip');
-    tip.classList.remove('hidden');
+    this._tipKind = what && what.kind;
     if (!what) {
-      tip.innerHTML = `<span class="flavor">Click the carrot. The rest follows.</span>`;
+      tip.classList.add('hidden');
       return;
     }
     if (what.kind === 'building') {
@@ -711,6 +714,20 @@ CC.UI = class {
         `Seeds so far: earned at √(lifetime ÷ 1M). Each seed = +8% production, permanently.` +
         `<br><span class="flavor">Every carrot next year is a little bit you.</span>`;
     }
+    /* measure invisibly, then pin beside the anchor */
+    tip.style.visibility = 'hidden';
+    tip.classList.remove('hidden');
+    if (el) {
+      const r = el.getBoundingClientRect();
+      const tw = tip.offsetWidth, th = tip.offsetHeight;
+      let x = r.left - tw - 12;
+      if (x < 8) x = r.right + 12;
+      if (x + tw > innerWidth - 8) x = Math.max(8, innerWidth - tw - 8);
+      const y = Math.max(8, Math.min(r.top + r.height / 2 - th / 2, innerHeight - th - 8));
+      tip.style.left = `${x}px`;
+      tip.style.top = `${y}px`;
+    }
+    tip.style.visibility = '';
   }
 
   setTicker() {
@@ -912,6 +929,7 @@ CC.UI = class {
     const sig = ups.map(u => u.id + (c.bank >= u.cost ? '+' : '-')).join(',');
     if (sig !== this._upgSig) {
       this._upgSig = sig;
+      if (this._tipKind === 'upgrade') this.tooltip(null); /* anchor is being rebuilt */
       const box = this.$('upgrades');
       box.innerHTML = '';
       for (const u of ups) {
@@ -919,7 +937,7 @@ CC.UI = class {
         el.className = 'upgrade' + (c.bank < u.cost ? ' cant' : '');
         el.innerHTML = `<b>${u.name}</b><span class="cost">${CC.fmt(u.cost)} 🥕</span>`;
         el.addEventListener('click', () => this.buyUpgrade(u.id));
-        el.addEventListener('mouseenter', () => this.tooltip({ kind: 'upgrade', u }));
+        el.addEventListener('mouseenter', () => this.tooltip({ kind: 'upgrade', u }, el));
         el.addEventListener('mouseleave', () => this.tooltip(null));
         box.appendChild(el);
       }

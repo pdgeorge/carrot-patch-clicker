@@ -437,11 +437,15 @@ html, body { margin: 0; padding: 0; }
 #stats div { clear: both; }
 #stats .stat-sub { font-size: 11px; opacity: 0.72; }
 
-/* tooltip as a note left on the bench */
+/* tooltip: a floating note pinned beside whatever you hover — fixed
+   position, out of the document flow, so hovering never shoves the
+   layout around (it used to sit between stats and the noticeboard) */
 #tooltip {
-  position: sticky;
-  bottom: 10px;
-  margin-top: 12px;
+  position: fixed;
+  left: 0;
+  top: 0;
+  max-width: 290px;
+  pointer-events: none;
   background: linear-gradient(180deg, var(--paper-2), var(--paper));
   border: 1px solid var(--paper-edge);
   border-radius: 3px;
@@ -449,7 +453,7 @@ html, body { margin: 0; padding: 0; }
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--ink);
-  z-index: 5;
+  z-index: 26;
   box-shadow: inset 0 0 0 1px var(--paper-lit), 0 6px 16px rgba(0, 0, 0, 0.45);
 }
 #tooltip b { color: var(--ink-carrot); }
@@ -800,7 +804,7 @@ html, body { margin: 0; padding: 0; }
 </div>
 
 <script>
-globalThis.CC = globalThis.CC || {}; CC.BUILD = '810e6b8'; CC.GARDENERS = ["pdgeorge","Claude Fable 5"];
+globalThis.CC = globalThis.CC || {}; CC.BUILD = 'aa3fdd2'; CC.GARDENERS = ["pdgeorge","Claude Fable 5"];
 /* ==== data.js ==== */
 /* Carrot Clicker — content: buildings, upgrades, ribbons, news. */
 globalThis.CC = globalThis.CC || {};
@@ -2182,7 +2186,7 @@ CC.UI = class {
       /* buy exactly what the row prices (×N selector); the old hidden
          shift-click-for-10 lied once buys became all-or-nothing */
       row.addEventListener('click', () => this.buyBuilding(i, this.buyN));
-      row.addEventListener('mouseenter', () => this.tooltip({ kind: 'building', i }));
+      row.addEventListener('mouseenter', () => this.tooltip({ kind: 'building', i }, row));
       row.addEventListener('mouseleave', () => this.tooltip(null));
       shop.appendChild(row);
       return row;
@@ -2209,7 +2213,7 @@ CC.UI = class {
     this.almanacEls = CC.ALMANAC.map(pg => {
       const el = document.createElement('div');
       el.className = 'a-page locked';
-      el.addEventListener('mouseenter', () => this.tooltip({ kind: 'almanac', pg }));
+      el.addEventListener('mouseenter', () => this.tooltip({ kind: 'almanac', pg }, el));
       el.addEventListener('mouseleave', () => this.tooltip(null));
       abox.appendChild(el);
       return el;
@@ -2221,7 +2225,7 @@ CC.UI = class {
       const el = document.createElement('div');
       el.className = 'ribbon locked';
       el.style.background = r.color;
-      el.addEventListener('mouseenter', () => this.tooltip({ kind: 'ribbon', r }));
+      el.addEventListener('mouseenter', () => this.tooltip({ kind: 'ribbon', r }, el));
       el.addEventListener('mouseleave', () => this.tooltip(null));
       shelf.appendChild(el);
       return el;
@@ -2252,7 +2256,7 @@ CC.UI = class {
       if (e.target === this.$('shed')) this.$('shed').classList.add('hidden');
     });
     this.$('prestige-btn').addEventListener('click', () => this.askPrestige());
-    this.$('prestige-btn').addEventListener('mouseenter', () => this.tooltip({ kind: 'prestige' }));
+    this.$('prestige-btn').addEventListener('mouseenter', () => this.tooltip({ kind: 'prestige' }, this.$('prestige-btn')));
     this.$('prestige-btn').addEventListener('mouseleave', () => this.tooltip(null));
     this.$('mute-btn').addEventListener('click', () => {
       CC.audio.ensure();
@@ -2605,11 +2609,14 @@ CC.UI = class {
     setTimeout(() => el.remove(), 5000);
   }
 
-  tooltip(what) {
+  /* a floating note pinned beside the hovered element (never in the
+     document flow): prefer the left side, fall back right, clamp to the
+     viewport; hidden entirely when nothing is hovered */
+  tooltip(what, el) {
     const tip = this.$('tooltip');
-    tip.classList.remove('hidden');
+    this._tipKind = what && what.kind;
     if (!what) {
-      tip.innerHTML = `<span class="flavor">Click the carrot. The rest follows.</span>`;
+      tip.classList.add('hidden');
       return;
     }
     if (what.kind === 'building') {
@@ -2640,6 +2647,20 @@ CC.UI = class {
         `Seeds so far: earned at √(lifetime ÷ 1M). Each seed = +8% production, permanently.` +
         `<br><span class="flavor">Every carrot next year is a little bit you.</span>`;
     }
+    /* measure invisibly, then pin beside the anchor */
+    tip.style.visibility = 'hidden';
+    tip.classList.remove('hidden');
+    if (el) {
+      const r = el.getBoundingClientRect();
+      const tw = tip.offsetWidth, th = tip.offsetHeight;
+      let x = r.left - tw - 12;
+      if (x < 8) x = r.right + 12;
+      if (x + tw > innerWidth - 8) x = Math.max(8, innerWidth - tw - 8);
+      const y = Math.max(8, Math.min(r.top + r.height / 2 - th / 2, innerHeight - th - 8));
+      tip.style.left = `${x}px`;
+      tip.style.top = `${y}px`;
+    }
+    tip.style.visibility = '';
   }
 
   setTicker() {
@@ -2841,6 +2862,7 @@ CC.UI = class {
     const sig = ups.map(u => u.id + (c.bank >= u.cost ? '+' : '-')).join(',');
     if (sig !== this._upgSig) {
       this._upgSig = sig;
+      if (this._tipKind === 'upgrade') this.tooltip(null); /* anchor is being rebuilt */
       const box = this.$('upgrades');
       box.innerHTML = '';
       for (const u of ups) {
@@ -2848,7 +2870,7 @@ CC.UI = class {
         el.className = 'upgrade' + (c.bank < u.cost ? ' cant' : '');
         el.innerHTML = `<b>${u.name}</b><span class="cost">${CC.fmt(u.cost)} 🥕</span>`;
         el.addEventListener('click', () => this.buyUpgrade(u.id));
-        el.addEventListener('mouseenter', () => this.tooltip({ kind: 'upgrade', u }));
+        el.addEventListener('mouseenter', () => this.tooltip({ kind: 'upgrade', u }, el));
         el.addEventListener('mouseleave', () => this.tooltip(null));
         box.appendChild(el);
       }
