@@ -275,6 +275,22 @@ class Economy:
         self.owned[i] += count
         return count
 
+    def max_affordable(self, i: int) -> int:
+        """Largest count the bank affords right now (R20 "Max"): invert the
+        geometric sum, verify ±1 against cost_of so float drift can never
+        overcharge; capped at 5000. Mirror of core.js maxAffordable."""
+        r = 1.15
+        s = self.season_data()
+        c0 = self.d["buildings"][i]["cost"] * (r ** self.owned[i]) * (1 - ((s or {}).get("priceOff") or 0))
+        if self.bank < c0:
+            return 0
+        m = min(5000, int(math.log(1 + self.bank * (r - 1) / c0) / math.log(r)))
+        while m > 0 and self.cost_of(i, m) > self.bank:
+            m -= 1
+        while m < 5000 and self.cost_of(i, m + 1) <= self.bank:
+            m += 1
+        return m
+
     # ---------- the Potting Shed (R13/R15) ----------
     # Levels: a one-shot item goes 0->1; a `repeat` item climbs forever (or
     # to `max`) at ceil(cost*costGrowth^level) sprouts. Pre-R15 saves stored

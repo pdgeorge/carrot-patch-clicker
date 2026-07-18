@@ -279,6 +279,37 @@ psea.season = "market"
 check(abs(psea.cost_of(0, 10) - js_sea["marketCost"]) <= 1e-9 * js_sea["marketCost"],
       "market-season price parity")
 
+# ---------- 1f'. R20: Max parity ----------
+print("\n=== Max buys (R20) ===")
+JS_MAX = r"""
+const fs = require('fs'), path = require('path'), vm = require('vm');
+for (const f of ['data.js', 'core.js']) {
+  vm.runInThisContext(fs.readFileSync(path.join(process.argv[1], 'src', f), 'utf8'));
+}
+const c = new CC.Core();
+const out = [];
+for (const bank of [0, 15, 304.55, 304.56, 1e6, 1e12, 1e300]) {
+  c.bank = bank;
+  out.push(c.maxAffordable(0));
+}
+c.owned[3] = 40; c.bank = 1e9; out.push(c.maxAffordable(3));
+c.season = 'market'; out.push(c.maxAffordable(3));
+console.log(JSON.stringify(out));
+"""
+js_max = json.loads(subprocess.run(
+    ["node", "-e", JS_MAX, str(ROOT)], capture_output=True, text=True, check=True).stdout)
+pm = Economy(load_data())
+py_max = []
+for bank in [0, 15, 304.55, 304.56, 1e6, 1e12, 1e300]:
+    pm.bank = bank
+    py_max.append(pm.max_affordable(0))
+pm.owned[3] = 40
+pm.bank = 1e9
+py_max.append(pm.max_affordable(3))
+pm.season = "market"
+py_max.append(pm.max_affordable(3))
+check(py_max == js_max, f"max_affordable identical in both engines ({py_max})")
+
 # ---------- 1g. R19: visitor reward parity ----------
 print("\n=== visitors (R19) ===")
 JS_VIS = r"""
@@ -486,6 +517,22 @@ with TestClient(app) as client:
         delta = patch.eco.bank - bank_before
         check(3 <= delta < 4, f"socket survives malformed payloads and still counts clicks (Δ {delta})")
         check(patch.eco.owned[1] == 0, "buy with b=true is ignored (bool is not an index)")
+
+        # R20: ×5 and Max over the wire (Max resolves server-side)
+        patch.eco.earn(100000)
+        ws.send_json({"type": "buy", "b": 1, "n": 5})
+        time.sleep(0.05)
+        check(patch.eco.owned[1] == 5, "×5 buys exactly five Garden Plots")
+        before_n = patch.eco.owned[1]
+        ws.send_json({"type": "buy", "b": 1, "n": "max"})
+        time.sleep(0.05)
+        got_n = patch.eco.owned[1] - before_n
+        check(got_n >= 5 and patch.eco.bank < patch.eco.cost_of(1, 1),
+              f"Max buys to the hilt ({got_n} more; can't afford another)")
+        ws.send_json({"type": "buy", "b": 1, "n": "lots"})
+        time.sleep(0.05)
+        check(patch.eco.owned[1] == before_n + got_n + (1 if patch.eco.bank >= patch.eco.cost_of(1, 1) else 0),
+              "junk n falls back to a single, honest purchase")
 
         # the second defense layer, pinned separately (review T3): even a
         # handler that RAISES must not kill the socket

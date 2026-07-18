@@ -169,9 +169,11 @@ restatement of the value.
 | Name | Value | Where | Why |
 | --- | --- | --- | --- |
 | Click batch flush | 1 msg/s | `src/net.js` | An auto-clicker costs the same bandwidth as a patient human; the server never sees individual clicks. |
-| Max clicks per batch | 250 | `carrot_patch/main.py` `MAX_CLICKS_PER_MSG` | Anti-flood only, never game balance (P4/R2): ~250 cps is far above any human and high enough that auto-clickers work as intended — the economy, not a cap, makes clicking fade. |
+| Max clicks per batch | 1000 | `carrot_patch/main.py` `MAX_CLICKS_PER_MSG` | Anti-flood only, never game balance (P4/R2): raised 250→1000 (2026-07, pro-autoclicker call) — it only stops forged clicks-you-never-made packets; the economy, not a cap, makes clicking fade. |
 | Min interval between click batches | 0.75 s | `carrot_patch/main.py` `MIN_MSG_INTERVAL` | Tolerates client timer jitter on the 1 s flush without allowing double-rate senders. |
 | Max messages/sec per connection | 10 | `carrot_patch/main.py` `MAX_MSGS_PER_SEC` | Pure flood guard across all message types; normal play sends ~1–3/s. |
+| Buy volumes | ×1 · ×5 · ×10 · Max | `src/page.html`, `carrot_patch/main.py` | Bulk buying without arithmetic homework (R20); Max resolves SERVER-side against the live shared bank (P2) — the bank moves between click and arrival. |
+| Max-buy cap | 5000 per click | `maxAffordable` in both engines | Keeps 1.15^n inside double range; an absurd bank just needs a second click. |
 | Max message size | 512 bytes | `carrot_patch/main.py` | No legitimate intent is bigger; drops garbage cheaply. |
 | Snapshot broadcast | 1/s | `carrot_patch/main.py` `SNAPSHOT_INTERVAL` | Fast enough to feel live, cheap enough for many clients; also the world tick rate. |
 | World autosave | 30 s | `carrot_patch/main.py` `SAVE_INTERVAL` | Bounds loss on a crash to 30 s of a garden that regrows it in 30 s anyway. |

@@ -365,6 +365,29 @@ check(!ao.buy(0, 10) && ao.owned[0] === 0 && ao.bank === 200, 'cannot afford ×1
 ao.bank = 400;
 check(ao.buy(0, 10) && ao.owned[0] === 10, 'affordable ×10 bought at the summed geometric price');
 
+/* Max buys (R20): the geometric inverse, verified against costOf */
+console.log('\n=== Max buys ===');
+const mx = new CC.Core();
+mx.bank = mx.costOf(0, 7);
+check(mx.maxAffordable(0) === 7, 'bank of exactly seven boxes affords seven');
+mx.bank = mx.costOf(0, 7) - 0.01;
+check(mx.maxAffordable(0) === 6, 'a hair less affords six');
+mx.bank = 0;
+check(mx.maxAffordable(0) === 0, 'an empty bank affords none');
+mx.bank = 1e300;
+const cap = mx.maxAffordable(0);
+check(cap <= 5000 && isFinite(mx.costOf(0, cap)), 'an absurd bank caps sanely');
+mx.bank = 5000;
+const m1 = mx.maxAffordable(0);
+mx.season = 'market';
+const m2 = mx.maxAffordable(0);
+/* a 10% discount adds ~0.75 to the count (steps grow 15%), so it may or
+   may not cross an integer — but it can never shrink the reach */
+check(m2 >= m1 && mx.costOf(0, m2) <= mx.bank, 'Market Days never shrinks the reach');
+mx.season = 'homestead';
+check(mx.buy(0, mx.maxAffordable(0)) && mx.bank < mx.costOf(0, 1),
+  'buying Max leaves less than one more box');
+
 /* lifetime precision at live-world magnitude (audit f1): at 3.4e22 a double's
    ulp is 4,194,304 carrots — naive `+=` absorbed clicks and small ticks */
 console.log('\n=== lifetime precision at 3.4e22 ===');
