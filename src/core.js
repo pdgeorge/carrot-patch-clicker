@@ -265,6 +265,16 @@ CC.Core = class {
     return u.repeat ? Math.ceil(u.cost * Math.pow(u.costGrowth, this.shedLevel(id))) : u.cost;
   }
 
+  /* the highest level a ladder can hold without costGrowth^level leaving
+     double range (overflow → Infinity/OverflowError). Per item, because a
+     1.04 ladder climbs far past what a 1.45 one can: a flat 800 once
+     clamped the live world's 1045-turn compost heap on reload. */
+  shedCap(u) {
+    if (u.max !== undefined) return u.max;
+    if (!u.repeat || !(u.costGrowth > 1)) return 1;
+    return Math.floor(600 / Math.log(u.costGrowth)); /* e^600 ≈ 1e260 */
+  }
+
   shedMaxed(u) {
     const lv = this.shedLevel(u.id);
     return u.repeat ? (u.max !== undefined && lv >= u.max) : lv >= 1;
@@ -435,7 +445,7 @@ CC.Core = class {
     for (const u of CC.SHED) {
       const v = (s.shed || {})[u.id];
       const lv = v === true ? 1 : (Math.floor(v) || 0);
-      if (lv > 0) this.shed[u.id] = Math.min(lv, u.max !== undefined ? u.max : 800);
+      if (lv > 0) this.shed[u.id] = Math.min(lv, this.shedCap(u));
     }
     this.prestiges = Math.max(0, Math.floor(s.prestiges) || 0);
     this.rabbits = Math.max(0, Math.floor(s.rabbits) || 0);

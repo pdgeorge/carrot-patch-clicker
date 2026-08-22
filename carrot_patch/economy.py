@@ -307,6 +307,17 @@ class Economy:
             return math.ceil(u["cost"] * u["costGrowth"] ** self.shed_level(uid))
         return u["cost"]
 
+    def shed_cap(self, u: dict) -> int:
+        """Highest level a ladder can hold without costGrowth**level leaving
+        double range. Per item: a 1.04 ladder climbs far past a 1.45 one — a
+        flat 800 once clamped the live world's 1045-turn compost on reload.
+        Mirror of core.js shedCap."""
+        if "max" in u:
+            return u["max"]
+        if not u.get("repeat") or not (u.get("costGrowth", 0) > 1):
+            return 1
+        return int(600 / math.log(u["costGrowth"]))  # e^600 ≈ 1e260
+
     def shed_maxed(self, u: dict) -> bool:
         lv = self.shed_level(u["id"])
         if u.get("repeat"):
@@ -478,7 +489,7 @@ class Economy:
             else:
                 lv = 0
             if lv > 0:
-                self.shed[u["id"]] = min(lv, u.get("max", 800))
+                self.shed[u["id"]] = min(lv, self.shed_cap(u))
         self.prestiges = _cnt(s.get("prestiges", 0))
         self.rabbits = _cnt(s.get("rabbits", 0))
         self.sprouts_spent = _cnt(s.get("sproutsSpent", 0))

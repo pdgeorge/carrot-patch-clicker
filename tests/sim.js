@@ -183,8 +183,19 @@ check(oldShed.shedLevel('p0') === 1 && Math.abs(oldShed.globalMult() - 1.05) < 1
 const bad = new CC.Core();
 bad.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0, owned: [], bought: {},
   seeds: 0, sprouts: 0, shed: { l0: 1e18, hax: 5, p0: true }, almanac: { fake: true, sd0: true } });
-check(bad.shedLevel('l0') === 800 && bad.shedLevel('hax') === 0 && bad.shedLevel('p0') === 1,
-  'forged shed levels clamp, unknown ids drop, legacy true survives');
+check(bad.shedLevel('l0') === bad.shedCap(CC.SHED.find(u => u.id === 'l0'))
+  && bad.shedLevel('hax') === 0 && bad.shedLevel('p0') === 1,
+  'forged shed levels clamp to the ladder\'s own cap, unknown ids drop, legacy true survives');
+/* the live world reached compost 1045 legitimately; a reload must keep it */
+const live = new CC.Core();
+live.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0, owned: [], bought: {},
+  seeds: 0, sprouts: 0, shed: { l0: 1045, h9: 106 } });
+check(live.shedLevel('l0') === 1045 && live.shedLevel('h9') === 106
+  && isFinite(live.shedCost('l0')) && isFinite(live.shedCost('h9')) && isFinite(live.globalMult()),
+  'a 1045-turn compost heap survives a reload (the flat cap ate it)');
+check(live.shedCap(CC.SHED.find(u => u.id === 'l0')) > 10000
+  && live.shedCap(CC.SHED.find(u => u.id === 'h0')) > 1500
+  && live.shedCap(CC.SHED.find(u => u.id === 'l1')) === 6, 'caps scale with each ladder\'s growth');
 check(!bad.almanac.fake && bad.almanac.sd0 === true
   && isFinite(bad.shedCost('l0')) && isFinite(bad.globalMult()),
   'junk almanac keys drop, real history stays, costs stay finite');

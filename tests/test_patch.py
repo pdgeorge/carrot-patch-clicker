@@ -146,8 +146,26 @@ bad = {"v": 1, "bank": 0, "totalAllTime": 0, "totalRun": 0, "clicks": 0, "owned"
        "tins": "abc", "stalls": 1e999, "weathers": None, "prestiges": [3]}
 pbad = Economy(load_data())
 pbad.deserialize(dict(bad))
-check(pbad.shed_level("l0") == 800 and pbad.shed_level("hax") == 0 and pbad.shed_level("p0") == 1,
-      "forged shed levels clamp, unknown ids drop, legacy true survives")
+l0_item = next(u for u in pbad.d["shed"] if u["id"] == "l0")
+check(pbad.shed_level("l0") == pbad.shed_cap(l0_item) and pbad.shed_level("hax") == 0
+      and pbad.shed_level("p0") == 1,
+      "forged shed levels clamp to the ladder's own cap, unknown ids drop, legacy true survives")
+plive = Economy(load_data())
+plive.deserialize({"v": 1, "shed": {"l0": 1045, "h9": 106}})
+check(plive.shed_level("l0") == 1045 and plive.shed_level("h9") == 106
+      and math.isfinite(plive.shed_cost("l0")) and math.isfinite(plive.global_mult()),
+      "the live world's 1045-turn compost heap survives a server restart")
+JS_CAP = r"""
+const fs = require('fs'), path = require('path'), vm = require('vm');
+for (const f of ['data.js', 'core.js']) {
+  vm.runInThisContext(fs.readFileSync(path.join(process.argv[1], 'src', f), 'utf8'));
+}
+const c = new CC.Core();
+console.log(JSON.stringify(CC.SHED.map(u => c.shedCap(u))));
+"""
+js_caps = json.loads(subprocess.run(
+    ["node", "-e", JS_CAP, str(ROOT)], capture_output=True, text=True, check=True).stdout)
+check(js_caps == [plive.shed_cap(u) for u in plive.d["shed"]], "ladder caps identical in both engines")
 bad_season = Economy(load_data())
 bad_season.deserialize({"v": 1, "season": ["hax"], "seasonStart": {"no": 1}})
 check(bad_season.season == "homestead" and bad_season.season_start == 0.0,
