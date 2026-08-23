@@ -329,7 +329,174 @@ CC.ALMANAC = [];
   page('vp0', 'The First Gamble', 'The stall appeared. Somebody dared, for all of us.', { stalls: 1 });
   page('vp1', 'Fifty Market Mornings', 'The Parsnip Man respects you now. Somehow that is worse.', { stalls: 50 });
   page('vw0', 'Rain on Record', 'The first recorded gentle rain. Everyone just stood in it.', { weathers: 1 });
+  /* Trials (R22): one page per rule survived, and one for the set */
+  page('tr0', 'The Thaw', 'Late Frost, survived. Every purchase was a held breath.', { trial: 'frost' });
+  page('tr1', 'Pyramids of Plots', 'Crop Rotation, survived. Nothing outnumbered what came before it.', { trial: 'rotation' });
+  page('tr2', 'Six Rows Wide', 'Short Rows, survived. The far field lay empty and it was enough.', { trial: 'rows' });
+  page('tr3', 'By Hand Alone', 'Hands Only, survived. The plots slept. Somebody did not.', { trial: 'hands' });
+  page('tr4', 'The Dry Year', 'Drought, survived. Every blessing at three-quarter strength.', { trial: 'drought' });
+  page('tr5', 'The Hidden Chapter', 'Fog, survived. This page was written without looking.', { trial: 'fog' });
+  page('tr6', 'Hedge and Silence', 'Quiet Hedge, survived. No guest came, and the garden grew anyway.', { trial: 'hedge' });
+  page('tr7', 'Seven Springs, Seven Rules', 'Every Trial, at least once. The Almanac closes the chapter.',
+    { trial: 'frost' }, { trial: 'rotation' }, { trial: 'rows' }, { trial: 'hands' },
+    { trial: 'drought' }, { trial: 'fog' }, { trial: 'hedge' });
+  page('tr8', 'Old Hand', 'Five completions of one Trial. The rule is a friend now.', { trialMax: 1 });
+  /* the Seed Bed (R23): one page per tier found, the full log, the sacrifice */
+  page('sb0', 'First Harvest', 'Something grew in the bed and somebody picked it.', { logTier: 1 });
+  page('sb1', 'A Cross in the Bed', 'Two plants touched and a third appeared. The wiki is born.', { logTier: 2 });
+  page('sb2', 'Deeper Colours', 'Purple, moon, rain: the second generation of the bed.', { logTier: 3 });
+  page('sb3', 'The King and the Glass', 'Rare things, found on purpose.', { logTier: 4 });
+  page('sb4', 'Everlasting', 'The capstones. A bed that remembers.', { logTier: 5 });
+  page('sb7', 'The Ring', 'Step inside. The bed is finished, and it is not.', { logTier: 6 });
+  page('sb5', 'The Whole Catalogue', 'Every species, once. The seed log closes its cover.', { logFull: 1 });
+  page('sb6', 'Seedless to Nay', 'The log was given up for honey. The bed begins again, wiser.', { sacrifices: 1 });
+  /* Lie Fallow (R24) */
+  page('fy0', 'Fallow Year I', 'The whole world lay fallow. The seeds went into the ground as loam.', { fallows: 1 });
+  page('fy1', 'Three Winters', 'Three times the bell rang out, and three times the garden came back.', { fallows: 3 });
+  page('fy2', 'Ten Winters', 'The cycle is the game now.', { fallows: 10 });
+  page('fy3', 'The Cellar Door', 'Loam spent on a rule, not a number.', { cellarAny: 1 });
+  page('fy4', 'A Full Cellar', 'Every perk at its cap. The rules are all rewritten.', { cellarFull: 1 });
+  page('fy5', 'Rehearsal', 'The bell rang four times and nothing happened. Next time, it will.', { rehearsed: 1 });
 })();
+
+/* Trials (R22): a spring replayed under ONE rule. The goal is "get back to
+   where we were": the best plain spring on record (an hour or longer, so a
+   spam of instant springs cannot lower it), scaled by the rule's HANDICAP
+   measured on the garden being left (so Short Rows or Hands Only ask for
+   what those rules can actually make), doubling per completion — inside
+   48 h; then the spring simply carries on. Rewards are automation, caps and
+   unlocks, never multipliers (β-free). */
+CC.TRIAL = { hours: 48, maxDone: 5, step: 2, minSpringSec: 3600, refClicks: 5, scarecrowEvery: 60, scarecrowPct: 0.01,
+  resproutCapBase: 100, longEarsSec: 3 };
+CC.TRIALS = [
+  { id: 'frost', name: 'Late Frost', rule: { haltOnBuy: 180 },
+    line: 'Every purchase stills the whole garden — plots and hands alike; it thaws over three minutes.',
+    reward: { scarecrow: 1 }, rewardText: 'Scarecrow +1 (tends two more rows)' },
+  { id: 'rotation', name: 'Crop Rotation', rule: { chain: true },
+    line: 'No plot may outnumber the plot before it.',
+    reward: { startTier: 1 }, rewardText: 'springs start with one more tier of upgrades' },
+  { id: 'rows', name: 'Short Rows', rule: { buildingsMax: 6 },
+    line: 'Only the first six plots exist.',
+    reward: { resproutCap: 20 }, rewardText: 'heirlooms resprout 20 deeper' },
+  { id: 'hands', name: 'Hands Only', rule: { buildingsOff: true },
+    line: 'The plots sleep. Hands, guests and rain do all the work.',
+    reward: { cap: 'l1', n: 1 }, rewardText: 'Sprinkler Network cap +1 valve' },
+  { id: 'drought', name: 'Drought', rule: { mulAll: 0.25 },
+    line: 'Every blessing shrinks to a quarter.',
+    reward: { longEars: 1 }, rewardText: 'Long Ears +1 (guests linger 3 s longer)' },
+  { id: 'fog', name: 'Fog', rule: { hidden: true },
+    line: 'The numbers are gone. Tend by feel.',
+    reward: { honey: 150 }, rewardText: '150 honey and the hidden chapter' },
+  { id: 'hedge', name: 'Quiet Hedge', rule: { noVisitors: true },
+    line: 'No guests. Not one.',
+    reward: { clickFrenzy: 1 }, rewardText: 'Click Frenzy +1 (a frenzy also triples clicks)' },
+];
+
+/* the Patchwork Quilt (R22): a canvas the world paints and, one day, frames */
+CC.QUILT = { w: 48, h: 48, cooldown: 30, costSeconds: 1,
+  palette: ['#f4ecd8', '#2f2414', '#d9741f', '#f2b33d', '#4c7a3a', '#8fc174', '#6d4c2a', '#b08a5a',
+    '#c9473a', '#e89cb0', '#3f5f9e', '#8fb8de', '#6a4d8c', '#b9a0d6', '#8c8c86', '#f7f2e8'] };
+
+/* The Seed Bed (R23): a shared bed under the carrot, ticked by the server
+   every BED.tick seconds. Species are data; recipes are HIDDEN in play (the
+   wiki is half the fun, P7) — two mature parents touching an empty plot
+   roll `chance` × the soil's mutation each tick. Costs are MINUTES of the
+   world's steady cps (base species) or honey (discovered species), so the
+   bed never inflates with the economy. Live effects apply only while a
+   plant is mature; aggregates are capped (see Tunables). */
+CC.BED = { w: 4, h: 4, tick: 300, plantCooldown: 60, harvestCooldown: 15, immatureShare: 0.25, soilCooldown: 600,
+  sacrificeHoney: 100, sacrificeWait: 21600, sacrificeRest: 600,
+  payoutCapPct: 0.05, multCap: 2.2, rabbitCap: 4, weatherCap: 3, honeyTierCost: [0, 0, 10, 30, 80, 200, 400] };
+CC.SOILS = [
+  { id: 'dirt', name: 'Dirt', every: 1, effect: 1, mutation: 1, line: 'Honest ground. Things happen on time.' },
+  { id: 'clay', name: 'Clay', every: 3, effect: 1.25, mutation: 1, line: 'Slow and rich: a third the pace, a quarter more heart.' },
+  { id: 'chips', name: 'Wood Chips', every: 1, effect: 1, mutation: 3, line: 'Warm and strange. Things cross that should not.' },
+];
+/* tier 1 is bought with carrots; every other species must be FOUND before
+   it can be bought with honey. `wild` spawns on its own (weeds are never
+   for sale — P1 griefing rule). Effects: mult (production while mature),
+   rabbit (visitor rate), weather (rain duration), honey (on harvest),
+   payout (cps-minutes on harvest, bank-capped). Ages are in bed ticks. */
+CC.PLANTS = [
+  { id: 'sprout', name: 'Carrot Sprout', tier: 1, cost: 1, mature: 3, life: 12, mult: 1.01, payout: 2,
+    flavor: 'The first thing anyone plants. It knows.' },
+  { id: 'clover', name: 'Clover', tier: 1, cost: 2, mature: 4, life: 16, rabbit: 1.05,
+    flavor: 'Rabbits can smell it from the next county.' },
+  { id: 'bluebell', name: 'Bluebell', tier: 1, cost: 3, mature: 5, life: 20, weather: 1.1,
+    flavor: 'Rings when it rains. Nobody has caught it at it.' },
+  { id: 'thyme', name: 'Thyme', tier: 1, cost: 5, mature: 6, life: 24, mult: 1.02, payout: 5,
+    flavor: 'Takes its thyme. Sorry.' },
+  { id: 'nettle', name: 'Nettle', tier: 1, wild: 0.004, mature: 2, life: 6, mult: 0.99,
+    flavor: 'Nobody planted it. Nobody ever does.' },
+  { id: 'honeyroot', name: 'Honeyroot', tier: 2, parents: ['sprout', 'clover'], chance: 0.10, mature: 5, life: 18, mult: 1.02, honey: 1,
+    flavor: 'Sweet at the root. The bees found it first.' },
+  { id: 'whitecarrot', name: 'White Carrot', tier: 2, parents: ['sprout', 'thyme'], chance: 0.08, mature: 6, life: 20, mult: 1.03, payout: 10,
+    flavor: 'A carrot that forgot its colour and kept its pride.' },
+  { id: 'rabbitear', name: "Rabbit's Ear", tier: 2, parents: ['clover', 'bluebell'], chance: 0.08, mature: 5, life: 20, rabbit: 1.15,
+    flavor: 'Soft, grey, and listening.' },
+  { id: 'stormflower', name: 'Stormflower', tier: 2, parents: ['bluebell', 'thyme'], chance: 0.06, mature: 7, life: 24, weather: 1.25,
+    flavor: 'Opens for thunder. Closes for small talk.' },
+  { id: 'goldenclover', name: 'Golden Clover', tier: 2, parents: ['clover', 'clover'], chance: 0.03, mature: 6, life: 16, rabbit: 1.1, payout: 8,
+    flavor: 'Four leaves, all of them lucky.' },
+  { id: 'purplecarrot', name: 'Purple Carrot', tier: 3, parents: ['whitecarrot', 'honeyroot'], chance: 0.05, mature: 8, life: 24, mult: 1.04, payout: 20,
+    flavor: 'The original colour, returned from exile.' },
+  { id: 'moonclover', name: 'Moon Clover', tier: 3, parents: ['goldenclover', 'rabbitear'], chance: 0.03, mature: 8, life: 24, rabbit: 1.25,
+    flavor: 'Glows faintly. The rabbits navigate by it.' },
+  { id: 'rainlily', name: 'Rain Lily', tier: 3, parents: ['stormflower', 'bluebell'], chance: 0.04, mature: 8, life: 28, weather: 1.5,
+    flavor: 'Drinks a whole shower and asks for the next.' },
+  { id: 'beebalm', name: 'Bee Balm', tier: 3, parents: ['honeyroot', 'rabbitear'], chance: 0.04, mature: 7, life: 22, mult: 1.02, honey: 2,
+    flavor: 'The cooperative sends its regards.' },
+  { id: 'ironroot', name: 'Ironroot', tier: 3, parents: ['thyme', 'nettle'], chance: 0.05, mature: 10, life: 48, mult: 1.03,
+    flavor: 'Grows from a weed and a grudge. Lasts for ages.' },
+  { id: 'feralparsnip', name: 'Feral Parsnip', tier: 3, parents: ['whitecarrot', 'nettle'], chance: 0.04, mature: 7, life: 20, mult: 1.03, payout: 15,
+    flavor: 'Escaped from a stall. Wants nothing to do with the Parsnip Man.' },
+  { id: 'kingcarrot', name: 'King Carrot', tier: 4, parents: ['purplecarrot', 'ironroot'], chance: 0.02, mature: 12, life: 36, mult: 1.05, payout: 60,
+    flavor: 'Crowned by acclamation. Mostly by rabbits.' },
+  { id: 'queensbalm', name: "Queen's Balm", tier: 4, parents: ['beebalm', 'moonclover'], chance: 0.02, mature: 10, life: 30, rabbit: 1.1, honey: 5,
+    flavor: 'One hive, one queen, one jar a season.' },
+  { id: 'thunderroot', name: 'Thunderroot', tier: 4, parents: ['rainlily', 'ironroot'], chance: 0.02, mature: 12, life: 40, mult: 1.02, weather: 2,
+    flavor: 'You can hear it growing during storms.' },
+  { id: 'glassflower', name: 'Glass Flower', tier: 4, parents: ['rainlily', 'moonclover'], chance: 0.015, mature: 6, life: 12, mult: 1.04,
+    flavor: 'Perfect, brief, and clear all the way through.' },
+  { id: 'everlasting', name: 'Everlasting', tier: 5, parents: ['kingcarrot', 'glassflower'], chance: 0.01, mature: 14, life: 9999, mult: 1.05,
+    flavor: 'It does not die. Springs come and go around it.' },
+  { id: 'heartwood', name: 'Heartwood', tier: 5, parents: ['thunderroot', 'queensbalm'], chance: 0.01, mature: 16, life: 60, mult: 1.03, weather: 1.5, honey: 10,
+    flavor: 'A tree in a flower bed. The bed does not mind.' },
+  { id: 'wildcarrot', name: 'Wild Carrot', tier: 2, wild: 0.0015, mature: 4, life: 10, mult: 1.01, payout: 3,
+    flavor: 'Blew in from somewhere. Stayed for the company.' },
+  { id: 'fairyring', name: 'Fairy Ring', tier: 6, parents: ['everlasting', 'heartwood'], chance: 0.005, mature: 20, life: 80, mult: 1.05, rabbit: 1.5, weather: 2,
+    flavor: 'The last page. Step inside and the bed is finished.' },
+];
+
+/* Lie Fallow (R24): the second prestige. Seeds are retired into LOAM —
+   ⌊(log10 seeds)²⌋, so every cycle pays about the same (496 for the live
+   world's first; 400 at 1e20, 576 at 1e24) and "one more Fallow" never
+   stales. The bell rings four times, two hours apart; anyone may ring it,
+   anyone may silence it; the first Fallow is rehearsed first. */
+CC.FALLOW = { minLoam: 400, rings: 4, ringGap: 7200, ringRest: 600, tilthPerFallow: 0.05, tilthCap: 25, cellarStep: 8 };
+/* the Root Cellar: Loam buys RULE CHANGES — automation, caps, head starts —
+   at triangular prices (level n costs cellarStep·n Loam; a full cellar ≈ one
+   Fallow and a half). Never a production multiplier. */
+CC.CELLAR = [
+  { id: 'quick', name: 'Quick Spring', cap: 5, per: 10,
+    effect: 'every spring starts with 10 of each plot per level',
+    flavor: 'The first morning of the year is already half done.' },
+  { id: 'pace', name: 'Scarecrow Pace', cap: 5, per: 10,
+    effect: 'the Scarecrow acts 10 s sooner per level (60 s → 10 s)',
+    flavor: 'It learned to hurry. Nobody taught it.' },
+  { id: 'gate', name: 'Open Gate', cap: 8, per: 0.05,
+    effect: 'guests arrive 5% more often per level',
+    flavor: 'The latch is off. The rabbits noticed first.' },
+  { id: 'beds', name: 'Deeper Beds', cap: 2, per: 1,
+    effect: 'the Seed Bed grows a row and a column per level (4×4 → 6×6); heirlooms resprout 25 deeper',
+    flavor: 'Dig once, and the bed remembers the shape.' },
+  { id: 'orders', name: 'Wider Orders', cap: 2, per: 1,
+    effect: 'one more Parish Order on the board at a time',
+    flavor: 'The Parish has more paper than it knows what to do with.' },
+  { id: 'memory', name: 'Seed Memory', cap: 6, per: 1,
+    effect: 'every Fallow cycle begins with 10^level seeds already earned (a head start of hours, not a bonus)',
+    flavor: 'The ground does not forget what grew in it.' },
+];
 
 /* Ribbons: permanent multipliers at lifetime-harvest milestones (your trophy shelf). */
 CC.RIBBONS = [
@@ -461,6 +628,47 @@ CC.RABBIT_NEWS = [
   'A golden rabbit was seen! Clicked, negotiated with, and befriended.',
   'The golden rabbit strikes a deal. Everyone profits. Mostly you.',
 ];
+
+/* The Parish (R21): the world's clocks and appointments. Everything here
+   is time-boxed or presence-boxed, so it lives outside the β-budget. */
+CC.HONEY = { rabbit: 1, tin: 1, stall: 1, rain: 1, spring: 10, beePerDay: 24 };
+/* Many Hands: the thesis in one line — people in the soil make it grow */
+CC.HANDS = { perOnline: 0.01, onlineCap: 100, perName: 0.005, nameCap: 100, nameDays: 7 };
+/* Market Hour: a weekly window strangers can coincide at. Saturday 09:00–12:00
+   UTC is Saturday evening in Melbourne, where the gardeners live. */
+CC.MARKET_HOUR = { dow: 6, startUtc: 9, hours: 3, visitorRate: 4, weatherDiv: 3, priceOff: 0.20 };
+/* a garden nobody has touched for 6 h stirs when someone returns */
+CC.QUIET = { afterHours: 6, boostHours: 1, boost: 2 };
+/* Parish Orders: a weekly three-tier deadline the world can MISS. Targets
+   are relative to the world at posting so they never stale; the deadline is
+   the end of the next Market Hour. Rotation order = this table; an override
+   file (orders_override.json beside the save) lets a human hold the pen. */
+CC.ORDERS = [
+  { id: 'harvest', name: 'The Parish Harvest', kind: 'harvest', tiers: [1, 2, 4],
+    line: 'Fill the barns before Market Hour.', unit: 'weeks of harvest at posting' },
+  /* guest tiers are a SHARE of the guests expected before the bell (one
+     per mean gap): a tenth needs someone about; half needs a watch kept */
+  { id: 'gate', name: 'Open Gate', kind: 'visitors', tiers: [0.1, 0.3, 0.6],
+    line: 'Greet the guests who come — golden, tin, or parsnip.', unit: 'of the guests expected' },
+  { id: 'diplomacy', name: 'Parsnip Diplomacy', kind: 'stalls', tiers: [0.1, 0.3, 0.6],
+    line: 'Meet the Parsnip Man at his stall. Repeatedly.', unit: 'of the stalls expected' },
+  { id: 'ink', name: 'Ink for the Almanac', kind: 'pages', tiers: [1, 2, 3],
+    line: 'New pages, written by deeds.', unit: 'pages written' },
+  { id: 'springs', name: 'Springs in a Row', kind: 'springs', tiers: [0.5, 1, 1.5],
+    line: 'Keep last week\'s pace of springs — then beat it.', unit: 'of last week\'s springs' },
+  { id: 'grounds', name: 'Plant the Grounds', kind: 'sprouts', tiers: [0.25, 0.5, 1],
+    line: 'Spend what the shed is hoarding.', unit: 'of the sprouts held at posting' },
+  { id: 'quilt', name: 'Stitch the Quilt', kind: 'quilt', tiers: [0.25, 0.5, 0.75],
+    line: 'Paint the quilt on the noticeboard — a quarter, a half, three-quarters full.', unit: 'of the quilt painted' },
+  { id: 'trial', name: 'A Trial Spring', kind: 'trials', tiers: [1, 2, 3],
+    line: 'Go to seed into a Trial, and win it.', unit: 'trials completed' },
+];
+CC.ORDER_REWARDS = {
+  1: [{ honey: 50 }],
+  2: [{ honey: 100 }, { buff: { name: 'Bumper Day', mult: 2, dur: 86400 } }],
+  3: [{ honey: 200 }, { buff: { name: 'Bumper Week', mult: 3, dur: 172800 } }, { visitorRate: 2, dur: 86400 }],
+};
+CC.ORDER_FAIL = [{ buff: { name: 'Parish Embargo', mult: 0.5, dur: 86400 } }, { weatherGapMult: 2, dur: 86400 }];
 
 /* Visitors (R19): things that appear in the patch and want clicking. ONE
    scheduler each side (server clock in main.py, dev-garden clock in ui.js)

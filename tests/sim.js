@@ -183,16 +183,27 @@ check(oldShed.shedLevel('p0') === 1 && Math.abs(oldShed.globalMult() - 1.05) < 1
 const bad = new CC.Core();
 bad.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0, owned: [], bought: {},
   seeds: 0, sprouts: 0, shed: { l0: 1e18, hax: 5, p0: true }, almanac: { fake: true, sd0: true } });
-check(bad.shedLevel('l0') === 800 && bad.shedLevel('hax') === 0 && bad.shedLevel('p0') === 1,
-  'forged shed levels clamp, unknown ids drop, legacy true survives');
+check(bad.shedLevel('l0') === bad.shedCap(CC.SHED.find(u => u.id === 'l0'))
+  && bad.shedLevel('hax') === 0 && bad.shedLevel('p0') === 1,
+  'forged shed levels clamp to the ladder\'s own cap, unknown ids drop, legacy true survives');
+/* the live world reached compost 1045 legitimately; a reload must keep it */
+const live = new CC.Core();
+live.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0, owned: [], bought: {},
+  seeds: 0, sprouts: 0, shed: { l0: 1045, h9: 106 } });
+check(live.shedLevel('l0') === 1045 && live.shedLevel('h9') === 106
+  && isFinite(live.shedCost('l0')) && isFinite(live.shedCost('h9')) && isFinite(live.globalMult()),
+  'a 1045-turn compost heap survives a reload (the flat cap ate it)');
+check(live.shedCap(CC.SHED.find(u => u.id === 'l0')) > 10000
+  && live.shedCap(CC.SHED.find(u => u.id === 'h0')) > 1500
+  && live.shedCap(CC.SHED.find(u => u.id === 'l1')) === 6, 'caps scale with each ladder\'s growth');
 check(!bad.almanac.fake && bad.almanac.sd0 === true
   && isFinite(bad.shedCost('l0')) && isFinite(bad.globalMult()),
   'junk almanac keys drop, real history stays, costs stay finite');
 
 /* the Almanac (R16): deeds latch forever, once, and compound */
 console.log('\n=== the Almanac ===');
-check(CC.ALMANAC.length === 78, `78 pages in the catalog (got ${CC.ALMANAC.length})`);
-check(new Set(CC.ALMANAC.map(p => p.id)).size === 78, 'page ids unique');
+check(CC.ALMANAC.length === 101, `101 pages in the catalog — 78 + 9 Trial + 8 Seed Bed + 6 Fallow pages (got ${CC.ALMANAC.length})`);
+check(new Set(CC.ALMANAC.map(p => p.id)).size === 101, 'page ids unique');
 const al = new CC.Core();
 al.seeds = 100;
 check(al.almanacCount() === 0, 'nothing latches without a tick');
@@ -421,7 +432,7 @@ check(mr.pendingSeeds() === 0, 'a reload mints no phantom seeds');
 console.log('\n=== patch snapshot ordering ===');
 const pp = Object.create(CC.Patch.prototype);
 pp.core = new CC.Core();
-pp.ui = { updatePatchLine() {}, patchEvent() {}, nameResult() {}, toast() {}, rabbit: null };
+pp.ui = { updatePatchLine() {}, patchEvent() {}, nameResult() {}, toast() {}, whileAway() {}, rabbit: null };
 pp.handle({ type: 'snapshot', online: 3, clickRate: 7, rabbitTtl: 0, state: {
   bank: 1e20, totalAllTime: 3.4e22, totalRun: 5.39e20, clicks: 9,
   owned: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0], bought: {}, seeds: 184390889,
@@ -458,6 +469,373 @@ bf.buffs.push({ name: 'Rabbit Frenzy', mult: 7, left: 12 });
 const bf2 = new CC.Core();
 bf2.deserialize(JSON.parse(JSON.stringify(bf.serialize())));
 check(bf2.buffs.length === 1 && Math.abs(bf2.cps() - bf.cps()) < 1e-9, 'an active frenzy survives a save/load');
+
+/* the Parish (R21): honey, Many Hands, the Market Hour, long buffs */
+console.log('\n=== the Parish (R21) ===');
+const ph = new CC.Core();
+check(ph.honey === 0 && ph.handsBonus === 1 && ph.marketHour === false, 'a fresh world has an empty jar and neutral clocks');
+ph.earn(1e6); ph.buy(0, 10);
+const cps0 = ph.cps(), click0 = ph.clickPower(), cost0p = ph.costOf(0, 5);
+ph.handsBonus = 1.04;
+check(Math.abs(ph.cps() / cps0 - 1.04) < 1e-12 && Math.abs(ph.clickPower() / click0 - 1.04) < 1e-12,
+  'Many Hands multiplies cps and clicks alike (presence-boxed, outside β)');
+check(ph.costOf(0, 5) === cost0p, 'Many Hands never touches prices');
+ph.handsBonus = 1;
+ph.marketHour = true;
+check(Math.abs(ph.costOf(0, 5) / cost0p - (1 - CC.MARKET_HOUR.priceOff)) < 1e-12, 'Market Hour takes 20% off the stalls');
+ph.season = 'market';
+const both = ph.costOf(0, 5) / cost0p;
+check(both < 1 - CC.MARKET_HOUR.priceOff && both > 0.5, `Market season + Market Hour compose multiplicatively (×${both.toFixed(3)})`);
+check(ph.maxAffordable(0) >= 1, 'maxAffordable uses the same discount');
+ph.marketHour = false; ph.season = 'homestead';
+const honey0 = ph.honey;
+ph.visitorReward('tin');
+check(ph.honey === honey0 + CC.HONEY.tin, 'the tin rabbit mints honey');
+const seedsBefore = ph.seeds;
+ph.seeds = 0; ph.totalAllTime = 1e8; ph.totalRun = 1e8; /* enough for a spring */
+const gainedH = ph.prestige();
+check(gainedH > 0 && ph.honey === honey0 + CC.HONEY.tin + CC.HONEY.spring, 'a spring mints 10 honey');
+check(ph.honey > 0 && ph.cps() >= 0, 'honey is never in the cps formula (a balance, not a multiplier)');
+/* the Bee Cooperative: on the clock, never on cps */
+const bee = new CC.Core();
+bee.sprouts = 1e9; bee.sproutsSpent = 1e6;
+for (const id of ['p0', 'p1', 'p2', 'p3', 'p4']) bee.buyShed(id);
+check(bee.buyShed('p5') && bee.shedLevel('p5') === 1, 'Bee Cooperative plants');
+bee.tick(86400 / CC.HONEY.beePerDay - 1);
+check(bee.honey === 0, 'no honey before the first hour is up');
+bee.tick(2);
+check(bee.honey === 1, 'one honey an hour from the bees');
+bee.tick(86400);
+check(bee.honey === 1 + CC.HONEY.beePerDay, `${CC.HONEY.beePerDay} honey a day`);
+/* long buffs (Parish rewards) survive a spring; weather does not */
+const lb = new CC.Core();
+lb.totalAllTime = 1e8; lb.totalRun = 1e8;
+lb.buffs.push({ name: 'Gentle Rain', mult: 2, left: 60 });
+lb.buffs.push({ name: 'Bumper Week', mult: 3, left: 172800, keep: true });
+lb.prestige();
+check(lb.buffs.length === 1 && lb.buffs[0].name === 'Bumper Week', 'a spring clears the weather, never a Parish reward');
+const lb2 = new CC.Core();
+lb2.deserialize(JSON.parse(JSON.stringify(lb.serialize())));
+check(lb2.buffs[0].keep === true && lb2.honey === lb.honey, 'keep flag and honey survive a save');
+/* the Market Hour clock: Saturday 09:00–12:00 UTC */
+const sat1000 = Date.UTC(2026, 7, 29, 10, 0, 0) / 1000;   /* Sat 29 Aug 2026 */
+const sat0859 = Date.UTC(2026, 7, 29, 8, 59, 59) / 1000;
+const sat1200 = Date.UTC(2026, 7, 29, 12, 0, 0) / 1000;
+const sun = Date.UTC(2026, 7, 23, 0, 0, 0) / 1000;         /* Sun 23 Aug 2026 00:00 */
+check(CC.marketHourAt(sat1000).active && !CC.marketHourAt(sat0859).active && !CC.marketHourAt(sat1200).active,
+  'Market Hour is open 09:00–12:00 UTC Saturday, closed a second either side');
+check(CC.marketHourAt(sun).next === Date.UTC(2026, 7, 29, 9, 0, 0) / 1000
+  && CC.marketHourAt(sat1200).next === Date.UTC(2026, 8, 5, 9, 0, 0) / 1000,
+  'next opening is the coming Saturday; at noon Saturday it is next week');
+check(CC.marketHourAt(sat1000).end === sat1200, 'the end is noon Saturday');
+/* readable numbers: a display preference, never a different value */
+CC.fmtLong = true;
+check(CC.fmt(1234) === '1.23 thousand' && CC.fmt(1.8e41) === '180 duodecillion' && CC.fmt(999) === '999',
+  'long numbers speak in words');
+CC.fmtLong = false;
+check(CC.fmt(1234) === '1.23k', 'short numbers are the default');
+CC.fmtSci = true;
+check(CC.fmt(1234) === '1.23e3' && CC.fmt(5.4e43) === '5.40e43' && CC.fmt(999) === '999', 'powers of ten on request');
+CC.fmtSci = false;
+check(CC.fmtDur(45) === '45s' && CC.fmtDur(3661) === '1h 1m' && CC.fmtDur(90061) === '1d 1h' && CC.fmtDur(-5) === '0s',
+  'durations: s, m s, h m, d h');
+/* sanitizer: honey and the bee clock never go bad */
+const badH = new CC.Core();
+badH.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0, owned: [], bought: {},
+  seeds: 0, sprouts: 0, shed: {}, honey: -7.5, beeT: 1e12 });
+check(badH.honey === 0 && badH.beeT <= 86400, 'negative honey and a runaway bee clock are clamped');
+
+/* Trials (R22): one rule for one spring; rewards are never multipliers */
+console.log('\n=== Trials (R22) ===');
+const T = CC.TRIAL;
+/* a spring with `run` harvested so far and enough lifetime for a seed; bank set, not earned */
+const spring = (core, run) => { core.totalRun = run; core.runT = 7200; core.lifetimeBase = Math.max(core.lifetimeBase, 1e7); core.bank = 1e6; };
+const tr = new CC.Core();
+spring(tr, 3e6); tr.buy(0, 10); tr.buy(1, 5);
+check(tr.trialGoal('frost') === 3e6, 'goal is the spring being left (no log yet)');
+check(!tr.prestige('nope') || tr.trial === null, 'an unknown trial id is a plain spring');
+const tr2 = new CC.Core();
+spring(tr2, 3e6);
+check(tr2.prestige('frost') > 0 && tr2.trial && tr2.trial.id === 'frost' && tr2.trial.goal === 3e6,
+  'going to seed into Late Frost opens a Trial at the spring\'s goal');
+check(tr2.runBest === 3e6, 'the best plain spring is remembered');
+const quick = new CC.Core(); quick.runBest = 5e9; quick.totalRun = 1e6; quick.runT = 30; quick.lifetimeBase = 1e9; quick.bank = 1e6;
+quick.prestige();
+check(quick.runBest === 5e9 && quick.trialGoal('frost') === 5e9, 'a thirty-second spring lowers nothing (review: six instant springs)');
+tr2.bank = 1e4; tr2.buy(0, 5);
+check(tr2.cps() === 0 && tr2.haltT === 180, 'a purchase stills the garden');
+tr2.tick(90); /* ribbons/pages latch here too, so compare against the live base */
+check(Math.abs(tr2.cps() / tr2.baseCps() - 0.5) < 1e-9, 'half thawed at 90 s');
+tr2.tick(100);
+check(Math.abs(tr2.cps() / tr2.baseCps() - 1) < 1e-9 && tr2.haltT === 0, 'fully thawed after three minutes');
+tr2.bank = 1e6; tr2.buy(0, 5); tr2.haltT = 0; tr2.buyUpgrade('b0t0');
+check(tr2.haltT === 180, 'an upgrade is a purchase too');
+tr2.trial.t = 0; tr2.haltT = 0;
+tr2.bank = 0; tr2.earn(3e6); /* reach the goal */
+const won = tr2.tick(0.1);
+check(won.some(e => e.type === 'trial' && e.won && e.id === 'frost' && e.n === 1), 'reaching the goal wins the Trial');
+check(tr2.trial === null && tr2.trialsDone.frost === 1 && tr2.trialBest.frost > 0 && tr2.perks.scarecrow === 1,
+  'the Trial clears, the count and best time record, the Scarecrow is paid');
+check(tr2.trialGoal('frost') === 6e6, 'the next Late Frost asks double (a Trial spring never raises the bar)');
+tr2.latchPages();
+check(tr2.almanac.tr0 === true && !tr2.almanac.tr7, 'The Thaw is written; the set page waits');
+/* expiry */
+const tx = new CC.Core();
+spring(tx, 1e9); tx.prestige('drought');
+const gm = tx.globalMult(), goalD = tx.trial.goal;
+tx.trial = null; const gmRaw = tx.globalMult(); tx.trial = { id: 'drought', goal: goalD, t: 0 };
+check(Math.abs(gm - gmRaw * 0.25) < 1e-12 * gmRaw, 'Drought shrinks every blessing to a quarter — scale-free');
+check(Math.abs(tx.trial.goal - 1e9 * 0.25) < 1, 'and its goal is a quarter of the spring being left (handicap-aware)');
+const lost = tx.tick(T.hours * 3600 + 1);
+check(lost.some(e => e.type === 'trial' && !e.won) && tx.trial === null && !tx.trialsDone.drought,
+  'the clock runs out: the spring simply continues, nothing is paid');
+/* handicaps: the goal asks for what the rule can make */
+const hc = new CC.Core(); hc.lifetimeBase = 1e7; hc.runT = 7200; hc.bank = 1e12;
+for (let i = 0; i < 10; i++) hc.buy(i, 30);
+hc.totalRun = 1e9;
+const plain = hc.cps();
+const share6 = (() => { let c = 0; for (let i = 0; i < 6; i++) c += hc.owned[i] * CC.BUILDINGS[i].cps * hc.buildingMult(i); return c * hc.globalMult(); })() / hc.baseCps();
+check(hc.ruleHandicap('rows') <= share6 && hc.ruleHandicap('rows') > share6 * 0.8, `Short Rows asks for about the first six rows' share (${(hc.ruleHandicap('rows') * 100).toFixed(1)}% vs ${(share6 * 100).toFixed(1)}% raw)`);
+check(Math.abs(hc.trialGoal('rows') - 1e9 * hc.ruleHandicap('rows')) < 1, 'the goal is scaled by it');
+check(hc.ruleHandicap('frost') === 1 && hc.ruleHandicap('fog') === 1 && hc.ruleHandicap('hedge') === 1, 'time-costing rules have no income handicap');
+check(hc.ruleHandicap('hands') > 0 && hc.ruleHandicap('hands') < 0.05, `Hands Only asks for a reference hand's clicks (${(hc.ruleHandicap('hands') * 100).toFixed(2)}%)`);
+check(hc.cps() === plain && hc.trial === null, 'measuring a handicap leaves the garden untouched');
+/* Late Frost stills the harvest share of a click */
+const lf = new CC.Core(); lf.lifetimeBase = 1e7; lf.runT = 7200; lf.bank = 1e9; lf.totalRun = 1e8; lf.buy(0, 20); lf.bought.c1 = true; lf.shed.l1 = 3;
+lf.prestige('frost'); lf.bank = 1e9; lf.buy(0, 20);
+const cpHalt = lf.clickPower(); lf.haltT = 0; const cpThaw = lf.clickPower();
+check(cpHalt < cpThaw && cpHalt >= 1, 'under Late Frost a click keeps only its bare hand while the garden is stilled');
+/* Short Rows: ghost rows hold nothing */
+const gh = new CC.Core(); gh.lifetimeBase = 1e7; gh.runT = 7200; gh.totalRun = 1e8; gh.bank = 1e9; gh.shed.h7 = 50;
+gh.prestige('rows');
+check(gh.owned[CC.SHED.find(u => u.id === 'h7').building] === 50 && gh.rowCount(CC.SHED.find(u => u.id === 'h7').building) === 0
+  && gh.bumperCount(CC.SHED.find(u => u.id === 'h7').building) === 0, 'a resprouted row past six stands but counts for nothing — no bumpers, no synergy');
+/* the Sprinkler cap perk is usable */
+const sp = new CC.Core(); sp.sprouts = 1e12; sp.sproutsSpent = 1e6; sp.shed.l1 = 6;
+const l1 = CC.SHED.find(u => u.id === 'l1');
+check(sp.shedMaxed(l1) && !sp.buyShed('l1'), 'six valves is the cap');
+sp.perks.cap.l1 = 1;
+check(!sp.shedMaxed(l1) && sp.buyShed('l1') && sp.shedLevel('l1') === 7 && sp.shedMaxed(l1), 'the Hands Only perk opens a seventh valve');
+const sp2 = new CC.Core(); sp2.deserialize(JSON.parse(JSON.stringify(sp.serialize())));
+check(sp2.shedLevel('l1') === 7, 'and it survives a reload (perks are read before the shed clamp)');
+/* Crop Rotation: a pyramid of plots */
+const cr = new CC.Core();
+spring(cr, 1e7); cr.prestige('rotation'); cr.bank = 1e9;
+check(!cr.buy(1, 1) && cr.owned[1] === 0, 'no plot may outnumber the one before it');
+check(cr.buy(0, 3) && cr.buy(1, 3) && !cr.buy(1, 1) && cr.maxAffordable(1) === 0, 'the chain holds at equal counts');
+check(cr.maxAffordable(2) === 3 && cr.buy(2, 2) && cr.rowRoom(2) === 1, 'Max respects the room left in the chain');
+/* Short Rows: only six plots exist */
+const sr = new CC.Core();
+spring(sr, 1e7); sr.prestige('rows'); sr.bank = 1e12; sr.owned[7] = 50;
+check(!sr.buy(6, 1) && sr.maxAffordable(6) === 0 && sr.buy(5, 1), 'the seventh plot does not exist; the sixth does');
+check(sr.baseCps() === sr.owned[5] * CC.BUILDINGS[5].cps * sr.buildingMult(5) * sr.globalMult(), 'rows past six make nothing');
+check(!sr.visibleUpgrades().some(u => u.id === 'b7t0'), 'their upgrades stay off the shelf');
+/* Hands Only: the sanctioned bot spring */
+const ho = new CC.Core();
+spring(ho, 1e7); ho.buyUpgrade('c0');
+ho.prestige('hands'); ho.bank = 1e9; ho.buy(0, 50); ho.buy(1, 20);
+ho.bought.c1 = true; /* a cpsPct click upgrade, if any — harmless otherwise */
+check(ho.cps() === 0 && ho.baseCps(true) > 0, 'the plots sleep');
+const pctAny = CC.CLICK_UPGRADES.some(u => u.cpsPct);
+ho.shed.l1 = 2;
+check(ho.clickPower() > 1 + 0 && ho.clickPower() >= 0.01 * ho.baseCps(true) * ho.buffMult(), 'clicks keep their share of what the plots would make');
+void pctAny;
+/* the Scarecrow */
+const sc = new CC.Core();
+sc.perks.scarecrow = 1; sc.earn(1e6);
+sc.tick(T.scarecrowEvery + 0.01);
+check(sc.owned[0] === 1 && sc.owned[1] === 0, 'Scarecrow lv 1 buys one Window Box a minute (cheapest ≤ 1% of bank)');
+sc.bank = 100; sc.tick(T.scarecrowEvery + 0.01);
+check(sc.owned[0] === 1, 'and never spends more than 1% of the bank');
+/* perks at the next spring */
+const pk = new CC.Core();
+pk.perks.startTier = 1; pk.perks.resproutCap = 20; pk.shed.h0 = 150;
+spring(pk, 1e7); pk.prestige();
+check(CC.BUILDINGS.every((_, i) => pk.bought[`b${i}t0`]) && !pk.bought.b0t1, 'springs start with tier-1 upgrades');
+check(pk.owned[CC.SHED.find(u => u.id === 'h0').building] === 120, 'heirlooms resprout to 120');
+pk.perks.cap.l1 = 2;
+check(pk.shedCap(CC.SHED.find(u => u.id === 'l1')) === 8, 'the Sprinkler Network cap rises to 8 valves');
+pk.perks.clickFrenzy = 1;
+pk.buffs.push({ name: 'Rabbit Frenzy', mult: 7, left: 10 });
+const cpF = pk.clickPower(); pk.perks.clickFrenzy = 0;
+check(Math.abs(cpF / pk.clickPower() - 3) < 1e-9, 'Click Frenzy lv 1 triples clicks during a frenzy');
+/* a spring mid-Trial abandons it */
+const ab = new CC.Core();
+spring(ab, 1e7); ab.prestige('fog'); spring(ab, 1e8);
+ab.prestige();
+check(ab.trial === null && !ab.trialsDone.fog, 'going to seed mid-Trial abandons it');
+/* save / load */
+const sv = new CC.Core();
+spring(sv, 1e7); sv.prestige('hedge'); sv.perks.longEars = 2; sv.trialsDone.frost = 3; sv.trialBest.frost = 1234.5;
+sv.haltT = 0; sv.trial.t = 100;
+const sv2 = new CC.Core();
+sv2.deserialize(JSON.parse(JSON.stringify(sv.serialize())));
+check(sv2.trial && sv2.trial.id === 'hedge' && sv2.trial.goal === sv.trial.goal && sv2.trial.t === 100
+  && sv2.trialsDone.frost === 3 && sv2.trialBest.frost === 1234.5 && sv2.perks.longEars === 2 && sv2.runBest === 1e7,
+  'a Trial, its ledger and the perks survive a save');
+const junk = new CC.Core();
+junk.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0, owned: [], bought: {}, seeds: 0, sprouts: 0, shed: {},
+  trial: { id: 'frost', goal: Infinity, t: -5 }, trialsDone: { frost: 99, bogus: 3 }, perks: { scarecrow: 1e9, cap: { l1: 50, zz: 1 } }, runLog: [1, 'x', -2, Infinity], haltT: 1e12 });
+check(junk.trial === null && junk.trialsDone.frost === T.maxDone && junk.trialsDone.bogus === undefined
+  && junk.perks.scarecrow === 5 && junk.perks.cap.l1 === 10 && junk.perks.cap.zz === undefined && junk.runBest === 1 && junk.haltT === 3600,
+  'forged Trial state is clamped: no infinite goal, no ladder past its top');
+check(!junk.trialAvailable('frost') && junk.trialAvailable('fog'), 'a maxed Trial cannot be entered again');
+
+/* the Seed Bed (R23): a shared bed on a shared clock, recipes by seeded RNG */
+console.log('\n=== the Seed Bed (R23) ===');
+const B = CC.BED;
+check(CC.PLANTS.length === 24 && new Set(CC.PLANTS.map(p => p.id)).size === 24, '24 species, ids unique');
+check(CC.PLANTS.every(p => !p.parents || p.parents.every(q => CC.PLANTS.some(x => x.id === q))), 'every recipe names real parents');
+check(CC.PLANTS.every(p => p.tier === 1 || p.wild || (p.parents && CC.PLANTS.filter(x => p.parents.includes(x.id)).every(x => x.tier < p.tier))),
+  'every cross is born of lower tiers — the tree has no loops');
+const bd = new CC.Core();
+bd.earn(1e6); bd.buy(0, 20);
+const ref = bd.bedCpsRef();
+check(ref >= 10 && bd.bedPrice('sprout').carrots === ref * 60, 'a Carrot Sprout costs one minute of steady cps');
+check(bd.bedPrice('nettle') === null && bd.bedPrice('honeyroot') === null, 'weeds and undiscovered crosses are not for sale');
+check(bd.bedPlant(0, 'sprout') && bd.bedPlant(1, 'clover') && !bd.bedPlant(1, 'thyme'), 'plants go into empty plots only');
+check(bd.bedHarvest(0) === null, 'a seedling cannot be picked — there is no uproot');
+bd.tick(B.tick * 4 + 1);
+check(bd.bed.n === 4 && bd.bed.plots[0].age === 4 && bd.plotMature(bd.bed.plots[0]), 'four bed ticks: the sprout is mature');
+check(Math.abs(bd.bedMult() - 1.01) < 1e-12, 'a mature sprout is ×1.01 while it stands');
+const bankB = bd.bank, h = bd.bedHarvest(0);
+check(h && h.first && h.sp === 'sprout' && bd.bank > bankB && bd.bed.log.sprout === 1 && bd.bed.plots[0] === null,
+  'the harvest pays, writes the log, clears the plot');
+bd.latchPages();
+check(bd.almanac.sb0 === true, 'First Harvest is written');
+/* recipes: deterministic from the seed */
+const cross = new CC.Core();
+cross.bed.seed = 12345;
+cross.bed.plots[5] = { sp: 'sprout', age: 3 }; cross.bed.plots[6] = { sp: 'clover', age: 4 };
+let found = null;
+for (let k = 0; k < 8 && !found; k++) {
+  for (const e of cross.bedTick()) if (e.type === 'bedSprout' && e.sp === 'honeyroot') found = k;
+}
+check(found !== null, `Honeyroot appears between a sprout and a clover (tick ${found})`);
+const cross2 = new CC.Core();
+cross2.bed.seed = 12345;
+cross2.bed.plots[5] = { sp: 'sprout', age: 3 }; cross2.bed.plots[6] = { sp: 'clover', age: 4 };
+let found2 = null;
+for (let k = 0; k < 8 && found2 === null; k++) {
+  for (const e of cross2.bedTick()) if (e.type === 'bedSprout' && e.sp === 'honeyroot') found2 = k;
+}
+check(found2 === found, 'the same seed rolls the same bed');
+const lone = new CC.Core();
+lone.bed.seed = 12345; lone.bed.plots[5] = { sp: 'sprout', age: 3 };
+let wrong = false;
+for (let k = 0; k < 200; k++) for (const e of lone.bedTick()) if (e.type === 'bedSprout' && !CC.PLANTS.find(p => p.id === e.sp).wild) wrong = true;
+check(!wrong, 'no cross without both parents; only weeds blow in');
+/* soils */
+const clay = new CC.Core();
+clay.bed.plots[0] = { sp: 'sprout', age: 0 };
+check(clay.bedSoil('clay', 1000) && !clay.bedSoil('chips', 1200) && clay.bedSoil('chips', 1000 + B.soilCooldown), 'soil switches honour the world cooldown');
+clay.bed.soil = 'clay';
+clay.bedTick(); clay.bedTick();
+check(clay.bed.plots[0].age === 0, 'clay ages a plant every third tick');
+clay.bedTick();
+check(clay.bed.plots[0].age === 1, '…and then it does');
+clay.bed.plots[0].age = 99;
+check(Math.abs(clay.bedMult() - 1.0125) < 1e-12, 'clay gives a quarter more heart (×1.0125 from a sprout)');
+/* caps */
+const capB = new CC.Core();
+for (let i = 0; i < capB.bed.plots.length; i++) capB.bed.plots[i] = { sp: 'fairyring', age: 99 };
+check(Math.abs(capB.bedMult() - Math.min(B.multCap, Math.pow(1.05, 16))) < 1e-9 && capB.bedRabbit() === B.rabbitCap && capB.bedWeather() === B.weatherCap,
+  `sixteen Fairy Rings are a bounded blessing (×${capB.bedMult().toFixed(2)} production, guests ×${B.rabbitCap}, rain ×${B.weatherCap})`);
+/* honey seeds and the sacrifice */
+const hs = new CC.Core();
+hs.honey = B.honeyTierCost[2] - 1;
+hs.bed.log.honeyroot = 1;
+check(hs.bedPrice('honeyroot').honey === B.honeyTierCost[2] && !hs.bedPlant(0, 'honeyroot'), 'a found cross costs honey, and one short is not enough');
+hs.honey = B.honeyTierCost[2];
+check(hs.bedPlant(0, 'honeyroot') && hs.honey === 0, `${B.honeyTierCost[2]} honey plants it`);
+for (const p of CC.PLANTS) hs.bed.log[p.id] = 1;
+hs.latchPages();
+check(hs.logFull() && hs.bedSacrifice() && hs.bed.sacrificeLeft === B.sacrificeWait, 'a full log can be given up — after a wait');
+check(hs.bedCancel() && hs.bed.sacrificeLeft === 0 && hs.logFull() && hs.bed.sacrificeRest === B.sacrificeRest, 'anyone can cancel the wait — and then it rests');
+check(!hs.bedSacrifice(), 'no re-fire while it rests (cancel/fire cannot ping-pong)');
+hs.tick(B.sacrificeRest + 1);
+check(hs.bedSacrifice(), 'the rest over, the sacrifice may start again'); hs.tick(B.sacrificeWait + 1);
+check(hs.honey === B.sacrificeHoney && hs.sacrifices === 1 && !hs.logFull(), 'the sacrifice pays 100 honey and opens the log again');
+hs.latchPages();
+check(hs.almanac.sb6 === true && hs.almanac.sb5 === true, 'Seedless to Nay and The Whole Catalogue are written');
+/* save / load */
+const sv3 = new CC.Core();
+sv3.bed.plots[3] = { sp: 'thyme', age: 2 }; sv3.bed.log.sprout = 4; sv3.bed.seed = 777; sv3.bed.soil = 'chips'; sv3.bedT = 42;
+const sv4 = new CC.Core();
+sv4.deserialize({ ...JSON.parse(JSON.stringify(sv3.serialize())), last: Date.now() + 5000 }); /* no offline seconds to catch up */
+check(sv4.bed.plots[3].sp === 'thyme' && sv4.bed.plots[3].age === 2 && sv4.bed.log.sprout === 4 && sv4.bed.seed === 777
+  && sv4.bed.soil === 'chips' && sv4.bedT === 42, 'the bed survives a save');
+const junkB = new CC.Core();
+junkB.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0, owned: [], bought: {}, seeds: 0, sprouts: 0, shed: {},
+  bed: { soil: 'lava', plots: [{ sp: 'bogus', age: 1 }, { sp: 'sprout', age: 1e9 }, 'x'], log: { bogus: 3, clover: -1, sprout: 2.7 }, seed: -5, sacrificeLeft: 1e9 } });
+check(junkB.bed.soil === 'dirt' && junkB.bed.plots[0] === null && junkB.bed.plots[1].age === 12 && junkB.bed.plots[2] === null
+  && junkB.bed.log.bogus === undefined && junkB.bed.log.clover === undefined && junkB.bed.log.sprout === 2 && junkB.bed.seed > 0 && junkB.bed.sacrificeLeft === B.sacrificeWait,
+  'a forged bed is pruned to known species and sane ages');
+
+/* Lie Fallow (R24): seeds retire into loam; loam buys rules */
+console.log('\n=== Lie Fallow (R24) ===');
+const F = CC.FALLOW;
+const fw = new CC.Core();
+fw.seeds = 1.96e22; fw.lifetimeBase = 4.5e50; fw.totalRun = 1e47; fw.bank = 1e48; fw.sprouts = 5e20;
+fw.shed = { p0: 1, p1: 1, p5: 1, l0: 1045, l1: 6, h0: 105, h3: 110 }; fw.bought = { c0: true, b0t0: true };
+fw.honey = 140; fw.trialsDone = { frost: 2 }; fw.perks.scarecrow = 2; fw.bed.log.sprout = 3; fw.bed.plots[0] = { sp: 'thyme', age: 2 };
+fw.buffs = [{ name: 'Gentle Rain', mult: 2, left: 50 }, { name: 'Bumper Week', mult: 3, left: 1e5, keep: true }];
+check(fw.loamPending() === 496 && fw.fallowAvailable(), 'the live world\'s first Fallow is worth 496 loam');
+const small = new CC.Core(); small.seeds = 1e19;
+check(small.loamPending() === 361 && !small.fallowAvailable() && small.fallow() === 0, 'below 1e20 seeds (400 loam) the bell is silent');
+check(fw.ribbons().length > 10, 'ribbons stand before the Fallow');
+const got = fw.fallow();
+check(got === 496 && fw.loam === 496 && fw.fallows === 1, 'the world lies fallow: +496 loam');
+check(fw.seeds === 0 && fw.totalAllTime === 0 && fw.bank === 0 && fw.sprouts === 0 && fw.ribbons().length === 0
+  && Object.keys(fw.bought).length === 0 && fw.owned.every(n => n === 0), 'seeds, lifetime, ribbons, bank, sprouts, plots, upgrades: gone');
+check(fw.shed.p0 === 1 && fw.shed.p5 === 1 && fw.shed.l0 === undefined && fw.shed.l1 === undefined && fw.shed.h0 === undefined,
+  'the shed keeps its one-shots and loses its ladders (tm\'s call)');
+check(fw.honey === 140 && fw.trialsDone.frost === 2 && fw.perks.scarecrow === 2 && fw.bed.log.sprout === 3 && fw.bed.plots[0].sp === 'thyme',
+  'honey, the Trial ledger, perks, the seed log and the bed itself survive');
+check(fw.buffs.length === 1 && fw.buffs[0].name === 'Bumper Week', 'the weather clears; the Parish reward stays');
+fw.latchPages();
+check(fw.almanac.fy0 === true && fw.almanac.fy3 === undefined, 'Fallow Year I is written');
+/* the Root Cellar */
+const ST = F.cellarStep;
+check(fw.cellarCost('quick') === ST && fw.buyCellar('quick') && fw.cellarCost('quick') === 2 * ST && fw.loam === 496 - ST, `level 1 costs ${ST} loam, level 2 costs ${2 * ST}`);
+for (let k = 0; k < 10; k++) fw.buyCellar('quick');
+check(fw.cellarLevel('quick') === 5 && fw.loam === 496 - 15 * ST, `Quick Spring caps at 5 (15 × ${ST} = ${15 * ST} loam)`);
+check(CC.CELLAR.reduce((a, c) => a + ST * c.cap * (c.cap + 1) / 2, 0) > 496 && CC.CELLAR.reduce((a, c) => a + ST * c.cap * (c.cap + 1) / 2, 0) < 2 * 496,
+  `a full cellar costs ${CC.CELLAR.reduce((a, c) => a + ST * c.cap * (c.cap + 1) / 2, 0)} loam — between one and two Fallows`);
+check(!fw.buyCellar('quick') && !fw.buyCellar('bogus'), 'a capped perk and a bogus id buy nothing');
+fw.totalRun = 1e8; fw.lifetimeBase = 1e8; fw.bank = 1e6; fw.prestige();
+check(fw.owned.every(n => n === 50), 'Quick Spring 5: every spring starts with 50 of each plot');
+check(fw.buyCellar('beds') && fw.bedW() === 5 && fw.bed.plots.length === 25 && fw.bed.plots[0].sp === 'thyme', 'Deeper Beds: 5×5, plants kept by position');
+fw.bed.plots[24] = { sp: 'clover', age: 1 };
+check(fw.buyCellar('beds') && fw.bedW() === 6 && fw.bed.plots.length === 36 && fw.bed.plots[4 * 6 + 4].sp === 'clover' && !fw.buyCellar('beds'),
+  '…then 6×6, and no deeper');
+check(fw.bedNeighbors(0).length === 3 && fw.bedNeighbors(7).length === 8, 'neighbours follow the new shape');
+fw.buyCellar('pace'); fw.buyCellar('pace');
+check(fw.scarecrowEvery() === 40, 'Scarecrow Pace 2: every 40 s');
+fw.buyCellar('gate');
+check(Math.abs(fw.gateRate() - 1.05) < 1e-12, 'Open Gate 1: guests ×1.05');
+for (let k = 0; k < 6; k++) fw.buyCellar('memory');
+check(fw.cellarLevel('memory') === 6, 'Seed Memory to 6');
+fw.seeds = 1e21; fw.lifetimeBase = 1e48;
+const got2 = fw.fallow();
+check(got2 === 441 && fw.seeds === 1e6 && fw.totalAllTime === 1e18 && fw.pendingSeeds() === 0,
+  'Seed Memory 6: the next cycle starts at a million seeds and the lifetime that earned them — no phantom pending seeds');
+check(Math.abs(fw.tilthMult() - 1.10) < 1e-12, 'Tilth: two Fallows sweeten the mint by 10%');
+const tl = new CC.Core(); tl.fallows = 40;
+check(Math.abs(tl.tilthMult() - (1 + F.tilthPerFallow * F.tilthCap)) < 1e-12, 'Tilth caps at 25 Fallows');
+tl.seeds = 0; tl.totalRun = 1e8; tl.lifetimeBase = 1e8; tl.bank = 1;
+const s0 = tl.sprouts, gT = tl.prestige();
+check(gT > 0 && tl.sprouts - s0 === Math.floor(gT * tl.mintMult() * tl.tilthMult()), 'the sprout mint carries Tilth (floored)');
+/* save / load */
+const fs2 = new CC.Core();
+fs2.deserialize(JSON.parse(JSON.stringify(fw.serialize())));
+check(fs2.loam === fw.loam && fs2.fallows === 2 && fs2.cellarLevel('beds') === 2 && fs2.bed.plots.length === 36 && fs2.bed.plots[4 * 6 + 4].sp === 'clover',
+  'loam, the Cellar and a 6×6 bed survive a save');
+const junkF = new CC.Core();
+junkF.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0, owned: [], bought: {}, seeds: 0, sprouts: 0, shed: {},
+  loam: -3, fallows: 2.5, cellar: { quick: 99, bogus: 1, beds: 1 }, bed: { plots: Array(16).fill(null) } });
+check(junkF.loam === 0 && junkF.fallows === 2 && junkF.cellar.quick === 5 && junkF.cellar.bogus === undefined && junkF.bed.plots.length === 25,
+  'forged loam and Cellar levels are clamped; the bed is sized by the Cellar');
 
 console.log(fails ? `\n${fails} FAILURE(S)` : '\nALL CHECKS PASSED');
 process.exit(fails ? 1 : 0);

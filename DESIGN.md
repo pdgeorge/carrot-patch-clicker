@@ -195,6 +195,31 @@ restatement of the value.
 | Noticeboard size | top 10 by clicks | `carrot_patch/main.py` `/api/board` | One-click visitors vastly outnumber regulars; recognition, not a ledger. |
 | Noticeboard refresh | 60 s poll + on sign | `src/ui.js` | Recognition doesn't need to be live; a minute keeps it cheap at any player count. |
 | Watchdog cadence | every 2 s, plus on tab-becomes-visible | `src/net.js` | Frequent enough to catch staleness fast while foregrounded; the visibility hook covers waking from sleep, when background timers were throttled. |
+| Honey mint | 1 per rabbit/tin/stall/rain, 10 per spring, 24/day from the Bee Cooperative (`CC.HONEY`) | `src/data.js`; `mintHoney` in both engines | The Fallow Year's calendar currency (R21): minted by DEEDS and the clock, never by cps, so it cannot inflate with the economy — a week of play is worth about the same honey at 1e9 cps as at 1e30. Spent at the Seed Bed (R23); until then it keeps. |
+| Many Hands | +1%/tender online (cap 100) +0.5%/distinct name this week (cap 100) (`CC.HANDS`) | `src/data.js`; `hands_bonus` in `main.py` | Presence-boxed, so outside the β-budget: it never compounds with anything bought. Caps keep a bot-net's best case at ×2.5; the name term rewards the board, not the socket count. |
+| Market Hour | Sat 09:00–12:00 UTC (Sat evening Melbourne); guests ×4, weather ÷3, prices −20% (`CC.MARKET_HOUR`) | `src/data.js`; `marketHourAt` in both engines | One weekly appointment the whole world can keep; three hours spans bedtimes across a continent. The discount composes multiplicatively with Market Days (0.9 × 0.8). Week starts Sunday 00:00 UTC in both engines — parity-tested at the boundaries. |
+| Parish Orders | one a week, 3 tiers, due at the end of Market Hour; rotation `CC.ORDERS`, rewards `CC.ORDER_REWARDS`, failure `CC.ORDER_FAIL` | `src/data.js`; `carrot_patch/parish.py` | A deadline the world can MISS. Targets are relative AND pro-rated to the actual window (a first-boot or post-restart order is due in 1–8 days, not always 7): harvest = 1/2/4 × the **steady** cps (buildings × season — no buffs, no Many Hands, no Trial rule, so the reward just paid, a crowd at the bell or a Hands Only spring can never set the next bar) × seconds to the bell; guests/stalls = a share (10/30/60 %) of the guests expected in the window (one per mean gap, stalls by weight); springs = ½/1/1½ × last week's springs (from the chronicle); grounds = a share of the sprouts held; quilt fill and pages are absolute. Kinds that cannot be won are skipped and logged (`order_skipped`): a full Almanac, a finished quilt, every Trial maxed. Rewards are honey and time-boxed buffs (Bumper Day ×2/24 h, Bumper Week ×3/48 h) — free under β; a miss is a 24 h Embargo and thin weather. A buff by the same name REFRESHES rather than stacks, so three Wider-Orders cards resolving at one bell are one Embargo (never ×0.125) and one Bumper Week (never ×27); honey still adds. Never posts due in under a day; with no Market Hour in the data, due in a week. The rotation keeps its own persisted counter (history is capped at 20). `orders_override.json` beside the save lets a human hold the pen: a known kind and exactly three finite, positive, ascending tiers, else the spec is skipped and logged — a typo never posts an unwinnable order or stops the loop. |
+| The Quiet | 6 h without any intent → Welcome Back ×2 for 1 h (`CC.QUIET`) | `src/data.js`; `OrderBook.touch` | The garden must not punish the one who came back to an empty patch; a buff, not a multiplier, so it is time-boxed and survives nothing but its hour. Long Parish buffs carry `keep` and survive a spring — a Bumper Week is the world's, not one run's. |
+| Chronicle | append-only `<state>_events.jsonl`; in memory a 20 000-event ring read from the file's last 4 MB at startup; day summaries memoised 60 s; 500-event cap on `/api/chronicle?since=`; `t` is always the epoch (an event's own `t`, e.g. a Trial's elapsed time, is kept as `dur`) | `carrot_patch/parish.py` | The world's day-book: backs "while you were away" (R5, shipped here), the Today's Patch card and the Order baselines. JSONL, not SQLite — it is a record, never a gate: a write failure is swallowed. A GET never touches the file (an unauthenticated endpoint must cost microseconds, not a rescan of a year). Springs are recorded WITHOUT a name: the modal promises "your name will not be recorded" (R11). |
+| Presence board | hands today (first 50 by clicks + exact count), streaks (names ≥ 7 days old, top 5, live only if tended yesterday or today), founders (first 5 by first day, then clicks); pre-R21 rows dated 2026-07-17 | `carrot_patch/tenders.py` `presence()` | The board a bot cannot own (R6): a sybil account gains one presence-day each — nothing to farm; the list is bounded so a name-flood cannot fatten every viewer's poll. A streak that ended is a best, not "days running". Legacy tenders predate the presence columns by definition — without the backfill the restart day would make founders of whoever reconnected first. |
+| Signature throttle | one accepted `name` per socket per 5 s | `carrot_patch/main.py` `NAME_INTERVAL` | A board row is permanent; ten a second would be a sybil's whole week of Many Hands names in a minute. |
+| Away & due cues | away summary after ≥ 1 h since the previous snapshot; last-seen heartbeat 60 s; order due label urgent under 6 h; track marks at 25/50/100 % | `src/ui.js` `CC.AWAY_AFTER`, `CC.DUE_SOON` | Client-side and cosmetic. An hour is the shortest gap the chronicle can say something about; the baseline is the previous snapshot (not page load), so a lid-shut laptop that redials gets its summary too. The `since` sent to the server is skew-corrected with the snapshot's clock. |
+| Readable numbers | 🔢 short (`1.23Td`) / long (`1.23 tredecillion`) | `src/core.js` `CC.fmtLong`, `src/ui.js` | A display preference stored beside the day/night toggle; the value never changes, only the unit's name. |
+| Trial clock & ladder | 48 h; 5 completions per Trial; goal = max(1e6, best PLAIN spring on record, the plain spring ending now) × the rule's handicap × 2^completions; a spring counts only if plain (no rule) and ≥ 1 h long; the record is a high-water mark, reset at Lie Fallow (`CC.TRIAL.step`, `minSpringSec`, `refClicks`) | `src/data.js`; `trialGoal`/`ruleHandicap`/`plainRun` in both engines | "Get back to where we were" needs no tuning — but the first cut (last five springs × 10) was flushable by six instant springs and unreachable past the second completion (R22 review). A monotone record that only honest hour-long plain springs can raise cannot be lowered by spam; the **handicap** is the rule's share of income measured on the garden being left (Drought a quarter, Short Rows the first six rows' share, Hands Only a 5-click/s reference hand's share; time-costing rules 1), so every rule asks for what it can actually make; doubling per completion stays reachable five times. Going to seed mid-Trial abandons it — announced, on the record, and warned in the modal. Wall-time clock; downtime counts. |
+| Trial rules | Late Frost halt 180 s (plots AND the harvest share of clicks; the bare hand never stills) · Short Rows 6 plots (rows past six stand but count for nothing — no output, no synergy, no bumpers) · Drought ×0.25 on every blessing (`CC.TRIALS[].rule`) | `src/data.js`; `haltMult`/`rowExists`/`rowCount`/`rowRoom`/`globalMult` in both engines | Each rule is ONE line in the engine read at one hook, so a rule can never leak into a normal spring: every hook returns neutral when `trial` is null. Drought was an exponent (^0.75) — at 1e29 of blessing that is a ×1.8e7 cut, unwinnable forever; a flat quarter is scale-free (R22 review). Hands Only zeroes the plots but clicks keep their cpsPct share of the raw base — the sanctioned bot spring (P4). |
+| Trial rewards | Scarecrow ≤5, start-tier ≤4, resprout +20/≤100, Sprinkler cap +1/≤10 (6 → 11 valves), Long Ears ≤5 (+3 s/level), Click Frenzy ≤5 (×(1+2·lv) during a frenzy), Fog 150 honey (`CC.TRIALS[].reward`) | `applyReward` in both engines | Automation, caps and unlocks, never a production multiplier, so nothing here changes the growth exponent (β). Honest footnote: the sprinkler valves and the tier starts DO raise a clicker's steady income by a constant factor (11 valves = +5.5 % of cps per click; a 10-click/s bot gains ×1.55) — constants, not compounding terms, and they are the point of the ladder. Every ladder is clamped in `applyReward` AND in the save sanitizer (perks are read BEFORE the shed clamp, so a raised cap survives a reload). |
+| Scarecrow | every 60 s, one unit of the cheapest affordable building among the first 2·lv rows, only if ≤ 1% of the bank; rests during Late Frost | `tick` in both engines | A patient hand for humans who aren't running the bot; the 1% rule means it can never out-spend a person's plan or starve a Max buy. Deterministic, so both engines stay in step. Silent on the wire — the snapshot shows it. |
+| The Seed Bed | 4×4 plots; bed tick 300 s; trowel 60 s per ADDRESS and no address may hold more than a quarter of the plots immature; basket 15 s per address; soil cooldown 600 s (world); sacrifice 100 honey after a 6 h cancellable wait, then a 10 min rest after a cancel (`CC.BED`) | `src/data.js`; `bedTick`/`bedPlant`/`bedHarvest` in both engines; `carrot_patch/main.py` intents | The first verb where the world MAKES something, on a clock cps cannot inflate. Five minutes is slow enough that a bot gains nothing by polling and fast enough that a session sees growth. No uproot exists (P1): plants die of age only — but with a per-socket trowel one loop could hold every plot immature forever (R24 review), so the trowel is per address AND capped at a quarter of the bed; the worst grief is now a quarter of the bed tied up for a few ticks. The sacrifice is the one irreversible act on the log: six hours crosses every waking window (the bell's own reasoning) and the rest stops cancel/fire ping-pong. A refused seed is answered, so the trowel never locks for nothing. One seeded 32-bit LCG per bed, mirrored bit-for-bit. The bed keeps ticking through downtime (server: the 24 h catch-up; dev garden: 8 h). |
+| Seed prices | tier-1 seeds: 1–5 minutes of the STEADY cps (floor 10/s); found crosses: 10/30/80/200/400 honey by tier (`CC.PLANTS[].cost`, `CC.BED.honeyTierCost`) | `bedPrice` in both engines | Minutes of harvest mean the same thing at 1e3 and 1e47 cps; honey is the bed's sink and the reason discoveries matter (a found cross can be re-planted — for honey). At these prices the full log costs ~1000–1600 honey, about a week of the world's honey — the brake the recipe design needs (a simulated attentive gardener closes the log in ~7–10 days; at half these prices it was 4). Weeds are never for sale. |
+| Species & recipes | 24 species in 6 tiers (`CC.PLANTS`): 4 buyable, 2 wild (0.4 % and 0.15 % per empty plot per tick), 18 crosses at 0.5–10 % per empty plot per tick when both parents stand mature and adjacent (8-neighbour); Wood Chips ×3 mutation; Clay ages every 3rd tick at ×1.25 effect | `src/data.js`; `bedTick` | Dependency depth 5 with ~24 species was the proposal's starting point: too easy and the log closes in a week, too hard and the bed is a lawn. Recipes are in the data file on purpose (P7) and hidden in play — the wiki is half the fun. The tree has no loops (tested). The shortest pick window is 6 ticks (Glass Flower: 30 min on Dirt, 90 on Clay), so an hourly tender still catches most of them and polling buys a bot little. Honey on harvest rounds half UP in both engines (Python's banker's rounding would have diverged on Clay). |
+| Bed effects | per mature plant: mult ×1.01–1.05, guests ×1.05–1.5, rain ×1.1–2, honey 1–10 on harvest, payout 2–60 cps-minutes; aggregates capped at ×2.2 production (16 × 1.05 = ×2.18), guests ×4, rain ×3; payouts capped at 5 % of the bank + a minute | `bedMult`/`bedRabbit`/`bedWeather` in both engines | Live effects are bounded by plot count — a constant, so zero β; they multiply cps (and clicks) beside the buffs, never inside globalMult (which feeds seeds). Payouts are bank-capped like rabbit bundles so a fresh world cannot be catapulted. |
+| Seed log pages | 8 Almanac pages: one per tier found (6), the full log, the sacrifice (`{logTier}`, `{logFull}`, `{sacrifices}`) | `src/data.js` | Per TIER, not per species — 24 species pages would have been ×1.6 of permanent production from one feature; eight is ×1.17, in line with the other chapters. The species themselves are recognised in the seed log panel, not the book. |
+| Loam mint | ⌊(log₁₀ seeds)²⌋ at Lie Fallow; the bell needs ≥ 400 pending (seeds ≥ 1e20) (`CC.FALLOW`) | `loamPending` in both engines | The live world's first Fallow pays 496; regrowing to 1e20 pays 400, to 1e24 pays 576 — every cycle is worth about the same, so "one more Fallow" never stales, and the currency is human-sized (hundreds, not Vg). |
+| What Fallow resets / keeps | resets bank, plots, upgrades, lifetime (so ribbons), seeds, sprouts, shed LADDERS, the run log, a running Trial; keeps the Almanac, world counters, shed one-shots, honey, the seed log and bed, the Trials' ledger and perks, the Cellar, the chronicle; frames and clears the quilt | `fallow()` in both engines; `bell_tick` in `parish.py` | tm's call (2026-08-23): one-shots survive — a constant ×3.6 and ×16 mint that makes the regrow a different game from the first climb, while the ladders (compost 1045, heirlooms 110) are exactly the part that could only be retired, never tuned. Resetting lifetime also retires the float64 hazard structurally. |
+| The bell | 4 rings, 2 h apart (6 h from ring to Fallow); anyone rings; silencing takes HALF the addresses online (at least one) each speaking once; after a silence the bell rests 10 min; the world's FIRST bell is a rehearsal that rings out and resets nothing (`CC.FALLOW.rings/ringGap/ringRest`, `rehearsed`) | `carrot_patch/parish.py` `ring/silence/bell_tick` | tm's call: four rings two hours apart, and a rehearsal first — a reset of the whole world deserves a dry run, and six hours spans every time zone's evening once. "Anyone can silence it" alone let one tab keep the world un-fallowed forever and ring/silence at 5 Hz (R24 review): a half-of-those-present vote keeps the veto communal, the rest keeps it from being a siren, and the client confirms before a voice is cast. An outage rings straight through on the next tick. On a Fallow the world save lands first, then the quilt is framed, then the parish file — three files that can never disagree; a running Trial is abandoned on the record, every live Order (baselined on the old world) is wiped without effect, and the board stays empty until the cycle's first Go to Seed — an Order posted against a bare world would be won in minutes. The snapshot carries the silence votes as a count, never the voters' addresses. |
+| Tilth | +5 % sprouts per seed per Fallow, cap 25 (computed in integer percent) | `tilthPct` in both engines | At the cap (×2.25) it moves the compost ladder ~21 levels (ln 2.25 / ln 1.04) — ×1.23 production, the same at every scale — not a β change; capped so it is a bonus, not a growth term. Integer percent, so gain × mint × tilth is exact before the floor. |
+| The Root Cellar | level n costs 8·n loam (triangular, `CC.FALLOW.cellarStep`); a full cellar is 744 loam ≈ one and a half Fallows; Quick Spring ≤5 (`per` 10 plots/level), Scarecrow Pace ≤5 (`per` −10 s/level, floor 10 s), Open Gate ≤8 (`per` +5 % guests/level), Deeper Beds ≤2 (+1 row & column, +25 resprout), Wider Orders ≤2 (+1 order on the board), Seed Memory ≤6 (cycles start at 10^lv seeds' lifetime) (`CC.CELLAR`, every `per` read by both engines) | `src/data.js`; `buyCellar` in both engines | Every perk is automation, a cap or a head start — never a production multiplier (Deep Roots, the one β-touching perk in the proposal, was cut). Triangular prices at 8 loam a step mean the first Fallow (496) buys about two-thirds of the cellar and the second finishes it; after that loam waits for the perks content adds (at 1 a step the whole cellar cost 93 and loam had no sink after Fallow I — R24 review). Seed Memory sets the lifetime that would have earned the seeds, so no phantom pending seeds exist. |
+| The Quilt | 48×48, 16 colours, one stitch per ADDRESS per 30 s, costing 1 s of cps (`CC.QUILT`) | `src/data.js`; `carrot_patch/parish.py` `Quilt`; `main.py` `_paint_at` | 2304 cells at 2/min is a multi-day project for a handful of people — an artifact, not a minigame. The price is nominal by design (a second of harvest), so the quilt is never an economy sink; the cooldown is keyed by client address (`x-forwarded-for` behind the proxy), because sockets are free and a per-socket needle could blank the cloth in seconds (R22 review) — bots still paint at human pace (Knights of the Button: welcome). Diffs ride as `paint` events; `quiltV` in the snapshot is the version whose diffs have already been broadcast, so a client refetches `/api/quilt` only after a real gap. Survives Go to Seed; framed and cleared at Lie Fallow (R24). A quilt Order asks for a share of the BARE cloth at posting and is skipped only when the quilt is finished. |
 
 ## Unlock conditions
 
@@ -250,13 +275,12 @@ Numbered for reference. R7 and R14 are the active priorities.
   what's shared, where saves live, the click curve) so players don't need
   the repo to understand the game. This document is the source; the panel
   summarizes it.
-- **R5 — "While you were away" for the patch.** On reconnect, show what the
-  world did since your last snapshot ("the garden grew 4.2M carrots and
-  someone bought Free-Range Carrots"). Needs the client to remember its
-  last-seen state; cosmetic, but makes P5 feel good instead of just correct.
-- **R6 — Presence & contribution flavor.** Optional, P1-compatible only:
-  ephemeral per-session stats ("you clicked 312 times this visit") and
-  richer "someone bought…" attribution. No persistent per-player state.
+- **R5 — "While you were away" for the patch. ✅ Shipped (R21).** The
+  chronicle remembers; a tab that was away an hour or more is told what the
+  world did meanwhile (springs, pages, guests, orders met or missed).
+- **R6 — Presence & contribution flavor. ✅ Shipped (R21).** The presence
+  board (hands today, streaks, founders) and Many Hands — recognition and a
+  presence-boxed bonus, never resources (P1).
 - **R7 — Guard against split-brain worlds.** The world lives in the memory
   of one server process. If a host runs multiple workers (`uvicorn
   --workers N`, gunicorn), each worker silently grows its *own* garden and
@@ -352,6 +376,79 @@ Numbered for reference. R7 and R14 are the active priorities.
   after which `data.js` ordering is display-only forever. Prerequisite for
   shed-unlocked buildings and for new buildings before the Singularity
   (both wanted per R13/the pacing fix).
+
+- **R21 — The Parish wakes. ✅ Shipped (2026-08).** First slice of *The
+  Fallow Year* — the expansion that answers a consumed world with decisions
+  and clocks rather than bigger numbers. Five systems, no ladder: **Honey**,
+  a calendar currency minted by deeds and the Bee Cooperative (never cps);
+  **Many Hands**, a presence bonus for bodies online and names on the board;
+  the **Market Hour**, Saturday evening Melbourne, when guests crowd in and
+  the stalls discount; **Parish Orders**, one weekly three-tier deadline the
+  world can miss, due at the end of Market Hour, authored by a rotating
+  table or a human with `orders_override.json`; and **the Quiet**, a
+  welcome-back for whoever returns to an empty garden. Around them: the
+  chronicle (`_events.jsonl`), the presence board, a readable-numbers
+  toggle, an all-buffs bar, and the Today's Patch share card. Engine pair
+  learns only honey, `handsBonus` and `marketHour` (parity-tested at the
+  week boundaries); everything else is server business in `parish.py`.
+  Next: R22 Trials & the Quilt, R23 the Seed Bed (honey's sink), R24 Lie
+  Fallow (the second prestige).
+- **R22 — Trials & the Quilt. ✅ Shipped (2026-08).** Second slice of The
+  Fallow Year. **Trials:** the Go to Seed modal gains "which spring?" — a
+  plain one, or one of seven data-defined rules (`CC.TRIALS`) for the whole
+  world's next spring: Late Frost (purchases still the garden), Crop
+  Rotation (no plot may outnumber the one before), Short Rows (six plots),
+  Hands Only (plots sleep; clicks, guests, rain count), Drought (every
+  blessing ^0.75), Fog (numbers hidden), Quiet Hedge (no guests). The goal
+  is "get back to where we were" within 48 h; the spring carries on either
+  way. Each completion pays a perk — Scarecrow, upgrade-tier starts, deeper
+  resprouts, a sprinkler cap, Long Ears, Click Frenzy, honey — automation
+  and caps only, five times per Trial, with nine Almanac pages for the
+  chapter. The engine pair learns `trial`, `trialsDone`, `trialBest`,
+  `runLog`, `perks`, `haltT`; every rule is one hook that returns neutral
+  when no Trial runs (parity-tested per rule). One Trial for the planet: a
+  griefer's worst case is a constrained spring for 48 h (P1). The
+  autogardener waits for the thaw under Late Frost. **The Quilt:** a 48×48
+  canvas on the noticeboard wall, painted one stitch per connection per
+  30 s for a second of harvest; copy-as-image for the share. Two new Order
+  kinds (quilt fill, trials won). Next: R23 the Seed Bed.
+- **R23 — The Seed Bed. ✅ Shipped (2026-08).** Third slice of The Fallow
+  Year, and honey's sink. A shared 4×4 bed under the carrot, ticked by the
+  server every 300 s. Four tier-1 seeds are bought with minutes of the
+  steady cps; everything else must be FOUND: two mature parents touching
+  an empty plot roll a hidden recipe each tick (24 species, six tiers,
+  weeds that blow in on their own, soils that change the clock and the
+  odds). Mature plants bless the world while they stand (production,
+  guests, rain, honey on harvest, a bank-capped payout) and die of age —
+  there is no uproot (P1). The first harvest of a species writes the
+  **seed log**, world state that will survive Go to Seed and Lie Fallow; a
+  complete log can be sacrificed for 100 honey after a cancellable
+  countdown, and the bed begins again. The engine pair learns one
+  sub-economy primitive (`bed`, `bedTick` with a mirrored 32-bit LCG —
+  parity-tested event-for-event from a seed). Server intents: plant,
+  harvest, soil, sacrifice, cancelSacrifice; bed crosses and firsts go to
+  the chronicle. UI: a bed canvas with a planting menu and plot tooltips,
+  a soil bar, the seed log panel with ??? chips per tier. Eight Almanac
+  pages. Next: R24 Lie Fallow.
+- **R24 — Lie Fallow. ✅ Shipped (2026-08).** The Fallow Year's last slice
+  and the dimension itself: a second prestige above Go to Seed. Seeds
+  retire into **loam** (⌊(log₁₀ seeds)²⌋ — 496 for the live world); bank,
+  plots, upgrades, lifetime, ribbons, seeds, sprouts and the shed's ladders
+  return to the ground, while the Almanac, counters, one-shots, honey, the
+  seed log, the Trials' ledger and the Root Cellar stay. The **bell** rings
+  four times, two hours apart; anyone rings it, anyone silences it, and the
+  world's first bell is a rehearsal. When it rings out, the quilt is
+  framed into the chronicle and cleared, and a full-screen ceremony plays.
+  **Tilth** sweetens the sprout mint per Fallow (cap 25). Loam is spent in
+  the **Root Cellar** (a tab in the shed) on six rule changes with
+  triangular prices and hard caps: Quick Spring, Scarecrow Pace, Open Gate,
+  Deeper Beds (the Seed Bed grows to 6×6), Wider Orders (up to three Parish
+  Orders at once), Seed Memory. Six Almanac pages. Engine pair:
+  `fallow()`, `loam`, `cellar`, `fallows`, `rehearsed`, `springStart()`
+  shared by both prestiges, a bed that resizes by (x, y); parity-tested.
+  Server: `ring`/`silence`/`cellar` intents, the bell in `_parish.json`,
+  `OrderBook` grown to a list of live orders. The Fallow Year is complete;
+  what follows is content by data.
 
 ## Process for changing the game
 

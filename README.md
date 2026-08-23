@@ -74,7 +74,8 @@ Env vars: `CARROT_PATCH_STATE` (world save file), `CARROT_PATCH_DIST`
 ## How the multiplayer works
 
 - **Server-authoritative.** Clients send intents (`clicks`, `buy`, `upgrade`,
-  `catch`, `prestige`); `carrot_patch/economy.py` — a Python port of the JS
+  `catch`, `prestige`, and the Fallow Year's `paint`, `plant`, `harvest`,
+  `soil`, `sacrifice`, `ring`, `silence`, `cellar`); `carrot_patch/economy.py` — a Python port of the JS
   core, fed from the same `patch-data.json` — is the only thing that mutates
   state. Snapshots broadcast to every client once per second, including a
   full one the moment you connect — connecting **is** loading.
@@ -99,6 +100,38 @@ Env vars: `CARROT_PATCH_STATE` (world save file), `CARROT_PATCH_DIST`
   blocklist, and grant nothing but glory (seeds are never shown: going to
   seed stays anonymous).
 
+### The Fallow Year (R21–R24)
+
+Four systems that are decisions and clocks rather than bigger numbers:
+
+- **The Parish** — *honey*, a calendar currency minted by deeds (rabbits,
+  tins, stalls, rain, springs, the Bee Cooperative) and never by cps;
+  **Many Hands** (+1 %/tender online, +0.5 %/name on the board this week);
+  the **Market Hour** every Saturday 09:00–12:00 UTC (guests ×4, weather
+  thick, prices −20 %); **Parish Orders** — one weekly three-tier deadline
+  the world can *miss* (rotating table; `orders_override.json` beside the
+  save lets a human hold the pen); **the Quiet** (a welcome-back buff for
+  whoever returns to a garden nobody has touched for six hours); the
+  chronicle (`/api/chronicle`), the presence board and the Today's Patch
+  share card.
+- **Trials** — go to seed *into a rule* for the whole world's next spring
+  (Late Frost, Crop Rotation, Short Rows, Hands Only, Drought, Fog, Quiet
+  Hedge) and get back to where you were inside 48 h. Rewards are
+  automation, caps and unlocks — never multipliers. **The Quilt** — a
+  48×48 canvas on the noticeboard wall, one stitch per 30 s.
+- **The Seed Bed** — a shared bed under the carrot, ticked every 300 s:
+  buy four tier-1 seeds with minutes of harvest, cross them to find the
+  other twenty, spend honey to re-plant what you found, sacrifice a
+  complete log for honey and begin again. No uproot exists.
+- **Lie Fallow** — the second prestige. Seeds retire into *loam*
+  (⌊(log₁₀ seeds)²⌋); bank, plots, upgrades, lifetime, ribbons, seeds,
+  sprouts and the shed's ladders return to the ground; the Almanac,
+  counters, the shed's one-shots, honey, the seed log and the **Root
+  Cellar** stay. The bell rings four times, two hours apart — anyone rings
+  it, anyone silences it, and the first bell is a rehearsal. Loam buys
+  rules in the Cellar: Quick Spring, Scarecrow Pace, Open Gate, Deeper
+  Beds, Wider Orders, Seed Memory.
+
 All rate limits and game numbers are documented in the
 [Tunables table in DESIGN.md](DESIGN.md#tunables--limits).
 
@@ -108,8 +141,13 @@ All rate limits and game numbers are documented in the
   (override with `CARROT_PATCH_STATE`, e.g. a Docker volume). Autosaves
   every 30 s (atomic write), plus on prestige and shutdown. If the server
   is down a while, the garden catches up on restart (capped at 24 h).
-- **The tender registry** (noticeboard names → click/building tallies)
-  lives in SQLite at `<state>_tenders.db`, beside the world save. Your
+- **Parish business** lives beside the world save: `<state>_parish.json`
+  (the live Orders, their history, the bell), `<state>_quilt.json`,
+  `<state>_events.jsonl` (the chronicle, append-only) and an optional
+  `orders_override.json` you write by hand.
+- **The tender registry** (noticeboard names → click/building tallies and
+  presence — first day, streaks) lives in SQLite at `<state>_tenders.db`,
+  beside the world save. Your
   chosen name is the one thing a served page keeps in localStorage — a
   display preference, not game state.
 - **The dev garden** (`file://` only) saves to browser localStorage

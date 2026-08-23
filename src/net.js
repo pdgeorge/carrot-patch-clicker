@@ -26,6 +26,11 @@ CC.Patch = class {
     this._lastMsg = 0;
     this._retryTimer = null;
     this.everSynced = false; /* first snapshot received — the world is loaded */
+    this.order = null;       /* R21: the Parish Order on the board, or null */
+    this.orders = [];        /* R24 Wider Orders: every card on the board */
+    this.bell = null;        /* R24: Lie Fallow's bell while it rings */
+    this.market = null;      /* R21: {active, next, end} — the Market Hour clock */
+    this.skew = 0;           /* server wall clock minus ours: deadlines never trust the tab */
     if (!location.protocol.startsWith('http')) return;
     this.connect();
     setInterval(() => this.flush(), 1000);
@@ -164,12 +169,47 @@ CC.Patch = class {
       c.tins = s.tins || 0;                       /* mirror the R19 counters */
       c.stalls = s.stalls || 0;
       c.weathers = s.weathers || 0;
+      /* the Parish (R21): honey is a balance, the rest are the server's
+         readings of its own clocks — a pre-R21 server leaves them neutral */
+      c.honey = s.honey || 0;
+      c.handsBonus = s.handsBonus || 1;
+      c.marketHour = !!s.marketHour;
+      /* Trials (R22): the rule, the ledger and the perks are the server's */
+      c.trial = s.trial ? { ...s.trial } : null;
+      c.trialsDone = s.trialsDone || {};
+      c.trialBest = s.trialBest || {};
+      c.runBest = s.runBest || 0;
+      c.runT = s.runT || 0;
+      c.perks = s.perks ? { cap: {}, ...s.perks } : CC.Core.freshPerks();
+      c.haltT = s.haltT || 0;
+      /* Lie Fallow (R24): loam, the Cellar, the bell */
+      c.loam = s.loam || 0;
+      c.cellar = s.cellar || {};
+      c.fallows = s.fallows || 0;
+      c.rehearsed = !!s.rehearsed;
+      this.orders = msg.orders || (msg.order ? [msg.order] : []);
+      this.bell = msg.bell || null;
+      this.bellRest = msg.bellRest || 0;
+      /* the Seed Bed (R23): the server's bed is the bed */
+      if (s.bed) {
+        c.bed = { ...s.bed, plots: (s.bed.plots || []).map(p => p && { ...p }), log: { ...(s.bed.log || {}) } };
+        c.bedT = s.bedT || 0;
+        c.sacrifices = s.sacrifices || 0;
+      }
+      /* the Quilt (R22): diffs ride as events; a version gap means a refetch */
+      if (msg.quiltV !== undefined && msg.quiltV > ui.quilt.v) ui.fetchQuilt();
+      this.order = msg.order || null;
+      this.market = msg.market || null;
+      if (msg.now) this.skew = msg.now - Date.now() / 1000;
       ui.updatePatchLine();
+      ui.whileAway();
     } else if (msg.type === 'event') {
       /* structured world event (F1): ui decides words, sound, pixels */
       ui.patchEvent(msg.ev || {});
     } else if (msg.type === 'name') {
       ui.nameResult(msg);
+    } else if (msg.type === 'plant') {
+      ui.plantResult(msg); /* the trowel locks only on a seed that landed (R24 review) */
     } else if (msg.type === 'toast') {
       /* legacy prose for pre-F1 clients — this client renders 'event'
          instead; ignoring avoids double toasts during the transition */
