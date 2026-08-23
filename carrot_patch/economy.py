@@ -40,6 +40,24 @@ def _cnt(v) -> int:
     return max(0, n)
 
 
+def market_hour_at(epoch: float, d: dict) -> dict:
+    """Market Hour window for a UTC epoch — mirror of CC.marketHourAt. The
+    engine never reads a clock; the server calls this and sets market_hour."""
+    m = d.get("marketHour")
+    if not m:
+        return {"active": False, "next": 0, "end": 0}
+    t = time.gmtime(epoch)
+    dow = (t.tm_wday + 1) % 7  # python Monday=0 → JS Sunday=0
+    h = t.tm_hour + t.tm_min / 60 + t.tm_sec / 3600
+    week_start = epoch - (dow * 24 + h) * 3600
+    start = week_start + (m["dow"] * 24 + m["startUtc"]) * 3600
+    end = start + m["hours"] * 3600
+    if epoch >= end:
+        start += 7 * 86400
+        end += 7 * 86400
+    return {"active": start <= epoch < end, "next": start, "end": end}
+
+
 def load_data() -> dict:
     with open(dist_dir() / "patch-data.json", encoding="utf-8") as f:
         return json.load(f)
@@ -66,6 +84,10 @@ class Economy:
         self.almanac: dict = {}        # Almanac page id -> True; latches forever (R16)
         self.season: str = "homestead"  # R17: the server owns the calendar
         self.season_start: float = 0.0  # epoch of the current season's dawn
+        self.honey: int = 0             # R21: the calendar currency — deeds, never cps
+        self.bee_t: float = 0.0         # seconds toward the Bee Cooperative's next drop
+        self.hands_bonus: float = 1.0   # R21 Many Hands: presence-boxed, set by the server
+        self.market_hour: bool = False  # R21: the weekly window, set by the server
         self.buffs: list[dict] = []  # {name, mult, left}
         self._ribbon_seen = 0
         self._bumper_seen = [0] * len(data["buildings"])
@@ -231,7 +253,21 @@ class Economy:
         return c * self.global_mult()
 
     def cps(self) -> float:
-        return self.base_cps() * self.buff_mult() * self.season_mult()
+        return self.base_cps() * self.buff_mult() * self.season_mult() * self.hands_bonus
+
+    def price_disc(self) -> float:
+        """Every price discount in play: a priceOff season and Market Hour
+        stack multiplicatively (R17/R21). Mirror of core.js priceDisc."""
+        s = self.season_data()
+        m = self.d.get("marketHour", {}).get("priceOff", 0) if self.market_hour else 0
+        return (1 - ((s or {}).get("priceOff") or 0)) * (1 - (m or 0))
+
+    def mint_honey(self, kind: str) -> int:
+        """Honey (R21): minted by deeds, never by production."""
+        n = self.d.get("honey", {}).get(kind, 0) or 0
+        if n > 0:
+            self.honey += n
+        return n
 
     def click_power(self) -> float:
         base, pct = 1.0, 0.0
@@ -245,7 +281,7 @@ class Economy:
         for u in self.d["shed"]:
             if u.get("cpsPct"):
                 pct += u["cpsPct"] * self.shed_level(u["id"])
-        return (base + pct * self.base_cps()) * self.buff_mult() * self.season_mult()
+        return (base + pct * self.base_cps()) * self.buff_mult() * self.season_mult() * self.hands_bonus
 
     # ---------- actions ----------
     def earn(self, n: float) -> None:
@@ -261,8 +297,7 @@ class Economy:
     def cost_of(self, i: int, count: int = 1) -> float:
         r = 1.15
         c0 = self.d["buildings"][i]["cost"] * (r ** self.owned[i])
-        s = self.season_data()
-        return c0 * (r ** count - 1) / (r - 1) * (1 - ((s or {}).get("priceOff") or 0))
+        return c0 * (r ** count - 1) / (r - 1) * self.price_disc()
 
     def buy(self, i: int, count: int = 1) -> int:
         """Buy exactly `count` or nothing, at the summed geometric price —
@@ -280,8 +315,7 @@ class Economy:
         geometric sum, verify ±1 against cost_of so float drift can never
         overcharge; capped at 5000. Mirror of core.js maxAffordable."""
         r = 1.15
-        s = self.season_data()
-        c0 = self.d["buildings"][i]["cost"] * (r ** self.owned[i]) * (1 - ((s or {}).get("priceOff") or 0))
+        c0 = self.d["buildings"][i]["cost"] * (r ** self.owned[i]) * self.price_disc()
         if self.bank < c0:
             return 0
         m = min(5000, int(math.log(1 + self.bank * (r - 1) / c0) / math.log(r)))
@@ -363,6 +397,7 @@ class Economy:
         """One reward dispatch for every patch visitor (R19); mirror of
         core.js visitorReward. The tin rabbit pays nothing but the Almanac
         remembers; the Parsnip Man's stall is the world's shared gamble."""
+        self.mint_honey("stall" if kind == "parsnip" else "tin" if kind == "tin" else "rabbit")
         if kind == "tin":
             self.tins += 1
             return {"kind": "tin"}
@@ -398,12 +433,14 @@ class Economy:
         self.seeds += gain
         self.sprouts += gain * self.mint_mult()  # every seed sprouts (R13); doublers stack (R15)
         self.prestiges += 1
+        self.mint_honey("spring")
         self.bank = 0.0
         self._lifetime_base += self.total_run  # fold the run before resetting it
         self.total_run = 0.0
         self.owned = [0] * len(self.owned)
         self.bought = {}
-        self.buffs = []
+        # a spring clears the weather, never a Parish reward (R21)
+        self.buffs = [b for b in self.buffs if b.get("keep")]
         # resprout (R15): heirloom strains regrow themselves each spring
         for u in self.d["shed"]:
             if u.get("resprout") and "building" in u:
@@ -418,6 +455,14 @@ class Economy:
         self.earn(self.cps() * dt)
         for b in self.buffs:
             b["left"] -= dt
+        # the Bee Cooperative (p5) produces honey on the clock (R21)
+        hd = self.d.get("honey")
+        if hd and self.shed_level("p5") >= 1:
+            per = 86400 / hd["beePerDay"]
+            self.bee_t += dt
+            while self.bee_t >= per:
+                self.bee_t -= per
+                self.honey += 1
         self.buffs = [b for b in self.buffs if b["left"] > 0]
 
         # structured events, same shapes as core.js tick() — presentation
@@ -457,6 +502,7 @@ class Economy:
             "prestiges": self.prestiges, "rabbits": self.rabbits,
             "sproutsSpent": self.sprouts_spent, "almanac": self.almanac,
             "tins": self.tins, "stalls": self.stalls, "weathers": self.weathers,
+            "honey": self.honey, "beeT": self.bee_t,
             "season": self.season, "seasonStart": self.season_start,
             "saved": time.time(),
         }
@@ -496,6 +542,11 @@ class Economy:
         self.tins = _cnt(s.get("tins", 0))
         self.stalls = _cnt(s.get("stalls", 0))
         self.weathers = _cnt(s.get("weathers", 0))
+        self.honey = _cnt(s.get("honey", 0))
+        raw_bee = s.get("beeT", 0)
+        self.bee_t = (min(float(raw_bee), 86400.0)
+                      if isinstance(raw_bee, (int, float)) and not isinstance(raw_bee, bool)
+                      and math.isfinite(raw_bee) and raw_bee > 0 else 0.0)
         # known page ids are historical fact and stay latched; junk ids
         # would mint ×1.02 each forever — dropped
         self.almanac = {}
@@ -536,6 +587,7 @@ class Economy:
             "prestiges": self.prestiges, "rabbits": self.rabbits,
             "sproutsSpent": self.sprouts_spent,  # clients gate keystone visibility on these
             "tins": self.tins, "stalls": self.stalls, "weathers": self.weathers,
+            "honey": self.honey, "handsBonus": self.hands_bonus, "marketHour": self.market_hour,
             "almanac": self.almanac,
             "season": self.season,
             "seasonEnds": (self.season_start + self.d.get("seasonDays", 14) * 86400.0

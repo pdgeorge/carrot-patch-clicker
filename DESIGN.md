@@ -195,6 +195,14 @@ restatement of the value.
 | Noticeboard size | top 10 by clicks | `carrot_patch/main.py` `/api/board` | One-click visitors vastly outnumber regulars; recognition, not a ledger. |
 | Noticeboard refresh | 60 s poll + on sign | `src/ui.js` | Recognition doesn't need to be live; a minute keeps it cheap at any player count. |
 | Watchdog cadence | every 2 s, plus on tab-becomes-visible | `src/net.js` | Frequent enough to catch staleness fast while foregrounded; the visibility hook covers waking from sleep, when background timers were throttled. |
+| Honey mint | 1 per rabbit/tin/stall/rain, 10 per spring, 24/day from the Bee Cooperative (`CC.HONEY`) | `src/data.js`; `mintHoney` in both engines | The Fallow Year's calendar currency (R21): minted by DEEDS and the clock, never by cps, so it cannot inflate with the economy — a week of play is worth about the same honey at 1e9 cps as at 1e30. Spent at the Seed Bed (R23); until then it keeps. |
+| Many Hands | +1%/tender online (cap 100) +0.5%/distinct name this week (cap 100) (`CC.HANDS`) | `src/data.js`; `hands_bonus` in `main.py` | Presence-boxed, so outside the β-budget: it never compounds with anything bought. Caps keep a bot-net's best case at ×2.5; the name term rewards the board, not the socket count. |
+| Market Hour | Sat 09:00–12:00 UTC (Sat evening Melbourne); guests ×4, weather ÷3, prices −20% (`CC.MARKET_HOUR`) | `src/data.js`; `marketHourAt` in both engines | One weekly appointment the whole world can keep; three hours spans bedtimes across a continent. The discount composes multiplicatively with Market Days (0.9 × 0.8). Week starts Sunday 00:00 UTC in both engines — parity-tested at the boundaries. |
+| Parish Orders | one a week, 3 tiers, due at the end of Market Hour; rotation `CC.ORDERS`, rewards `CC.ORDER_REWARDS`, failure `CC.ORDER_FAIL` | `src/data.js`; `carrot_patch/parish.py` | A deadline the world can MISS: harvest tiers are 1/2/4 weeks of the cps at posting (relative, so they never go stale); rewards are honey and time-boxed buffs (Bumper Day ×2/24 h, Bumper Week ×3/48 h) — free under β; a miss is a 24 h Embargo and thin weather. An order never posts due in under a day. `orders_override.json` beside the save lets a human hold the pen (each spec posts once, marked authored). |
+| The Quiet | 6 h without any intent → Welcome Back ×2 for 1 h (`CC.QUIET`) | `src/data.js`; `OrderBook.touch` | The garden must not punish the one who came back to an empty patch; a buff, not a multiplier, so it is time-boxed and survives nothing but its hour. Long Parish buffs carry `keep` and survive a spring — a Bumper Week is the world's, not one run's. |
+| Chronicle | append-only `<state>_events.jsonl`, 7-day window, 500-event cap on `/api/chronicle?since=` | `carrot_patch/parish.py` | The world's day-book: backs "while you were away" (R5, shipped here), the Today's Patch card and the presence board. JSONL, not SQLite — it is a record, never a gate: a write failure is swallowed. |
+| Presence board | hands today, streaks (names ≥ 7 days old, top 5), founders (first 5) | `carrot_patch/tenders.py` `presence()` | The board a bot cannot own (R6): a sybil account gains one presence-day each — nothing to farm. Streaks are consecutive UTC days with one intent. |
+| Readable numbers | 🔢 short (`1.23Td`) / long (`1.23 tredecillion`) | `src/core.js` `CC.fmtLong`, `src/ui.js` | A display preference stored beside the day/night toggle; the value never changes, only the unit's name. |
 
 ## Unlock conditions
 
@@ -250,13 +258,12 @@ Numbered for reference. R7 and R14 are the active priorities.
   what's shared, where saves live, the click curve) so players don't need
   the repo to understand the game. This document is the source; the panel
   summarizes it.
-- **R5 — "While you were away" for the patch.** On reconnect, show what the
-  world did since your last snapshot ("the garden grew 4.2M carrots and
-  someone bought Free-Range Carrots"). Needs the client to remember its
-  last-seen state; cosmetic, but makes P5 feel good instead of just correct.
-- **R6 — Presence & contribution flavor.** Optional, P1-compatible only:
-  ephemeral per-session stats ("you clicked 312 times this visit") and
-  richer "someone bought…" attribution. No persistent per-player state.
+- **R5 — "While you were away" for the patch. ✅ Shipped (R21).** The
+  chronicle remembers; a tab that was away an hour or more is told what the
+  world did meanwhile (springs, pages, guests, orders met or missed).
+- **R6 — Presence & contribution flavor. ✅ Shipped (R21).** The presence
+  board (hands today, streaks, founders) and Many Hands — recognition and a
+  presence-boxed bonus, never resources (P1).
 - **R7 — Guard against split-brain worlds.** The world lives in the memory
   of one server process. If a host runs multiple workers (`uvicorn
   --workers N`, gunicorn), each worker silently grows its *own* garden and
@@ -352,6 +359,23 @@ Numbered for reference. R7 and R14 are the active priorities.
   after which `data.js` ordering is display-only forever. Prerequisite for
   shed-unlocked buildings and for new buildings before the Singularity
   (both wanted per R13/the pacing fix).
+
+- **R21 — The Parish wakes. ✅ Shipped (2026-08).** First slice of *The
+  Fallow Year* — the expansion that answers a consumed world with decisions
+  and clocks rather than bigger numbers. Five systems, no ladder: **Honey**,
+  a calendar currency minted by deeds and the Bee Cooperative (never cps);
+  **Many Hands**, a presence bonus for bodies online and names on the board;
+  the **Market Hour**, Saturday evening Melbourne, when guests crowd in and
+  the stalls discount; **Parish Orders**, one weekly three-tier deadline the
+  world can miss, due at the end of Market Hour, authored by a rotating
+  table or a human with `orders_override.json`; and **the Quiet**, a
+  welcome-back for whoever returns to an empty garden. Around them: the
+  chronicle (`_events.jsonl`), the presence board, a readable-numbers
+  toggle, an all-buffs bar, and the Today's Patch share card. Engine pair
+  learns only honey, `handsBonus` and `marketHour` (parity-tested at the
+  week boundaries); everything else is server business in `parish.py`.
+  Next: R22 Trials & the Quilt, R23 the Seed Bed (honey's sink), R24 Lie
+  Fallow (the second prestige).
 
 ## Process for changing the game
 

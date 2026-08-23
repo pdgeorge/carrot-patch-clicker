@@ -11,6 +11,7 @@
       <div id="cps">0 per second</div>
       <div id="patch-line" class="hidden"></div>
       <div id="season-line" class="hidden"></div>
+      <div id="gate-line" class="hidden"></div>
       <div id="buff-line"></div>
       <canvas id="hero" width="320" height="360"></canvas>
       <div id="seed-line"></div>
@@ -21,11 +22,24 @@
         <button id="mute-btn" title="toggle sound">🔊</button>
         <button id="daynight-btn" title="day / night / auto">🌗</button>
         <button id="auto-btn" title="auto-click — rest those wrists">🖱</button>
+        <button id="num-btn" title="numbers: short / in words">🔢</button>
+        <button id="chronicle-btn" title="the chronicle — what the world did" class="hidden">📜</button>
         <button id="wipe-btn" title="wipe save (hold to confirm)">🗑</button>
       </div>
     </section>
 
     <section id="col-mid">
+      <div id="order" class="hidden">
+        <div class="panel-title">PARISH ORDERS</div>
+        <div id="order-card">
+          <div id="order-head"><b id="order-name"></b><span id="order-due"></span></div>
+          <div id="order-line"></div>
+          <div id="order-track"><div id="order-fill"></div><i class="o-mark"></i><i class="o-mark"></i><i class="o-mark"></i></div>
+          <div id="order-foot"><span id="order-progress"></span><span id="order-tier"></span></div>
+          <div id="order-stakes"></div>
+          <div id="order-last"></div>
+        </div>
+      </div>
       <div class="panel-title">UPGRADES</div>
       <div id="upgrades"></div>
       <div class="panel-title">TROPHY SHELF</div>
@@ -43,6 +57,7 @@
       <div class="board-half" id="board-tenders">
         <div class="board-title">🪧 TENDERS</div>
         <div id="tender-list"></div>
+        <div id="presence" class="hidden"></div>
         <div id="tender-sign">
           <input id="tender-name" maxlength="20" placeholder="your name" autocomplete="off">
           <button id="tender-btn">Sign the board</button>
@@ -75,6 +90,18 @@
       <div id="shed-balance"></div>
       <div id="shed-items"></div>
       <button id="shed-close">Back to the garden</button>
+    </div>
+  </div>
+
+  <div id="chronicle" class="hidden">
+    <div id="chronicle-box">
+      <h2>📜 THE CHRONICLE</h2>
+      <p id="chronicle-sub">What the whole world did, day by day. Written by deeds, never by the clock.</p>
+      <div id="chronicle-days"></div>
+      <div id="chronicle-buttons">
+        <button id="chronicle-copy">Copy Today’s Patch</button>
+        <button id="chronicle-close">Back to the garden</button>
+      </div>
     </div>
   </div>
 

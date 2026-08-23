@@ -15,7 +15,38 @@ CC.fmt = function (n) {
   /* repeated /1000 drifts: 1e45 lands at 999.999…, which would print
      "1000Td" — anything that ROUNDS to 1000 belongs to the next unit */
   if (n >= 999.5 && u < units.length - 1) { n /= 1000; u++; }
-  return (n >= 100 ? n.toFixed(0) : n >= 10 ? n.toFixed(1) : n.toFixed(2)) + units[u];
+  const num = n >= 100 ? n.toFixed(0) : n >= 10 ? n.toFixed(1) : n.toFixed(2);
+  /* readable numbers (R21): a display preference, never a different value —
+     "Td" means nothing to a newcomer; "tredecillion" at least sounds big */
+  return CC.fmtLong ? num + ' ' + CC.LONG_UNITS[u] : num + units[u];
+};
+CC.fmtLong = false;
+CC.LONG_UNITS = ['thousand', 'million', 'billion', 'trillion', 'quadrillion', 'quintillion',
+  'sextillion', 'septillion', 'octillion', 'nonillion', 'decillion', 'undecillion',
+  'duodecillion', 'tredecillion', 'quattuordecillion', 'quindecillion', 'sexdecillion',
+  'septendecillion', 'octodecillion', 'novemdecillion', 'vigintillion'];
+/* durations for the Parish clocks: "2d 4h", "1h 22m", "45s" */
+CC.fmtDur = function (s) {
+  s = Math.max(0, Math.floor(s));
+  if (s >= 86400) return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`;
+  if (s >= 3600) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+  if (s >= 60) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  return `${s}s`;
+};
+
+/* Market Hour (R21): a weekly data-defined window. Takes a UTC epoch so
+   the server, the dev garden's clock, and the tests agree to the second;
+   the engine itself never reads a clock (the caller sets core.marketHour). */
+CC.marketHourAt = function (epoch) {
+  const m = CC.MARKET_HOUR;
+  if (!m) return { active: false, next: 0, end: 0 };
+  const d = new Date(epoch * 1000);
+  const h = d.getUTCHours() + d.getUTCMinutes() / 60 + d.getUTCSeconds() / 3600;
+  const weekStart = epoch - (d.getUTCDay() * 24 + h) * 3600; /* Sunday 00:00 UTC */
+  let start = weekStart + (m.dow * 24 + m.startUtc) * 3600;
+  let end = start + m.hours * 3600;
+  if (epoch >= end) { start += 7 * 86400; end += 7 * 86400; }
+  return { active: epoch >= start && epoch < end, next: start, end };
 };
 
 CC.Core = class {
@@ -39,6 +70,10 @@ CC.Core = class {
     this.mirrorBook = false;      /* world mode: the server's almanac is the book —
                                      a mirroring client must never latch its own */
     this.season = 'homestead';    /* R17: server-owned; the dev garden stays homestead */
+    this.honey = 0;               /* R21: the calendar currency, minted by events, never by cps */
+    this.beeT = 0;                /* seconds toward the Bee Cooperative's next drop */
+    this.handsBonus = 1;          /* R21 Many Hands: presence-boxed, server-set (transient) */
+    this.marketHour = false;      /* R21: the weekly window, server-set (transient) */
     this.buffs = [];              /* {name, mult, left} */
     this.t = 0;
     this._ribbonCount = 0;
@@ -197,7 +232,22 @@ CC.Core = class {
     return c * this.globalMult();
   }
 
-  cps() { return this.baseCps() * this.buffMult() * this.seasonMult(); }
+  cps() { return this.baseCps() * this.buffMult() * this.seasonMult() * this.handsBonus; }
+
+  /* one multiplier for every price discount in play: a priceOff season and
+     Market Hour stack multiplicatively (R17/R21) */
+  priceDisc() {
+    const s = this.seasonData();
+    const m = this.marketHour && CC.MARKET_HOUR ? CC.MARKET_HOUR.priceOff : 0;
+    return (1 - ((s && s.priceOff) || 0)) * (1 - (m || 0));
+  }
+
+  /* Honey (R21): minted by deeds, never by production, so it can't inflate */
+  mintHoney(kind) {
+    const n = (CC.HONEY && CC.HONEY[kind]) || 0;
+    if (n > 0) this.honey += n;
+    return n;
+  }
 
   clickPower() {
     let base = 1, pct = 0;
@@ -207,7 +257,7 @@ CC.Core = class {
       if (u.cpsPct) pct += u.cpsPct;
     }
     for (const u of CC.SHED) if (u.cpsPct) pct += u.cpsPct * this.shedLevel(u.id);
-    return (base + pct * this.baseCps()) * this.buffMult() * this.seasonMult();
+    return (base + pct * this.baseCps()) * this.buffMult() * this.seasonMult() * this.handsBonus;
   }
 
   /* ---------- actions ---------- */
@@ -224,8 +274,7 @@ CC.Core = class {
     /* geometric sum: cost * 1.15^owned * (1.15^count - 1) / 0.15,
        discounted while a priceOff season runs (R17) */
     const r = 1.15, c0 = CC.BUILDINGS[i].cost * Math.pow(r, this.owned[i]);
-    const s = this.seasonData();
-    return c0 * (Math.pow(r, count) - 1) / (r - 1) * (1 - ((s && s.priceOff) || 0));
+    return c0 * (Math.pow(r, count) - 1) / (r - 1) * this.priceDisc();
   }
 
   buy(i, count = 1) {
@@ -241,8 +290,7 @@ CC.Core = class {
      overcharge; capped at 5000 to keep 1.15^n inside double range */
   maxAffordable(i) {
     const r = 1.15;
-    const s = this.seasonData();
-    const c0 = CC.BUILDINGS[i].cost * Math.pow(r, this.owned[i]) * (1 - ((s && s.priceOff) || 0));
+    const c0 = CC.BUILDINGS[i].cost * Math.pow(r, this.owned[i]) * this.priceDisc();
     if (this.bank < c0) return 0;
     let m = Math.min(5000, Math.floor(Math.log(1 + this.bank * (r - 1) / c0) / Math.log(r)));
     while (m > 0 && this.costOf(i, m) > this.bank) m--;
@@ -319,6 +367,7 @@ CC.Core = class {
      a decoy: it pays nothing but the Almanac remembers. The Parsnip Man's
      stall is the world's shared gamble — one click decides for everyone. */
   visitorReward(kind, rng = Math.random) {
+    this.mintHoney(kind === 'parsnip' ? 'stall' : kind === 'tin' ? 'tin' : 'rabbit');
     if (kind === 'tin') {
       this.tins++;
       return { kind: 'tin' };
@@ -352,12 +401,15 @@ CC.Core = class {
     this.seeds += gain;
     this.sprouts += gain * this.mintMult(); /* every seed sprouts (R13); doublers stack (R15) */
     this.prestiges++;
+    this.mintHoney('spring');
     this.bank = 0;
     this.lifetimeBase += this.totalRun; /* fold the run before resetting it */
     this.totalRun = 0;
     this.owned = CC.BUILDINGS.map(() => 0);
     this.bought = {};
-    this.buffs = [];
+    /* a spring clears the weather, never a Parish reward: Bumper Day/Week
+       are earned by the whole world and outlive any one run (R21) */
+    this.buffs = this.buffs.filter(b => b.keep);
     /* resprout (R15): heirloom strains regrow themselves each spring */
     for (const u of CC.SHED) {
       if (u.resprout && u.building !== undefined) {
@@ -375,6 +427,12 @@ CC.Core = class {
     const events = [];
     this.earn(this.cps() * dt);
     for (const b of this.buffs) b.left -= dt;
+    /* the Bee Cooperative (p5) produces honey on the clock (R21) */
+    if (CC.HONEY && this.shedLevel('p5') >= 1) {
+      const per = 86400 / CC.HONEY.beePerDay;
+      this.beeT += dt;
+      while (this.beeT >= per) { this.beeT -= per; this.honey++; }
+    }
     const expired = this.buffs.filter(b => b.left <= 0);
     this.buffs = this.buffs.filter(b => b.left > 0);
     for (const b of expired) events.push({ type: 'buffEnd', name: b.name });
@@ -417,6 +475,7 @@ CC.Core = class {
       sprouts: this.sprouts, shed: this.shed,
       prestiges: this.prestiges, rabbits: this.rabbits, sproutsSpent: this.sproutsSpent,
       tins: this.tins, stalls: this.stalls, weathers: this.weathers,
+      honey: this.honey, beeT: this.beeT,
       almanac: this.almanac,
       /* season deliberately NOT saved: the dev garden has no calendar, and a
          ?season= theme test must never persist its bonus into the solo save;
@@ -453,6 +512,8 @@ CC.Core = class {
     this.tins = Math.max(0, Math.floor(s.tins) || 0);
     this.stalls = Math.max(0, Math.floor(s.stalls) || 0);
     this.weathers = Math.max(0, Math.floor(s.weathers) || 0);
+    this.honey = Math.max(0, Math.floor(s.honey) || 0);
+    this.beeT = Math.max(0, Math.min(+s.beeT || 0, 86400));
     /* known page ids are historical fact and stay latched; junk ids would
        mint ×1.02 each forever — dropped */
     this.almanac = {};

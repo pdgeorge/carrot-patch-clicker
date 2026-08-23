@@ -465,6 +465,74 @@ check(clamp_int("25", 250) == 25 and clamp_int(3.9, 250) == 3
       and clamp_int(999, 250) == 250 and clamp_int(-5, 250) == 0,
       "clamp_int keeps sane values sane and clamped")
 
+# ---------- 1g. the Parish (R21): honey, Many Hands, the Market Hour — both engines ----------
+print("\n=== R21 Parish parity ===")
+JS_R21 = r"""
+const fs = require('fs'), path = require('path'), vm = require('vm');
+for (const f of ['data.js', 'core.js']) {
+  vm.runInThisContext(fs.readFileSync(path.join(process.argv[1], 'src', f), 'utf8'));
+}
+const c = new CC.Core();
+c.earn(1e7); c.buy(0, 12); c.buy(1, 4);
+c.handsBonus = 1.035; c.marketHour = true; c.season = 'market';
+c.visitorReward('tin'); c.visitorReward('stall');
+c.sprouts = 1e9; c.sproutsSpent = 1e6;
+for (const id of ['p0','p1','p2','p3','p4','p5']) c.buyShed(id);
+c.tick(86400 / CC.HONEY.beePerDay + 0.5);
+c.buffs.push({ name: 'Bumper Week', mult: 3, left: 172800, keep: true });
+c.totalAllTime = 1e9; c.totalRun = 1e9;
+const cpsBefore = c.cps();
+c.prestige();
+const epochs = [Date.UTC(2026,7,23)/1000, Date.UTC(2026,7,29,8,59,59)/1000, Date.UTC(2026,7,29,9)/1000,
+  Date.UTC(2026,7,29,11,59,59)/1000, Date.UTC(2026,7,29,12)/1000, Date.UTC(2026,8,2,15,30)/1000];
+console.log(JSON.stringify({
+  cps: cpsBefore, click: c.clickPower(), cost0: c.costOf(0, 10), max0: c.maxAffordable(0),
+  honey: c.honey, beeT: c.beeT, buffs: c.buffs.length, disc: c.priceDisc(),
+  mh: epochs.map(e => { const m = CC.marketHourAt(e); return [m.active ? 1 : 0, m.next, m.end]; }),
+  snap: c.serialize(),
+}));
+"""
+js21 = json.loads(subprocess.run(
+    ["node", "-e", JS_R21, str(ROOT)], capture_output=True, text=True, check=True).stdout)
+from carrot_patch.economy import market_hour_at  # noqa: E402
+p21 = Economy(load_data())
+p21.earn(1e7); p21.buy(0, 12); p21.buy(1, 4)
+p21.hands_bonus = 1.035; p21.market_hour = True; p21.season = "market"
+p21.visitor_reward("tin"); p21.visitor_reward("stall")
+p21.sprouts = 1e9; p21.sprouts_spent = 1e6
+for sid in ["p0", "p1", "p2", "p3", "p4", "p5"]:
+    p21.buy_shed(sid)
+p21.tick(86400 / p21.d["honey"]["beePerDay"] + 0.5)
+p21.buffs.append({"name": "Bumper Week", "mult": 3, "left": 172800.0, "keep": True})
+p21.total_all_time = 1e9; p21.total_run = 1e9
+cps_before = p21.cps()
+p21.prestige()
+for name, pv in [("cps", cps_before), ("click", p21.click_power()), ("cost0", p21.cost_of(0, 10)),
+                 ("disc", p21.price_disc())]:
+    check(abs(pv - js21[name]) <= 1e-9 * max(1.0, abs(js21[name])), f"R21 {name}: py {pv:.6g} == js {js21[name]:.6g}")
+check(p21.max_affordable(0) == js21["max0"], "max_affordable under the Market Hour discount matches")
+check(p21.honey == js21["honey"] == 1 + 1 + 1 + 10, f"honey ledger identical: tin + stall + bee + spring = {p21.honey}")
+check(abs(p21.bee_t - js21["beeT"]) < 1e-9, "bee clock remainder identical")
+check(len(p21.buffs) == js21["buffs"] == 1, "a spring keeps the Parish reward in both engines")
+d21 = load_data()
+py_mh = []
+for e in [1787443200.0, 1787993999.0, 1787994000.0, 1788004799.0, 1788004800.0, 1788363000.0]:
+    m = market_hour_at(e, d21)
+    py_mh.append([1 if m["active"] else 0, m["next"], m["end"]])
+check(py_mh == js21["mh"], f"market_hour_at matches CC.marketHourAt at six epochs ({py_mh[2]})")
+check(py_mh[2][0] == 1 and py_mh[3][0] == 1 and py_mh[1][0] == 0 and py_mh[4][0] == 0,
+      "Saturday 09:00 opens, 11:59:59 is open, 08:59:59 and 12:00 are shut")
+p21b = Economy(load_data())
+p21b.deserialize(js21["snap"])
+check(p21b.honey == js21["honey"] and abs(p21b.bee_t - js21["beeT"]) < 1e-9
+      and p21b.buffs and p21b.buffs[0].get("keep") is True, "a JS save carries honey, the bee clock and keep into Python")
+p21c = Economy(load_data())
+p21c.deserialize({"v": 1, "bank": 0, "totalAllTime": 0, "totalRun": 0, "clicks": 0, "owned": [],
+                  "bought": {}, "seeds": 0, "sprouts": 0, "shed": {}, "honey": -3, "beeT": 1e12})
+check(p21c.honey == 0 and p21c.bee_t <= 86400, "negative honey and a runaway bee clock are clamped (py)")
+check(p21.snapshot()["honey"] == p21.honey and p21.snapshot()["handsBonus"] == 1.035
+      and p21.snapshot()["marketHour"] is True, "snapshot carries honey, Many Hands and the Market Hour")
+
 # ---------- 2. live protocol over a real websocket ----------
 print("\n=== protocol (in-process server) ===")
 import os  # noqa: E402
@@ -476,7 +544,9 @@ from carrot_patch import main as patch_main  # noqa: E402
 state_path = Path("/tmp/carrot_patch_test_state.json")
 os.environ["CARROT_PATCH_STATE"] = str(state_path)
 state_path.unlink(missing_ok=True)
-Path("/tmp/carrot_patch_test_state_tenders.db").unlink(missing_ok=True)
+for suffix in ("_tenders.db", "_parish.json", "_events.jsonl"):
+    Path("/tmp/carrot_patch_test_state" + suffix).unlink(missing_ok=True)
+Path("/tmp/orders_override.json").unlink(missing_ok=True)
 
 app = patch_main.create_app()
 patch = app.state.patch
@@ -725,6 +795,112 @@ with TestClient(app) as client:
     old.deserialize(legacy)
     check(old.sprouts == 42 and not old.shed, "pre-R13 save mints retroactive sprouts 1:1 with seeds")
 
+# ---------- 2b. the Parish (R21): orders, the chronicle, the quiet, presence ----------
+print("\n=== the Parish (R21) ===")
+import tempfile  # noqa: E402
+from carrot_patch.parish import Chronicle, OrderBook  # noqa: E402
+
+pdir = Path(tempfile.mkdtemp(prefix="carrot_parish_"))
+chron = Chronicle(pdir / "w_events.jsonl")
+book = OrderBook(load_data(), pdir / "w_parish.json", chron)
+eco = Economy(load_data())
+eco.earn(1e7); eco.buy(0, 20); eco.buy(1, 5)
+t0 = 1787443200.0  # Sun 23 Aug 2026 00:00 UTC
+o = book.post(eco, t0)
+check(o["id"] == "harvest" and o["deadline"] == 1788004800.0,
+      "first order is the Parish Harvest, due at the end of Saturday's Market Hour")
+check(o["targets"] == [eco.cps() * 7 * 86400 * k for k in (1, 2, 4)],
+      "harvest tiers are 1/2/4 weeks of the cps at posting")
+check(book.tier(eco) == 0 and book.maybe_resolve(eco, t0 + 86400) is None, "nothing resolves before the bell")
+eco.earn(o["targets"][1] + 1)
+check(book.tier(eco) == 2, "earning two weeks' worth reaches tier 2")
+snap = book.snapshot(eco, t0 + 10)
+check(snap["tier"] == 2 and snap["value"] > snap["targets"][1] and snap["last"] is None, "snapshot reports progress")
+honey0, buffs0 = eco.honey, len(eco.buffs)
+out = book.maybe_resolve(eco, o["deadline"])
+check(out is not None and out["tier"] == 2 and eco.honey == honey0 + 100
+      and any(b["name"] == "Bumper Day" and b.get("keep") for b in eco.buffs),
+      f"at the bell tier 2 pays 100 honey and a Bumper Day ({out and out['applied']})")
+check(book.order is None and book.history[-1]["tier"] == 2, "the order clears and the outcome is kept")
+o2 = book.post(eco, o["deadline"])
+check(o2["id"] == "gate" and o2["deadline"] == o["deadline"] + 7 * 86400,
+      "the rotation moves on; posted at the bell, the next is due a week later")
+out2 = book.maybe_resolve(eco, o2["deadline"] + 1)
+check(out2["tier"] == 0 and any(b["name"] == "Parish Embargo" for b in eco.buffs)
+      and book.weather_gap_mult(o2["deadline"] + 2) == 2.0 and book.weather_gap_mult(o2["deadline"] + 2 * 86400) == 1.0,
+      "a missed order: Embargo ×0.5 and the weather thins for a day, then it's over")
+# a won tier 3 livens the gate
+o3 = book.post(eco, o2["deadline"] + 1)
+eco.stalls += 16
+check(o3["id"] == "diplomacy" and book.tier(eco) == 3, "16 stall gambles meet Parsnip Diplomacy tier 3")
+out3 = book.maybe_resolve(eco, o3["deadline"])
+check(out3["tier"] == 3 and book.visitor_rate(o3["deadline"] + 1) == 2.0
+      and book.visitor_rate(o3["deadline"] + 2 * 86400) == 1.0, "tier 3 doubles visitors for a day")
+# persistence: the live order and history survive a restart
+o4 = book.post(eco, o3["deadline"] + 1)
+book2 = OrderBook(load_data(), pdir / "w_parish.json", chron)
+check(book2.order == o4 and len(book2.history) == 3, "the order book survives a restart")
+# the override file: a human holds the pen
+(pdir / "orders_override.json").write_text(json.dumps([
+    {"id": "tmbday", "name": "A Birthday Order", "kind": "visitors", "tiers": [1, 2, 3], "line": "For the gardener."}]))
+book2.order = None
+o5 = book2.post(eco, o4["deadline"])
+check(o5["id"] == "tmbday" and o5["authored"] is True and o5["targets"] == [1.0, 2.0, 3.0],
+      "the override file posts first, marked authored")
+book2.order = None
+o6 = book2.post(eco, o4["deadline"])
+check(o6["id"] != "tmbday" and o6["authored"] is False, "each override posts once, then the table resumes")
+# the quiet state
+q = load_data()["quiet"]
+book2.touch(eco, 1e9)
+n0 = len(eco.buffs)
+check(book2.touch(eco, 1e9 + 60) is None and len(eco.buffs) == n0, "a minute's gap is not quiet")
+hrs = book2.touch(eco, 1e9 + 60 + q["afterHours"] * 3600 + 1)
+check(hrs is not None and hrs > q["afterHours"] and eco.buffs[-1]["name"] == "Welcome Back"
+      and eco.buffs[-1]["mult"] == q["boost"] and eco.buffs[-1]["left"] == q["boostHours"] * 3600,
+      f"{q['afterHours']}h of quiet: whoever returns wakes a Welcome Back ×{q['boost']} for everyone")
+# the chronicle
+days = chron.days(7)
+check(days and days[0]["counts"].get("order_posted", 0) >= 5 and any(e["type"] == "quiet" for e in days[0]["notable"]),
+      "the chronicle buckets the day: counts plus notable events")
+check(all(e["type"] in ("order_posted", "order_resolved", "quiet") for d in days for e in d["notable"]),
+      "only notable types reach the day's notes")
+import shutil  # noqa: E402
+shutil.rmtree(pdir, ignore_errors=True)
+
+# the presence board (sybil-resistant): streaks over consecutive UTC days
+from carrot_patch.tenders import TenderBook  # noqa: E402
+tb = TenderBook(Path(tempfile.mkdtemp(prefix="carrot_tb_")) / "t.db", ROOT / "carrot_patch" / "blocklist.txt")
+tb.bump("Ada", clicks=1, today="2026-08-20")
+tb.bump("Ada", clicks=1, today="2026-08-21")
+tb.bump("Ada", clicks=1, today="2026-08-22")
+tb.bump("Ada", clicks=1, today="2026-08-22")   # same day twice: no double count
+tb.bump("Bob", clicks=1, today="2026-08-22")
+tb.bump("Bob", clicks=1, today="2026-08-24")    # skipped a day: streak resets
+pres = tb.presence(today="2026-08-24")
+ada = next(r for r in tb.db.execute("SELECT streak, best_streak, first_seen FROM tenders WHERE name='Ada'"))
+bob = next(r for r in tb.db.execute("SELECT streak, best_streak FROM tenders WHERE name='Bob'"))
+check(ada[0] == 3 and ada[1] == 3 and ada[2] == "2026-08-20", f"three consecutive days make a streak of 3 (Ada {ada})")
+check(bob[0] == 1 and bob[1] == 1, f"a missed day resets the streak (Bob {bob})")
+check(pres["hands_today"] == ["Bob"], "hands today lists who tended today")
+check(pres["founders"][0]["name"] == "Ada", "founders are ordered by first appearance")
+check(tb.names_active(7) == 2, "two names active this week")
+
+# over the wire: the snapshot carries the order and the market clock; /api/chronicle and presence answer
+with TestClient(app) as client:
+    with client.websocket_connect("/ws") as ws:
+        snap = ws.receive_json()
+        check(snap.get("order") and snap["order"]["id"] and "market" in snap and snap.get("now", 0) > 0,
+              "the greeting carries the Parish Order, the market clock and the server's time")
+        check(snap["state"].get("honey", 0) >= 0 and snap["state"].get("handsBonus", 0) >= 1,
+              "snapshot state speaks honey and Many Hands")
+    r = client.get("/api/chronicle?since=1")
+    check(r.status_code == 200 and r.json()["days"] and any(e["type"] == "order_posted" for e in r.json()["events"]),
+          "GET /api/chronicle lists the day's book")
+    r = client.get("/api/board")
+    check("presence" in r.json() and "hands_today" in r.json()["presence"], "GET /api/board carries presence")
+    check(patch.eco.hands_bonus >= 1.0, "Many Hands is set by the server")
+
 # ---------- 3. mounted inside a parent site (lifespan never reaches sub-apps) ----------
 print("\n=== mounted under a parent FastAPI site ===")
 from fastapi import FastAPI  # noqa: E402
@@ -732,7 +908,8 @@ from fastapi import FastAPI  # noqa: E402
 mount_state = Path("/tmp/carrot_patch_mount_test.json")
 os.environ["CARROT_PATCH_STATE"] = str(mount_state)
 mount_state.unlink(missing_ok=True)
-Path("/tmp/carrot_patch_mount_test_tenders.db").unlink(missing_ok=True)
+for suffix in ("_tenders.db", "_parish.json", "_events.jsonl"):
+    Path("/tmp/carrot_patch_mount_test" + suffix).unlink(missing_ok=True)
 
 site = FastAPI()
 sub = patch_main.create_app()

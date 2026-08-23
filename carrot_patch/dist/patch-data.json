@@ -1641,5 +1641,155 @@
  "weatherGap": [
   600,
   1500
+ ],
+ "honey": {
+  "rabbit": 1,
+  "tin": 1,
+  "stall": 1,
+  "rain": 1,
+  "spring": 10,
+  "beePerDay": 24
+ },
+ "hands": {
+  "perOnline": 0.01,
+  "onlineCap": 100,
+  "perName": 0.005,
+  "nameCap": 100,
+  "nameDays": 7
+ },
+ "marketHour": {
+  "dow": 6,
+  "startUtc": 9,
+  "hours": 3,
+  "visitorRate": 4,
+  "weatherDiv": 3,
+  "priceOff": 0.2
+ },
+ "quiet": {
+  "afterHours": 6,
+  "boostHours": 1,
+  "boost": 2
+ },
+ "orders": [
+  {
+   "id": "harvest",
+   "name": "The Parish Harvest",
+   "kind": "harvest",
+   "tiers": [
+    1,
+    2,
+    4
+   ],
+   "line": "Fill the barns before Market Hour.",
+   "unit": "weeks of harvest at posting"
+  },
+  {
+   "id": "gate",
+   "name": "Open Gate",
+   "kind": "visitors",
+   "tiers": [
+    20,
+    40,
+    80
+   ],
+   "line": "Every guest greeted — golden, tin, or parsnip.",
+   "unit": "visitors caught"
+  },
+  {
+   "id": "diplomacy",
+   "name": "Parsnip Diplomacy",
+   "kind": "stalls",
+   "tiers": [
+    4,
+    8,
+    16
+   ],
+   "line": "Meet the Parsnip Man at his stall. Repeatedly.",
+   "unit": "stall gambles"
+  },
+  {
+   "id": "ink",
+   "name": "Ink for the Almanac",
+   "kind": "pages",
+   "tiers": [
+    1,
+    2,
+    3
+   ],
+   "line": "New pages, written by deeds.",
+   "unit": "pages written"
+  },
+  {
+   "id": "springs",
+   "name": "Springs in a Row",
+   "kind": "springs",
+   "tiers": [
+    3,
+    6,
+    12
+   ],
+   "line": "Send the garden to seed, again and again.",
+   "unit": "springs"
+  },
+  {
+   "id": "grounds",
+   "name": "Plant the Grounds",
+   "kind": "sprouts",
+   "tiers": [
+    0.25,
+    0.5,
+    1
+   ],
+   "line": "Spend what the shed is hoarding.",
+   "unit": "of the sprouts held at posting"
+  }
+ ],
+ "orderRewards": {
+  "1": [
+   {
+    "honey": 50
+   }
+  ],
+  "2": [
+   {
+    "honey": 100
+   },
+   {
+    "buff": {
+     "name": "Bumper Day",
+     "mult": 2,
+     "dur": 86400
+    }
+   }
+  ],
+  "3": [
+   {
+    "honey": 200
+   },
+   {
+    "buff": {
+     "name": "Bumper Week",
+     "mult": 3,
+     "dur": 172800
+    }
+   },
+   {
+    "visitorRate": 2,
+    "dur": 86400
+   }
+  ]
+ },
+ "orderFail": [
+  {
+   "buff": {
+    "name": "Parish Embargo",
+    "mult": 0.5,
+    "dur": 86400
+   }
+  },
+  {
+   "weatherGapMult": 2,
+   "dur": 86400
+  }
  ]
 }

@@ -462,6 +462,41 @@ CC.RABBIT_NEWS = [
   'The golden rabbit strikes a deal. Everyone profits. Mostly you.',
 ];
 
+/* The Parish (R21): the world's clocks and appointments. Everything here
+   is time-boxed or presence-boxed, so it lives outside the β-budget. */
+CC.HONEY = { rabbit: 1, tin: 1, stall: 1, rain: 1, spring: 10, beePerDay: 24 };
+/* Many Hands: the thesis in one line — people in the soil make it grow */
+CC.HANDS = { perOnline: 0.01, onlineCap: 100, perName: 0.005, nameCap: 100, nameDays: 7 };
+/* Market Hour: a weekly window strangers can coincide at. Saturday 09:00–12:00
+   UTC is Saturday evening in Melbourne, where the gardeners live. */
+CC.MARKET_HOUR = { dow: 6, startUtc: 9, hours: 3, visitorRate: 4, weatherDiv: 3, priceOff: 0.20 };
+/* a garden nobody has touched for 6 h stirs when someone returns */
+CC.QUIET = { afterHours: 6, boostHours: 1, boost: 2 };
+/* Parish Orders: a weekly three-tier deadline the world can MISS. Targets
+   are relative to the world at posting so they never stale; the deadline is
+   the end of the next Market Hour. Rotation order = this table; an override
+   file (orders_override.json beside the save) lets a human hold the pen. */
+CC.ORDERS = [
+  { id: 'harvest', name: 'The Parish Harvest', kind: 'harvest', tiers: [1, 2, 4],
+    line: 'Fill the barns before Market Hour.', unit: 'weeks of harvest at posting' },
+  { id: 'gate', name: 'Open Gate', kind: 'visitors', tiers: [20, 40, 80],
+    line: 'Every guest greeted — golden, tin, or parsnip.', unit: 'visitors caught' },
+  { id: 'diplomacy', name: 'Parsnip Diplomacy', kind: 'stalls', tiers: [4, 8, 16],
+    line: 'Meet the Parsnip Man at his stall. Repeatedly.', unit: 'stall gambles' },
+  { id: 'ink', name: 'Ink for the Almanac', kind: 'pages', tiers: [1, 2, 3],
+    line: 'New pages, written by deeds.', unit: 'pages written' },
+  { id: 'springs', name: 'Springs in a Row', kind: 'springs', tiers: [3, 6, 12],
+    line: 'Send the garden to seed, again and again.', unit: 'springs' },
+  { id: 'grounds', name: 'Plant the Grounds', kind: 'sprouts', tiers: [0.25, 0.5, 1],
+    line: 'Spend what the shed is hoarding.', unit: 'of the sprouts held at posting' },
+];
+CC.ORDER_REWARDS = {
+  1: [{ honey: 50 }],
+  2: [{ honey: 100 }, { buff: { name: 'Bumper Day', mult: 2, dur: 86400 } }],
+  3: [{ honey: 200 }, { buff: { name: 'Bumper Week', mult: 3, dur: 172800 } }, { visitorRate: 2, dur: 86400 }],
+};
+CC.ORDER_FAIL = [{ buff: { name: 'Parish Embargo', mult: 0.5, dur: 86400 } }, { weatherGapMult: 2, dur: 86400 }];
+
 /* Visitors (R19): things that appear in the patch and want clicking. ONE
    scheduler each side (server clock in main.py, dev-garden clock in ui.js)
    reads THIS table — the rabbit's old two-brains split (audit F2) ends

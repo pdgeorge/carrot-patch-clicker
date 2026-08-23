@@ -26,6 +26,9 @@ CC.Patch = class {
     this._lastMsg = 0;
     this._retryTimer = null;
     this.everSynced = false; /* first snapshot received — the world is loaded */
+    this.order = null;       /* R21: the Parish Order on the board, or null */
+    this.market = null;      /* R21: {active, next, end} — the Market Hour clock */
+    this.skew = 0;           /* server wall clock minus ours: deadlines never trust the tab */
     if (!location.protocol.startsWith('http')) return;
     this.connect();
     setInterval(() => this.flush(), 1000);
@@ -164,7 +167,16 @@ CC.Patch = class {
       c.tins = s.tins || 0;                       /* mirror the R19 counters */
       c.stalls = s.stalls || 0;
       c.weathers = s.weathers || 0;
+      /* the Parish (R21): honey is a balance, the rest are the server's
+         readings of its own clocks — a pre-R21 server leaves them neutral */
+      c.honey = s.honey || 0;
+      c.handsBonus = s.handsBonus || 1;
+      c.marketHour = !!s.marketHour;
+      this.order = msg.order || null;
+      this.market = msg.market || null;
+      if (msg.now) this.skew = msg.now - Date.now() / 1000;
       ui.updatePatchLine();
+      ui.whileAway();
     } else if (msg.type === 'event') {
       /* structured world event (F1): ui decides words, sound, pixels */
       ui.patchEvent(msg.ev || {});

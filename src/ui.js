@@ -86,6 +86,7 @@ CC.UI = class {
     this.buildStatic();
     this.dayNight = this.pref('carrot-daynight') || 'auto'; /* ☀/🌙 is a display preference */
     this.autoClick = this.pref('carrot-autoclick') === '1'; /* RSI-friendly steady clicker */
+    CC.fmtLong = this.pref('carrot-numbers') === 'long'; /* R21: readable numbers, a display preference */
     this.applyTheme();
     this.$('build-tag').textContent = `build ${CC.BUILD || 'dev'}`;
     this.load();
@@ -112,6 +113,12 @@ CC.UI = class {
       this.$('tender-name').addEventListener('keydown', e => { if (e.key === 'Enter') this.signBoard(); });
       this.fetchBoard();
       setInterval(() => this.fetchBoard(), 60000);
+      /* the chronicle (R21) is the world's book — the dev garden keeps none */
+      this.$('chronicle-btn').classList.remove('hidden');
+      this._lastSeen = +this.pref('carrot-last-seen') || 0; /* read once, before the heartbeat */
+      const seen = () => this.setPref('carrot-last-seen', String(Math.floor(Date.now() / 1000)));
+      setInterval(seen, 60000);
+      addEventListener('beforeunload', seen);
     } else {
       this.$('tender-sign').classList.add('hidden');
       this.$('tender-list').innerHTML =
@@ -151,8 +158,10 @@ CC.UI = class {
 
   updatePatchLine() {
     if (this.patchOn()) {
+      const hb = this.core.handsBonus || 1;
       this.$('patch-line').textContent =
-        `🌍 ${this.patch.online} tender${this.patch.online === 1 ? '' : 's'} tending · ${CC.fmt(this.patch.clickRate)} clicks/s worldwide`;
+        `🌍 ${this.patch.online} tender${this.patch.online === 1 ? '' : 's'} tending · ${CC.fmt(this.patch.clickRate)} clicks/s worldwide` +
+        (hb > 1 ? ` · 🤝 ${this.fmtX(hb)} many hands` : '');
     }
   }
 
@@ -194,7 +203,7 @@ CC.UI = class {
     if (!this.worldMode) return;
     const dir = location.pathname.replace(/[^/]*$/, '');
     fetch(dir + 'api/board').then(r => r.json())
-      .then(j => this.renderTenders(j.tenders || []))
+      .then(j => { this.renderTenders(j.tenders || []); this.renderPresence(j.presence); })
       .catch(() => { /* decorative; the minute poll will retry */ });
   }
 
@@ -219,6 +228,129 @@ CC.UI = class {
       row.append(who, tally);
       box.appendChild(row);
     }
+  }
+
+  /* the board a bot cannot own (R21): who was here today, the longest
+     streaks, the founders — presence, never resources */
+  renderPresence(p) {
+    const box = this.$('presence');
+    if (!p) { box.classList.add('hidden'); return; } /* pre-R21 server */
+    box.classList.remove('hidden');
+    box.innerHTML = '';
+    const title = t => { const d = document.createElement('div'); d.className = 'p-title'; d.textContent = t; box.appendChild(d); };
+    const row = (a, b) => {
+      const r = document.createElement('div'); r.className = 'p-row';
+      const x = document.createElement('span'); x.textContent = a;      /* names are player input: textContent only */
+      const y = document.createElement('span'); y.textContent = b;
+      r.append(x, y); box.appendChild(r);
+    };
+    const hands = p.hands_today || [];
+    title(`🤝 HERE TODAY · ${hands.length}`);
+    if (hands.length) { const d = document.createElement('div'); d.textContent = hands.join(' · '); box.appendChild(d); }
+    else { const d = document.createElement('div'); d.className = 'board-empty'; d.textContent = 'Nobody yet today — sign in and tend.'; box.appendChild(d); }
+    if ((p.streaks || []).some(x => x.streak > 1)) {
+      title('🔥 STREAKS');
+      for (const x of p.streaks) if (x.streak > 1) row(x.name, `${x.streak} day${x.streak === 1 ? '' : 's'} running · best ${x.best}`);
+    }
+    if ((p.founders || []).length) {
+      title('🌱 FOUNDERS');
+      for (const f of p.founders) row(f.name, `since ${f.since}`);
+    }
+  }
+
+  /* ---------------- the chronicle (R21) ---------------- */
+  /* server wall clock + our offset: deadlines and market clocks must never
+     trust a tab whose clock is wrong */
+  now() { return Date.now() / 1000 + (this.patch ? this.patch.skew : 0); }
+
+  /* once, after the first snapshot: if this browser was away for an hour
+     or more, the chronicle says what the world did meanwhile */
+  whileAway() {
+    if (this._awayChecked || !this.worldMode) return;
+    this._awayChecked = true;
+    const last = this._lastSeen;
+    const gap = Date.now() / 1000 - last;
+    if (!last || gap < 3600) return;
+    const dir = location.pathname.replace(/[^/]*$/, '');
+    fetch(dir + 'api/chronicle?since=' + Math.floor(last)).then(r => r.json()).then(j => {
+      const evs = j.events || [];
+      if (!evs.length) return;
+      const n = t => evs.filter(e => e.type === t).length;
+      const parts = [];
+      const add = (k, one, many) => { if (k) parts.push(`${k} ${k === 1 ? one : many}`); };
+      add(n('prestige'), 'spring', 'springs');
+      add(n('almanac'), 'page written', 'pages written');
+      add(n('ribbon'), 'ribbon', 'ribbons');
+      add(n('catch'), 'guest caught', 'guests caught');
+      add(n('weather'), 'rain', 'rains');
+      add(n('shed') + n('upgrade'), 'thing bought', 'things bought');
+      for (const e of evs.filter(e => e.type === 'order_resolved'))
+        parts.push(e.won ? `${e.name} met (tier ${e.tier})` : `${e.name} missed`);
+      if (n('market_open')) parts.push('a Market Hour');
+      if (parts.length) this.toast(`🌍 While you were away (${CC.fmtDur(gap)}): ${parts.join(', ')}.`);
+    }).catch(() => { /* decorative */ });
+  }
+
+  openChronicle() {
+    const box = this.$('chronicle-days');
+    box.innerHTML = '<div class="board-empty">Turning the pages…</div>';
+    this.$('chronicle').classList.remove('hidden');
+    const dir = location.pathname.replace(/[^/]*$/, '');
+    fetch(dir + 'api/chronicle').then(r => r.json())
+      .then(j => this.renderChronicle(j.days || []))
+      .catch(() => { box.innerHTML = '<div class="board-empty">The book is out of reach — try again in a moment.</div>'; });
+  }
+
+  noteText(e) {
+    const who = e.who ? e.who : 'someone';
+    if (e.type === 'prestige') return `🌸 ${who} sent the garden to seed (+${CC.fmt(e.gained || 0)} seeds)`;
+    if (e.type === 'season') { const s = CC.SEASONS.find(x => x.id === e.id); return `🎪 ${s ? s.name : 'a new season'} began`; }
+    if (e.type === 'order_posted') return `📜 the Parish posted ${e.name}`;
+    if (e.type === 'order_resolved') return e.won ? `📜 ${e.name} met — tier ${e.tier}` : `📜 ${e.name} missed`;
+    if (e.type === 'ribbon') { const r = CC.RIBBONS[e.i]; return `🎀 ${r ? r.name : 'a ribbon'}`; }
+    if (e.type === 'almanac') { const pg = CC.ALMANAC.find(p => p.id === e.id); return `📖 ${pg ? pg.name : 'a page'} was written`; }
+    if (e.type === 'quiet') return `🌙 the garden stirred after ${e.hours}h of quiet`;
+    if (e.type === 'market_open') return '🏪 Market Hour';
+    return null;
+  }
+
+  renderChronicle(days) {
+    const box = this.$('chronicle-days');
+    box.innerHTML = '';
+    if (!days.length) { box.innerHTML = '<div class="board-empty">Nothing written yet — the first page is today.</div>'; return; }
+    const labels = { catch: 'guests caught', weather: 'rains', shed: 'sprouts planted', upgrade: 'upgrades', bumper: 'bumper crops', ribbon: 'ribbons', almanac: 'pages', prestige: 'springs' };
+    for (const d of days) {
+      const el = document.createElement('div'); el.className = 'c-day';
+      const h = document.createElement('div'); h.className = 'c-date'; h.textContent = d.day; el.appendChild(h);
+      const counts = Object.entries(d.counts || {}).filter(([k]) => labels[k]).map(([k, v]) => `${v} ${labels[k]}`);
+      const c = document.createElement('div'); c.className = 'c-counts'; c.textContent = counts.join(' · ') || 'a quiet day'; el.appendChild(c);
+      for (const e of (d.notable || [])) {
+        const t = this.noteText(e); if (!t) continue;
+        const n = document.createElement('div'); n.className = 'c-note'; n.textContent = t; el.appendChild(n);
+      }
+      box.appendChild(el);
+    }
+    this._chronicleDays = days;
+  }
+
+  /* Today's Patch: a plain-text card for chats and feeds — no images, no
+     build step, just the day in words */
+  shareCard() {
+    const c = this.core, p = this.patch;
+    const today = (this._chronicleDays || [])[0];
+    const cnt = (today && today.counts) || {};
+    const o = p && p.order;
+    const lines = [
+      `🥕 TODAY'S PATCH — ${today ? today.day : new Date().toISOString().slice(0, 10)}`,
+      `🌍 ${p ? p.online : 0} tending now · lifetime harvest ${CC.fmt(c.totalAllTime)} · ${CC.fmt(c.cps())}/s`,
+      `🌸 ${cnt.prestige || 0} springs · 📖 ${cnt.almanac || 0} pages · 🐇 ${cnt.catch || 0} guests · 🍯 ${CC.fmt(c.honey)} honey`,
+      o ? `📜 ${o.name} — tier ${o.tier} of 3, due in ${CC.fmtDur(o.deadline - this.now())}` : '',
+      location.href.replace(/[?#].*$/, ''),
+    ].filter(Boolean);
+    const text = lines.join('\n');
+    const done = () => this.toast('📋 Today’s Patch copied — paste it anywhere.');
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => this.toast(text));
+    else this.toast(text);
   }
 
   /* ---------------- persistence (dev garden only) ---------------- */
@@ -349,6 +481,21 @@ CC.UI = class {
       this.toast(this.autoClick
         ? '🖱 Auto-click on — the garden pulls itself. Rest those wrists.'
         : '🖱 Auto-click off.');
+    });
+    const nb = this.$('num-btn');
+    nb.classList.toggle('on', CC.fmtLong);
+    nb.addEventListener('click', () => {
+      CC.fmtLong = !CC.fmtLong;
+      nb.classList.toggle('on', CC.fmtLong);
+      this.setPref('carrot-numbers', CC.fmtLong ? 'long' : 'short');
+      this._shopSig = this._upgSig = this._shedSig = this._statHtml = this._almanacSeen = null; /* repaint every number */
+      this.toast(CC.fmtLong ? '🔢 Numbers in words — "tredecillion" it is.' : '🔢 Short numbers.');
+    });
+    this.$('chronicle-btn').addEventListener('click', () => this.openChronicle());
+    this.$('chronicle-close').addEventListener('click', () => this.$('chronicle').classList.add('hidden'));
+    this.$('chronicle-copy').addEventListener('click', () => this.shareCard());
+    this.$('chronicle').addEventListener('click', e => {
+      if (e.target === this.$('chronicle')) this.$('chronicle').classList.add('hidden');
     });
     this.$('wipe-btn').addEventListener('click', () => {
       if (this.t - this._wipeArm < 3) {
@@ -669,6 +816,30 @@ CC.UI = class {
       this.toast(`🎪 A new season begins: ${s.name}! ${s.bonus}.`);
       this.$('ticker-text').textContent = s.line;
       this.tickerT = -6;
+    } else if (ev.type === 'market') {
+      /* the Market Hour (R21): the whole world's weekly appointment */
+      const m = CC.MARKET_HOUR || {};
+      if (ev.open) {
+        CC.audio.fanfare();
+        this.toast(`🏪 MARKET HOUR! The stalls are open for ${m.hours || 3} hours — prices −${Math.round((m.priceOff || 0.2) * 100)}%, guests ×${m.visitorRate || 4}, weather thick.`);
+        this.$('ticker-text').textContent = 'The stalls are open. Bring your coin and your elbows.';
+        this.tickerT = -6;
+      } else {
+        this.toast('🏪 The stalls close. Same time next week.');
+      }
+    } else if (ev.type === 'order') {
+      if (ev.phase === 'posted') {
+        CC.audio.upgrade();
+        this.toast(`📜 The Parish posts an Order: ${ev.name}. Due in ${CC.fmtDur((ev.deadline || 0) - this.now())}.`);
+      } else if (ev.phase === 'resolved') {
+        const got = (ev.applied || []).join(', ');
+        if (ev.tier > 0) { CC.audio.fanfare(); this.toast(`📜 ${ev.name} — tier ${ev.tier} met! The Parish pays: ${got}.`); }
+        else { CC.audio.rabbit(); this.toast(`📜 ${ev.name} — missed. The Parish is not pleased: ${got}.`); }
+      }
+    } else if (ev.type === 'quiet') {
+      const q = CC.QUIET || { boost: 2, boostHours: 1 };
+      CC.audio.upgrade();
+      this.toast(`🌙 The garden lay quiet for ${ev.hours}h. ${ev.who || 'A tender'} came back — Welcome Back ×${q.boost} for ${q.boostHours}h, everyone.`);
     }
   }
 
@@ -857,8 +1028,64 @@ CC.UI = class {
     this.$('bank').textContent = CC.fmt(Math.floor(c.bank));
     this.$('cps').textContent = `${CC.fmt(c.cps())} per second · click for ${CC.fmt(c.clickPower())}`;
 
-    const buff = c.buffs[0];
-    this.$('buff-line').textContent = buff ? `⚡ ${buff.name} ×${buff.mult} — ${Math.ceil(buff.left)}s` : '';
+    /* every buff, not just the first: a Bumper Week and a passing rain
+       stack, and both deserve a clock (R21) */
+    this.$('buff-line').textContent = c.buffs.map(b =>
+      `⚡ ${b.name} ×${b.mult} — ${b.left >= 60 ? CC.fmtDur(b.left) : Math.ceil(b.left) + 's'}`).join(' · ');
+
+    /* the Gate (R21): the honey jar and the Market Hour clock */
+    {
+      const gl = this.$('gate-line');
+      const m = this.worldMode && this.patch && this.patch.everSynced ? this.patch.market : null;
+      const mh = CC.MARKET_HOUR || {};
+      const parts = [];
+      if (c.honey > 0 || m) parts.push(`🍯 ${CC.fmt(c.honey)} honey`);
+      if (m && m.active) parts.push(`🏪 MARKET HOUR — ${CC.fmtDur(m.end - this.now())} left · prices −${Math.round((mh.priceOff || 0.2) * 100)}%`);
+      else if (m && m.next) parts.push(`🏪 Market Hour opens in ${CC.fmtDur(m.next - this.now())}`);
+      gl.classList.toggle('hidden', !parts.length);
+      gl.classList.toggle('market', !!(m && m.active));
+      gl.textContent = parts.join(' · ');
+    }
+
+    /* Parish Orders (R21): the board the world can miss */
+    {
+      const o = this.worldMode && this.patch ? this.patch.order : null;
+      const panel = this.$('order');
+      panel.classList.toggle('hidden', !o);
+      if (o) {
+        const unit = { harvest: '🥕', sprouts: '🌱 planted', visitors: 'guests caught', stalls: 'stall gambles',
+          pages: 'pages written', springs: 'springs' }[o.kind] || '';
+        const t = o.targets || [], v = o.value || 0, tier = o.tier || 0;
+        const left = o.deadline - this.now();
+        this.$('order-name').textContent = o.name;
+        this.$('order-card').classList.toggle('authored', !!o.authored);
+        const due = this.$('order-due');
+        due.textContent = left > 0 ? `due in ${CC.fmtDur(left)}` : 'the bell is ringing…';
+        due.classList.toggle('soon', left < 6 * 3600);
+        this.$('order-line').textContent = o.line || '';
+        const next = tier < t.length ? t[tier] : null;
+        this.$('order-progress').textContent = next
+          ? `${CC.fmt(v)} / ${CC.fmt(next)} ${unit}` : `${CC.fmt(v)} ${unit} — every tier met`;
+        this.$('order-tier').textContent = tier ? `tier ${tier} of ${t.length} ${'✓'.repeat(tier)}` : 'no tier yet';
+        /* piecewise fill: the track's marks sit at 25 / 50 / 100 % */
+        const stops = [0, 0.25, 0.5, 1];
+        let pct = 1;
+        if (tier < t.length) {
+          const lo = tier ? t[tier - 1] : 0, hi = t[tier];
+          pct = stops[tier] + (stops[tier + 1] - stops[tier]) * Math.max(0, Math.min(1, (v - lo) / Math.max(1e-9, hi - lo)));
+        }
+        this.$('order-fill').style.width = `${(pct * 100).toFixed(1)}%`;
+        const rw = CC.ORDER_REWARDS || {}, fail = CC.ORDER_FAIL || [];
+        const say = list => (list || []).map(e => e.honey ? `🍯${e.honey}` : e.buff ? `${e.buff.name} ×${e.buff.mult}` :
+          e.visitorRate ? `guests ×${e.visitorRate}` : e.weatherGapMult ? `weather ÷${e.weatherGapMult}` : '').filter(Boolean).join(' + ');
+        this.$('order-stakes').textContent =
+          `stakes — ${[1, 2, 3].map(i => `${i}: ${say(rw[i])}`).join(' · ')} · missed: ${say(fail)}`;
+        const last = o.last, ol = this.$('order-last');
+        ol.classList.toggle('won', !!(last && last.tier > 0));
+        ol.classList.toggle('lost', !!(last && !last.tier));
+        ol.textContent = last ? (last.tier > 0 ? `last week: ${last.name} — tier ${last.tier} met` : `last week: ${last.name} — missed`) : '';
+      }
+    }
 
     /* season (R17): the world's shared festival, clock always visible —
        but only when the server actually runs a calendar (seasonEnds > 0;
@@ -995,8 +1222,9 @@ CC.UI = class {
         `<div>Rabbits caught 🐇 <b>${CC.fmt(c.rabbits)}</b></div>` +
         `<div>Plots &amp; contraptions <b>${CC.fmt(totalBuildings)}</b></div>` +
         `<div>Bumper crops 🌾 <b>${bumpers} (+${Math.round((Math.pow(CC.MILESTONE_MULT, bumpers) - 1) * 100)}%)</b></div>` +
-        `<div>Production bonus <b>${this.fmtX(c.globalMult())}${c.buffMult() > 1 ? ` · ⚡${this.fmtX(c.buffMult())}` : ''}${c.seasonMult() > 1 ? ` · 🎪${this.fmtX(c.seasonMult())}` : ''}</b></div>` +
+        `<div>Production bonus <b>${this.fmtX(c.globalMult())}${c.buffMult() > 1 ? ` · ⚡${this.fmtX(c.buffMult())}` : ''}${c.seasonMult() > 1 ? ` · 🎪${this.fmtX(c.seasonMult())}` : ''}${c.handsBonus > 1 ? ` · 🤝${this.fmtX(c.handsBonus)}` : ''}</b></div>` +
         `<div class="stat-sub">seeds ${this.fmtX(c.seedMult())} · ribbons ${this.fmtX(c.ribbonMult())} · rest ${this.fmtX(c.globalMult() / (c.seedMult() * c.ribbonMult()))}</div>` +
+        (c.honey > 0 ? `<div>Honey in the jar 🍯 <b>${CC.fmt(c.honey)}</b></div>` : '') +
         `<div>Next seed in <b>${CC.fmt(Math.max(0, c.nextSeedAt() - c.totalAllTime))} 🥕</b></div>` +
         (() => { /* the tail must never fade into fog: name the next rung */
           const r = CC.RIBBONS.find(r => r.at > c.totalAllTime);

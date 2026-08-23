@@ -74,6 +74,8 @@ const data = JSON.stringify({
   seasons: CC.SEASONS, seasonDays: CC.SEASON_DAYS,
   visitors: CC.VISITORS, visitorFirst: CC.VISITOR_FIRST, visitorGap: CC.VISITOR_GAP,
   weather: CC.WEATHER, weatherGap: CC.WEATHER_GAP,
+  honey: CC.HONEY, hands: CC.HANDS, marketHour: CC.MARKET_HOUR, quiet: CC.QUIET,
+  orders: CC.ORDERS, orderRewards: CC.ORDER_REWARDS, orderFail: CC.ORDER_FAIL,
 }, null, 1);
 
 fs.mkdirSync(OUT, { recursive: true });

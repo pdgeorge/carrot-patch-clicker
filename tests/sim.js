@@ -432,7 +432,7 @@ check(mr.pendingSeeds() === 0, 'a reload mints no phantom seeds');
 console.log('\n=== patch snapshot ordering ===');
 const pp = Object.create(CC.Patch.prototype);
 pp.core = new CC.Core();
-pp.ui = { updatePatchLine() {}, patchEvent() {}, nameResult() {}, toast() {}, rabbit: null };
+pp.ui = { updatePatchLine() {}, patchEvent() {}, nameResult() {}, toast() {}, whileAway() {}, rabbit: null };
 pp.handle({ type: 'snapshot', online: 3, clickRate: 7, rabbitTtl: 0, state: {
   bank: 1e20, totalAllTime: 3.4e22, totalRun: 5.39e20, clicks: 9,
   owned: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0], bought: {}, seeds: 184390889,
@@ -469,6 +469,78 @@ bf.buffs.push({ name: 'Rabbit Frenzy', mult: 7, left: 12 });
 const bf2 = new CC.Core();
 bf2.deserialize(JSON.parse(JSON.stringify(bf.serialize())));
 check(bf2.buffs.length === 1 && Math.abs(bf2.cps() - bf.cps()) < 1e-9, 'an active frenzy survives a save/load');
+
+/* the Parish (R21): honey, Many Hands, the Market Hour, long buffs */
+console.log('\n=== the Parish (R21) ===');
+const ph = new CC.Core();
+check(ph.honey === 0 && ph.handsBonus === 1 && ph.marketHour === false, 'a fresh world has an empty jar and neutral clocks');
+ph.earn(1e6); ph.buy(0, 10);
+const cps0 = ph.cps(), click0 = ph.clickPower(), cost0p = ph.costOf(0, 5);
+ph.handsBonus = 1.04;
+check(Math.abs(ph.cps() / cps0 - 1.04) < 1e-12 && Math.abs(ph.clickPower() / click0 - 1.04) < 1e-12,
+  'Many Hands multiplies cps and clicks alike (presence-boxed, outside β)');
+check(ph.costOf(0, 5) === cost0p, 'Many Hands never touches prices');
+ph.handsBonus = 1;
+ph.marketHour = true;
+check(Math.abs(ph.costOf(0, 5) / cost0p - (1 - CC.MARKET_HOUR.priceOff)) < 1e-12, 'Market Hour takes 20% off the stalls');
+ph.season = 'market';
+const both = ph.costOf(0, 5) / cost0p;
+check(both < 1 - CC.MARKET_HOUR.priceOff && both > 0.5, `Market season + Market Hour compose multiplicatively (×${both.toFixed(3)})`);
+check(ph.maxAffordable(0) >= 1, 'maxAffordable uses the same discount');
+ph.marketHour = false; ph.season = 'homestead';
+const honey0 = ph.honey;
+ph.visitorReward('tin');
+check(ph.honey === honey0 + CC.HONEY.tin, 'the tin rabbit mints honey');
+const seedsBefore = ph.seeds;
+ph.seeds = 0; ph.totalAllTime = 1e8; ph.totalRun = 1e8; /* enough for a spring */
+const gainedH = ph.prestige();
+check(gainedH > 0 && ph.honey === honey0 + CC.HONEY.tin + CC.HONEY.spring, 'a spring mints 10 honey');
+check(ph.honey > 0 && ph.cps() >= 0, 'honey is never in the cps formula (a balance, not a multiplier)');
+/* the Bee Cooperative: on the clock, never on cps */
+const bee = new CC.Core();
+bee.sprouts = 1e9; bee.sproutsSpent = 1e6;
+for (const id of ['p0', 'p1', 'p2', 'p3', 'p4']) bee.buyShed(id);
+check(bee.buyShed('p5') && bee.shedLevel('p5') === 1, 'Bee Cooperative plants');
+bee.tick(86400 / CC.HONEY.beePerDay - 1);
+check(bee.honey === 0, 'no honey before the first hour is up');
+bee.tick(2);
+check(bee.honey === 1, 'one honey an hour from the bees');
+bee.tick(86400);
+check(bee.honey === 1 + CC.HONEY.beePerDay, `${CC.HONEY.beePerDay} honey a day`);
+/* long buffs (Parish rewards) survive a spring; weather does not */
+const lb = new CC.Core();
+lb.totalAllTime = 1e8; lb.totalRun = 1e8;
+lb.buffs.push({ name: 'Gentle Rain', mult: 2, left: 60 });
+lb.buffs.push({ name: 'Bumper Week', mult: 3, left: 172800, keep: true });
+lb.prestige();
+check(lb.buffs.length === 1 && lb.buffs[0].name === 'Bumper Week', 'a spring clears the weather, never a Parish reward');
+const lb2 = new CC.Core();
+lb2.deserialize(JSON.parse(JSON.stringify(lb.serialize())));
+check(lb2.buffs[0].keep === true && lb2.honey === lb.honey, 'keep flag and honey survive a save');
+/* the Market Hour clock: Saturday 09:00–12:00 UTC */
+const sat1000 = Date.UTC(2026, 7, 29, 10, 0, 0) / 1000;   /* Sat 29 Aug 2026 */
+const sat0859 = Date.UTC(2026, 7, 29, 8, 59, 59) / 1000;
+const sat1200 = Date.UTC(2026, 7, 29, 12, 0, 0) / 1000;
+const sun = Date.UTC(2026, 7, 23, 0, 0, 0) / 1000;         /* Sun 23 Aug 2026 00:00 */
+check(CC.marketHourAt(sat1000).active && !CC.marketHourAt(sat0859).active && !CC.marketHourAt(sat1200).active,
+  'Market Hour is open 09:00–12:00 UTC Saturday, closed a second either side');
+check(CC.marketHourAt(sun).next === Date.UTC(2026, 7, 29, 9, 0, 0) / 1000
+  && CC.marketHourAt(sat1200).next === Date.UTC(2026, 8, 5, 9, 0, 0) / 1000,
+  'next opening is the coming Saturday; at noon Saturday it is next week');
+check(CC.marketHourAt(sat1000).end === sat1200, 'the end is noon Saturday');
+/* readable numbers: a display preference, never a different value */
+CC.fmtLong = true;
+check(CC.fmt(1234) === '1.23 thousand' && CC.fmt(1.8e41) === '180 duodecillion' && CC.fmt(999) === '999',
+  'long numbers speak in words');
+CC.fmtLong = false;
+check(CC.fmt(1234) === '1.23k', 'short numbers are the default');
+check(CC.fmtDur(45) === '45s' && CC.fmtDur(3661) === '1h 1m' && CC.fmtDur(90061) === '1d 1h' && CC.fmtDur(-5) === '0s',
+  'durations: s, m s, h m, d h');
+/* sanitizer: honey and the bee clock never go bad */
+const badH = new CC.Core();
+badH.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0, owned: [], bought: {},
+  seeds: 0, sprouts: 0, shed: {}, honey: -7.5, beeT: 1e12 });
+check(badH.honey === 0 && badH.beeT <= 86400, 'negative honey and a runaway bee clock are clamped');
 
 console.log(fails ? `\n${fails} FAILURE(S)` : '\nALL CHECKS PASSED');
 process.exit(fails ? 1 : 0);
