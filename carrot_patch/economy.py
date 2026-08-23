@@ -520,7 +520,7 @@ class Economy:
         self.trial, self.halt_t = saved, saved_halt
         if not plain > 0:
             return t["rule"].get("mulAll") or 1.0  # a bare garden: a flat rule still counts
-        return max(0.001, min(1.0, under / plain))
+        return max(1e-6, min(1.0, under / plain))  # Short Rows on a 700-plot world is well under 0.1 %
 
     def trial_goal(self, tid: str) -> float:
         """The best plain spring on record (or the one ending now), scaled by
@@ -1091,7 +1091,9 @@ class Economy:
         raw_rb = s.get("runBest", 0)
         rb_ok = isinstance(raw_rb, (int, float)) and not isinstance(raw_rb, bool) and math.isfinite(raw_rb) and raw_rb > 0
         self.run_best = max([0.0, float(raw_rb) if rb_ok else 0.0] + old_log)
-        raw_rt = s.get("runT", 0)
+        # a save from before runT existed is a spring of unknown age: call it old
+        # enough to count, or the first Trial after a deploy would ask for 1e6
+        raw_rt = s.get("runT", td.get("minSpringSec", 3600))
         self.run_t = (min(float(raw_rt), 1e9) if isinstance(raw_rt, (int, float)) and not isinstance(raw_rt, bool)
                       and math.isfinite(raw_rt) and raw_rt > 0 else 0.0)
         raw_h = s.get("haltT", 0)

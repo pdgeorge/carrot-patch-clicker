@@ -1073,7 +1073,7 @@ html, body { margin: 0; padding: 0; }
 </div>
 
 <script>
-globalThis.CC = globalThis.CC || {}; CC.BUILD = '9eec071'; CC.GARDENERS = ["pdgeorge","Claude Fable 5","T_B0N3"];
+globalThis.CC = globalThis.CC || {}; CC.BUILD = '0fd9a77'; CC.GARDENERS = ["pdgeorge","Claude Fable 5","T_B0N3"];
 /* ==== data.js ==== */
 /* Carrot Clicker — content: buildings, upgrades, ribbons, news. */
 globalThis.CC = globalThis.CC || {};
@@ -2108,7 +2108,7 @@ CC.Core = class {
     const under = t.rule.buildingsOff ? this.clickPower() * CC.TRIAL.refClicks : this.cps();
     this.trial = saved; this.haltT = savedHalt;
     if (!(plain > 0)) return t.rule.mulAll || 1; /* a bare garden: a flat rule still counts */
-    return Math.max(0.001, Math.min(1, under / plain));
+    return Math.max(1e-6, Math.min(1, under / plain)); /* Short Rows on a 700-plot world is well under 0.1 % */
   }
   /* "get back to where we were": the best plain spring on record (or the
      one ending now), scaled by the rule's handicap, doubling per completion */
@@ -2701,7 +2701,9 @@ CC.Core = class {
     /* pre-fix saves carried a five-entry runLog: its best seeds the high-water mark */
     const oldLog = (Array.isArray(s.runLog) ? s.runLog : []).map(x => +x).filter(x => x >= 0 && isFinite(x));
     this.runBest = Math.max(0, +s.runBest > 0 && isFinite(+s.runBest) ? +s.runBest : 0, ...oldLog);
-    this.runT = Math.max(0, Math.min(+s.runT || 0, 1e9));
+    /* a save from before runT existed is a spring of unknown age: call it old
+       enough to count, or the first Trial after a deploy would ask for 1e6 */
+    this.runT = s.runT === undefined ? CC.TRIAL.minSpringSec : Math.max(0, Math.min(+s.runT || 0, 1e9));
     this.haltT = Math.max(0, Math.min(+s.haltT || 0, 3600));
     /* the Seed Bed (R23): species must exist, ages are ints, the seed is a
        uint32, the log holds counts — a forged plot never grows a null */
