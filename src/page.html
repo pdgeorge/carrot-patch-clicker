@@ -12,6 +12,7 @@
       <div id="patch-line" class="hidden"></div>
       <div id="season-line" class="hidden"></div>
       <div id="gate-line" class="hidden"></div>
+      <div id="trial-line" class="hidden"></div>
       <div id="buff-line"></div>
       <canvas id="hero" width="320" height="360"></canvas>
       <div id="seed-line"></div>
@@ -67,6 +68,13 @@
         <div class="board-title">🌱 GARDENERS</div>
         <div id="gardener-list"></div>
       </div>
+      <div class="board-half" id="board-quilt">
+        <div class="board-title">🧵 THE QUILT</div>
+        <canvas id="quilt" width="48" height="48"></canvas>
+        <div id="quilt-palette"></div>
+        <div id="quilt-info"></div>
+        <div id="quilt-tools"><button id="quilt-copy">Copy as image</button></div>
+      </div>
     </section>
     </div><!-- /col-main -->
 
@@ -109,6 +117,7 @@
     <div id="modal-box">
       <h2 id="modal-title"></h2>
       <p id="modal-body"></p>
+      <div id="trial-pick" class="hidden"></div>
       <div id="modal-buttons">
         <button id="modal-yes"></button>
         <button id="modal-no">Not yet</button>

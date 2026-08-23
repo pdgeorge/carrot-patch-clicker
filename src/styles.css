@@ -772,3 +772,44 @@
   font: inherit; font-weight: 700; padding: 6px 12px; border-radius: 3px; cursor: pointer;
   border: 1px solid var(--paper-edge); background: var(--paper-2); color: var(--ink);
 }
+
+/* ---------- Trials (R22): the rule banner and the picker ---------- */
+#trial-line {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--buff-c);
+  margin-top: 3px;
+  min-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+#trial-line.halt { color: #9fd3ff; }
+#trial-pick { text-align: left; margin-top: 12px; border-top: 1px dashed rgba(120, 90, 50, 0.35); padding-top: 10px; max-height: 40vh; overflow: auto; }
+#trial-pick .tp-head { font-family: var(--serif); letter-spacing: 0.14em; font-size: 11px; color: var(--ink-dim); margin-bottom: 6px; }
+#trial-pick label { display: grid; grid-template-columns: 18px 1fr auto; gap: 4px 8px; align-items: baseline; padding: 5px 6px; border-radius: 3px; cursor: pointer; font-size: 12.5px; color: var(--ink); }
+#trial-pick label:hover { background: rgba(120, 90, 50, 0.10); }
+#trial-pick label.maxed { opacity: 0.55; cursor: default; }
+#trial-pick label.on { background: rgba(120, 90, 50, 0.16); }
+#trial-pick label b { font-family: var(--serif); }
+#trial-pick label .tp-line { grid-column: 2 / 4; font-size: 11.5px; color: var(--ink-dim); font-style: italic; }
+#trial-pick label .tp-meta { font-size: 11px; color: var(--ink-dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+#trial-pick label .tp-reward { grid-column: 2 / 4; font-size: 11px; color: var(--ink-leaf); }
+
+/* ---------- the Quilt (R22) ---------- */
+#quilt {
+  width: 100%; max-width: 216px; aspect-ratio: 1; display: block;
+  image-rendering: pixelated; image-rendering: crisp-edges;
+  border: 6px solid transparent; border-radius: 2px; cursor: crosshair;
+  border-image: repeating-linear-gradient(45deg, #c9473a 0 6px, #f2b33d 6px 12px, #4c7a3a 12px 18px, #3f5f9e 18px 24px) 6;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+  background: #f4ecd8;
+}
+#quilt-palette { display: grid; grid-template-columns: repeat(8, 18px); gap: 4px; margin-top: 8px; }
+#quilt-palette button { width: 18px; height: 18px; border: 1px solid rgba(0, 0, 0, 0.5); border-radius: 2px; padding: 0; cursor: pointer; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+#quilt-palette button.on { outline: 2px solid #fff; outline-offset: 1px; }
+#quilt-info { font-size: 11.5px; opacity: 0.85; margin-top: 6px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+#quilt-tools { margin-top: auto; padding-top: 8px; }
+#quilt-tools button {
+  font: inherit; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 3px; cursor: pointer;
+  border: 1px solid rgba(0, 0, 0, 0.4); background: rgba(255, 245, 220, 0.85); color: #3b2b16;
+}
+@media (max-width: 900px) { #noticeboard { flex-direction: column; } .board-half + .board-half { border-left: 0; border-top: 8px solid var(--board2); margin-top: 12px; padding-top: 12px; } }

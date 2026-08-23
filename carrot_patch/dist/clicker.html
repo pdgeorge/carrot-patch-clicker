@@ -781,6 +781,47 @@ html, body { margin: 0; padding: 0; }
   border: 1px solid var(--paper-edge); background: var(--paper-2); color: var(--ink);
 }
 
+/* ---------- Trials (R22): the rule banner and the picker ---------- */
+#trial-line {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--buff-c);
+  margin-top: 3px;
+  min-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+#trial-line.halt { color: #9fd3ff; }
+#trial-pick { text-align: left; margin-top: 12px; border-top: 1px dashed rgba(120, 90, 50, 0.35); padding-top: 10px; max-height: 40vh; overflow: auto; }
+#trial-pick .tp-head { font-family: var(--serif); letter-spacing: 0.14em; font-size: 11px; color: var(--ink-dim); margin-bottom: 6px; }
+#trial-pick label { display: grid; grid-template-columns: 18px 1fr auto; gap: 4px 8px; align-items: baseline; padding: 5px 6px; border-radius: 3px; cursor: pointer; font-size: 12.5px; color: var(--ink); }
+#trial-pick label:hover { background: rgba(120, 90, 50, 0.10); }
+#trial-pick label.maxed { opacity: 0.55; cursor: default; }
+#trial-pick label.on { background: rgba(120, 90, 50, 0.16); }
+#trial-pick label b { font-family: var(--serif); }
+#trial-pick label .tp-line { grid-column: 2 / 4; font-size: 11.5px; color: var(--ink-dim); font-style: italic; }
+#trial-pick label .tp-meta { font-size: 11px; color: var(--ink-dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+#trial-pick label .tp-reward { grid-column: 2 / 4; font-size: 11px; color: var(--ink-leaf); }
+
+/* ---------- the Quilt (R22) ---------- */
+#quilt {
+  width: 100%; max-width: 216px; aspect-ratio: 1; display: block;
+  image-rendering: pixelated; image-rendering: crisp-edges;
+  border: 6px solid transparent; border-radius: 2px; cursor: crosshair;
+  border-image: repeating-linear-gradient(45deg, #c9473a 0 6px, #f2b33d 6px 12px, #4c7a3a 12px 18px, #3f5f9e 18px 24px) 6;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+  background: #f4ecd8;
+}
+#quilt-palette { display: grid; grid-template-columns: repeat(8, 18px); gap: 4px; margin-top: 8px; }
+#quilt-palette button { width: 18px; height: 18px; border: 1px solid rgba(0, 0, 0, 0.5); border-radius: 2px; padding: 0; cursor: pointer; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+#quilt-palette button.on { outline: 2px solid #fff; outline-offset: 1px; }
+#quilt-info { font-size: 11.5px; opacity: 0.85; margin-top: 6px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+#quilt-tools { margin-top: auto; padding-top: 8px; }
+#quilt-tools button {
+  font: inherit; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 3px; cursor: pointer;
+  border: 1px solid rgba(0, 0, 0, 0.4); background: rgba(255, 245, 220, 0.85); color: #3b2b16;
+}
+@media (max-width: 900px) { #noticeboard { flex-direction: column; } .board-half + .board-half { border-left: 0; border-top: 8px solid var(--board2); margin-top: 12px; padding-top: 12px; } }
+
 </style>
 </head>
 <body>
@@ -798,6 +839,7 @@ html, body { margin: 0; padding: 0; }
       <div id="patch-line" class="hidden"></div>
       <div id="season-line" class="hidden"></div>
       <div id="gate-line" class="hidden"></div>
+      <div id="trial-line" class="hidden"></div>
       <div id="buff-line"></div>
       <canvas id="hero" width="320" height="360"></canvas>
       <div id="seed-line"></div>
@@ -853,6 +895,13 @@ html, body { margin: 0; padding: 0; }
         <div class="board-title">🌱 GARDENERS</div>
         <div id="gardener-list"></div>
       </div>
+      <div class="board-half" id="board-quilt">
+        <div class="board-title">🧵 THE QUILT</div>
+        <canvas id="quilt" width="48" height="48"></canvas>
+        <div id="quilt-palette"></div>
+        <div id="quilt-info"></div>
+        <div id="quilt-tools"><button id="quilt-copy">Copy as image</button></div>
+      </div>
     </section>
     </div><!-- /col-main -->
 
@@ -895,6 +944,7 @@ html, body { margin: 0; padding: 0; }
     <div id="modal-box">
       <h2 id="modal-title"></h2>
       <p id="modal-body"></p>
+      <div id="trial-pick" class="hidden"></div>
       <div id="modal-buttons">
         <button id="modal-yes"></button>
         <button id="modal-no">Not yet</button>
@@ -904,7 +954,7 @@ html, body { margin: 0; padding: 0; }
 </div>
 
 <script>
-globalThis.CC = globalThis.CC || {}; CC.BUILD = '9ed0cf2'; CC.GARDENERS = ["pdgeorge","Claude Fable 5","T_B0N3"];
+globalThis.CC = globalThis.CC || {}; CC.BUILD = '61c6f06'; CC.GARDENERS = ["pdgeorge","Claude Fable 5","T_B0N3"];
 /* ==== data.js ==== */
 /* Carrot Clicker — content: buildings, upgrades, ribbons, news. */
 globalThis.CC = globalThis.CC || {};
@@ -1237,7 +1287,54 @@ CC.ALMANAC = [];
   page('vp0', 'The First Gamble', 'The stall appeared. Somebody dared, for all of us.', { stalls: 1 });
   page('vp1', 'Fifty Market Mornings', 'The Parsnip Man respects you now. Somehow that is worse.', { stalls: 50 });
   page('vw0', 'Rain on Record', 'The first recorded gentle rain. Everyone just stood in it.', { weathers: 1 });
+  /* Trials (R22): one page per rule survived, and one for the set */
+  page('tr0', 'The Thaw', 'Late Frost, survived. Every purchase was a held breath.', { trial: 'frost' });
+  page('tr1', 'Pyramids of Plots', 'Crop Rotation, survived. Nothing outnumbered what came before it.', { trial: 'rotation' });
+  page('tr2', 'Six Rows Wide', 'Short Rows, survived. The far field lay empty and it was enough.', { trial: 'rows' });
+  page('tr3', 'By Hand Alone', 'Hands Only, survived. The plots slept. Somebody did not.', { trial: 'hands' });
+  page('tr4', 'The Dry Year', 'Drought, survived. Every blessing at three-quarter strength.', { trial: 'drought' });
+  page('tr5', 'The Hidden Chapter', 'Fog, survived. This page was written without looking.', { trial: 'fog' });
+  page('tr6', 'Hedge and Silence', 'Quiet Hedge, survived. No guest came, and the garden grew anyway.', { trial: 'hedge' });
+  page('tr7', 'Seven Springs, Seven Rules', 'Every Trial, at least once. The Almanac closes the chapter.',
+    { trial: 'frost' }, { trial: 'rotation' }, { trial: 'rows' }, { trial: 'hands' },
+    { trial: 'drought' }, { trial: 'fog' }, { trial: 'hedge' });
+  page('tr8', 'Old Hand', 'Five completions of one Trial. The rule is a friend now.', { trialMax: 1 });
 })();
+
+/* Trials (R22): a spring replayed under ONE rule. The goal is "get back to
+   where we were" — the largest run-total of the last five springs, one decade
+   higher per completion — inside 48 h; then the spring simply carries on.
+   Rewards are automation, caps and unlocks, never multipliers (β-free). */
+CC.TRIAL = { hours: 48, maxDone: 5, runLog: 5, scarecrowEvery: 60, scarecrowPct: 0.01,
+  resproutCapBase: 100, longEarsSec: 3 };
+CC.TRIALS = [
+  { id: 'frost', name: 'Late Frost', rule: { haltOnBuy: 180 },
+    line: 'Every purchase stills the whole garden; it thaws over three minutes.',
+    reward: { scarecrow: 1 }, rewardText: 'Scarecrow +1 (tends two more rows)' },
+  { id: 'rotation', name: 'Crop Rotation', rule: { chain: true },
+    line: 'No plot may outnumber the plot before it.',
+    reward: { startTier: 1 }, rewardText: 'springs start with one more tier of upgrades' },
+  { id: 'rows', name: 'Short Rows', rule: { buildingsMax: 6 },
+    line: 'Only the first six plots exist.',
+    reward: { resproutCap: 20 }, rewardText: 'heirlooms resprout 20 deeper' },
+  { id: 'hands', name: 'Hands Only', rule: { buildingsOff: true },
+    line: 'The plots sleep. Hands, guests and rain do all the work.',
+    reward: { cap: 'l1', n: 2 }, rewardText: 'Sprinkler Network cap +2 valves' },
+  { id: 'drought', name: 'Drought', rule: { expAll: 0.75 },
+    line: 'Every blessing shrinks to its three-quarter power.',
+    reward: { longEars: 1 }, rewardText: 'Long Ears +1 (guests linger 3 s longer)' },
+  { id: 'fog', name: 'Fog', rule: { hidden: true },
+    line: 'The numbers are gone. Tend by feel.',
+    reward: { honey: 150 }, rewardText: '150 honey and the hidden chapter' },
+  { id: 'hedge', name: 'Quiet Hedge', rule: { noVisitors: true },
+    line: 'No guests. Not one.',
+    reward: { clickFrenzy: 1 }, rewardText: 'Click Frenzy +1 (a frenzy also triples clicks)' },
+];
+
+/* the Patchwork Quilt (R22): a canvas the world paints and, one day, frames */
+CC.QUILT = { w: 48, h: 48, cooldown: 30, costSeconds: 1,
+  palette: ['#f4ecd8', '#2f2414', '#d9741f', '#f2b33d', '#4c7a3a', '#8fc174', '#6d4c2a', '#b08a5a',
+    '#c9473a', '#e89cb0', '#3f5f9e', '#8fb8de', '#6a4d8c', '#b9a0d6', '#8c8c86', '#f7f2e8'] };
 
 /* Ribbons: permanent multipliers at lifetime-harvest milestones (your trophy shelf). */
 CC.RIBBONS = [
@@ -1397,6 +1494,10 @@ CC.ORDERS = [
     line: 'Send the garden to seed, again and again.', unit: 'springs' },
   { id: 'grounds', name: 'Plant the Grounds', kind: 'sprouts', tiers: [0.25, 0.5, 1],
     line: 'Spend what the shed is hoarding.', unit: 'of the sprouts held at posting' },
+  { id: 'quilt', name: 'Stitch the Quilt', kind: 'quilt', tiers: [0.25, 0.5, 0.75],
+    line: 'Paint the quilt on the noticeboard — a quarter, a half, three-quarters full.', unit: 'of the quilt painted' },
+  { id: 'trial', name: 'A Trial Spring', kind: 'trials', tiers: [1, 2, 3],
+    line: 'Go to seed into a Trial, and win it.', unit: 'trials completed' },
 ];
 CC.ORDER_REWARDS = {
   1: [{ honey: 50 }],
@@ -1434,6 +1535,7 @@ CC.WEATHER_GAP = [600, 1500];  /* seconds between weather rolls */
 globalThis.CC = globalThis.CC || {};
 
 CC.fmt = function (n) {
+  if (CC.fog) return '???'; /* the Fog Trial (R22): numbers hidden, tend by feel */
   if (!isFinite(n)) return '∞';
   if (n < 0) return '-' + CC.fmt(-n);
   if (n < 1000) return n < 10 && n % 1 !== 0 ? n.toFixed(1) : Math.floor(n).toString();
@@ -1505,6 +1607,14 @@ CC.Core = class {
     this.beeT = 0;                /* seconds toward the Bee Cooperative's next drop */
     this.handsBonus = 1;          /* R21 Many Hands: presence-boxed, server-set (transient) */
     this.marketHour = false;      /* R21: the weekly window, server-set (transient) */
+    /* Trials (R22): one rule for one spring; what they paid survives everything */
+    this.trial = null;            /* {id, goal, t} while a Trial spring runs */
+    this.trialsDone = {};         /* id -> completions (0..CC.TRIAL.maxDone) */
+    this.trialBest = {};          /* id -> fastest completion, seconds */
+    this.runLog = [];             /* last five springs' run totals: the goal's memory */
+    this.perks = CC.Core.freshPerks(); /* automation, caps, unlocks — never multipliers */
+    this.haltT = 0;               /* Late Frost: seconds of stillness left after a purchase */
+    this.scT = 0;                 /* Scarecrow clock */
     this.buffs = [];              /* {name, mult, left} */
     this.t = 0;
     this._ribbonCount = 0;
@@ -1516,6 +1626,46 @@ CC.Core = class {
      ulp is ~4M carrots and a naive `+=` silently drops clicks and small
      ticks (and freezes entirely past 2^75). Reads still round to one ulp of
      the sum — a display grain, never lost carrots. Mirrored in economy.py. */
+  static freshPerks() {
+    return { scarecrow: 0, startTier: 0, resproutCap: 0, cap: {}, longEars: 0, clickFrenzy: 0 };
+  }
+
+  /* ---------- Trials (R22) ---------- */
+  trialData(id) { return (CC.TRIALS || []).find(t => t.id === (id === undefined ? (this.trial && this.trial.id) : id)) || null; }
+  /* the active rule's value for k, else undefined — every hook asks here */
+  rule(k) { const t = this.trialData(); return t ? t.rule[k] : undefined; }
+  trialDone(id) { return this.trialsDone[id] || 0; }
+  /* "get back to where we were": the largest of the last five springs
+     (including the one ending now), one decade higher per completion */
+  trialGoal(id) {
+    const runs = this.runLog.concat([this.totalRun]);
+    const best = Math.max(1e6, ...runs);
+    return best * Math.pow(10, this.trialDone(id));
+  }
+  trialAvailable(id) {
+    const t = this.trialData(id);
+    return !!t && this.trialDone(id) < CC.TRIAL.maxDone;
+  }
+  /* Late Frost: production stills on every purchase and thaws linearly */
+  haltMult() {
+    const h = this.rule('haltOnBuy');
+    return h && this.haltT > 0 ? Math.max(0, 1 - this.haltT / h) : 1;
+  }
+  touchHalt() { const h = this.rule('haltOnBuy'); if (h) this.haltT = h; }
+  /* a building "exists" unless Short Rows has cut the field */
+  rowExists(i) { const m = this.rule('buildingsMax'); return m === undefined || i < m; }
+  /* apply one Trial reward to the world's perks; returns the ledger line */
+  applyReward(r) {
+    const p = this.perks;
+    if (r.scarecrow) p.scarecrow = Math.min(5, p.scarecrow + r.scarecrow);
+    if (r.startTier) p.startTier = Math.min(CC.TIERS.length, p.startTier + r.startTier);
+    if (r.resproutCap) p.resproutCap = Math.min(100, p.resproutCap + r.resproutCap);
+    if (r.cap) p.cap[r.cap] = Math.min(10, (p.cap[r.cap] || 0) + (r.n || 1));
+    if (r.longEars) p.longEars = Math.min(5, p.longEars + r.longEars);
+    if (r.clickFrenzy) p.clickFrenzy = Math.min(5, p.clickFrenzy + r.clickFrenzy);
+    if (r.honey) this.honey += r.honey;
+  }
+
   get totalAllTime() { return this.lifetimeBase + this.totalRun; }
   set totalAllTime(v) { this.lifetimeBase = v - this.totalRun; }
 
@@ -1571,11 +1721,17 @@ CC.Core = class {
     if (c.heirloomEvery !== undefined) {
       return CC.SHED.every(u => !u.resprout || this.shedLevel(u.id) >= c.heirloomEvery);
     }
+    /* Trials (R22) */
+    if (c.trial !== undefined) return this.trialDone(c.trial) >= (c.n || 1);
+    if (c.trialMax !== undefined) {
+      return (CC.TRIALS || []).filter(t => this.trialDone(t.id) >= CC.TRIAL.maxDone).length >= c.trialMax;
+    }
     return false;
   }
 
   upgradeVisible(u) {
     if (this.bought[u.id]) return false;
+    if (u.type === 'building' && !this.rowExists(u.b)) return false; /* Short Rows */
     if (u.unlock) return u.unlock.every(c => this.condMet(c));
     if (u.type === 'building') return this.owned[u.b] >= u.need;
     if (u.type === 'synergy') return this.owned[u.target] >= u.needTarget && this.owned[u.per] >= u.needPer;
@@ -1589,6 +1745,7 @@ CC.Core = class {
   buyUpgrade(id) {
     const u = this.allUpgrades().find(u => u.id === id);
     if (!u || this.bought[id] || this.bank < u.cost || !this.upgradeVisible(u)) return false;
+    this.touchHalt(); /* Late Frost: an upgrade is a purchase too */
     this.bank -= u.cost;
     this.bought[id] = true;
     return true;
@@ -1642,7 +1799,8 @@ CC.Core = class {
     for (const u of CC.SHED) if (u.mult) m *= Math.pow(u.mult, this.shedLevel(u.id));
     m *= this.almanacMult();
     m *= Math.pow(CC.MILESTONE_MULT, this.bumperTotal());
-    return m;
+    const e = this.rule('expAll');  /* Drought: every blessing at three-quarter power */
+    return e ? Math.pow(m, e) : m;
   }
 
   buffMult() {
@@ -1655,15 +1813,20 @@ CC.Core = class {
   seasonData() { return CC.SEASONS.find(s => s.id === this.season) || null; }
   seasonMult() { const s = this.seasonData(); return (s && s.mult) || 1; }
 
-  baseCps() {
+  /* `raw` ignores Hands Only (the plots sleep, but clicks are still worth
+     their share of what the plots WOULD make — the sanctioned bot spring);
+     Short Rows cuts the field for both */
+  baseCps(raw = false) {
+    if (!raw && this.rule('buildingsOff')) return 0;
     let c = 0;
     for (let i = 0; i < CC.BUILDINGS.length; i++) {
+      if (!this.rowExists(i)) continue;
       c += this.owned[i] * CC.BUILDINGS[i].cps * this.buildingMult(i);
     }
     return c * this.globalMult();
   }
 
-  cps() { return this.baseCps() * this.buffMult() * this.seasonMult() * this.handsBonus; }
+  cps() { return this.baseCps() * this.buffMult() * this.seasonMult() * this.handsBonus * this.haltMult(); }
 
   /* one multiplier for every price discount in play: a priceOff season and
      Market Hour stack multiplicatively (R17/R21) */
@@ -1688,7 +1851,10 @@ CC.Core = class {
       if (u.cpsPct) pct += u.cpsPct;
     }
     for (const u of CC.SHED) if (u.cpsPct) pct += u.cpsPct * this.shedLevel(u.id);
-    return (base + pct * this.baseCps()) * this.buffMult() * this.seasonMult() * this.handsBonus;
+    /* Click Frenzy (R22 perk): a Rabbit Frenzy also multiplies clicks ×(1+2·lv) */
+    const cf = this.perks.clickFrenzy && this.buffs.some(b => b.name === 'Rabbit Frenzy')
+      ? 1 + 2 * this.perks.clickFrenzy : 1;
+    return (base + pct * this.baseCps(true)) * this.buffMult() * this.seasonMult() * this.handsBonus * cf;
   }
 
   /* ---------- actions ---------- */
@@ -1708,11 +1874,21 @@ CC.Core = class {
     return c0 * (Math.pow(r, count) - 1) / (r - 1) * this.priceDisc();
   }
 
+  /* Trials (R22): the most a row may hold right now — Short Rows cuts the
+     field, Crop Rotation chains each row to the one before it */
+  rowRoom(i) {
+    if (!this.rowExists(i)) return 0;
+    if (this.rule('chain') && i > 0) return Math.max(0, this.owned[i - 1] - this.owned[i]);
+    return Infinity;
+  }
+
   buy(i, count = 1) {
+    if (count < 1 || count > this.rowRoom(i)) return false;
     const cost = this.costOf(i, count);
     if (this.bank < cost) return false;
     this.bank -= cost;
     this.owned[i] += count;
+    this.touchHalt();
     return true;
   }
 
@@ -1726,7 +1902,7 @@ CC.Core = class {
     let m = Math.min(5000, Math.floor(Math.log(1 + this.bank * (r - 1) / c0) / Math.log(r)));
     while (m > 0 && this.costOf(i, m) > this.bank) m--;
     while (m < 5000 && this.costOf(i, m + 1) <= this.bank) m++;
-    return m;
+    return Math.min(m, this.rowRoom(i));
   }
 
   /* ---------- the Potting Shed (R13/R15) ---------- */
@@ -1749,7 +1925,7 @@ CC.Core = class {
      1.04 ladder climbs far past what a 1.45 one can: a flat 800 once
      clamped the live world's 1045-turn compost heap on reload. */
   shedCap(u) {
-    if (u.max !== undefined) return u.max;
+    if (u.max !== undefined) return u.max + ((this.perks.cap || {})[u.id] || 0); /* Trial perk (R22) */
     if (!u.repeat || !(u.costGrowth > 1)) return 1;
     return Math.floor(600 / Math.log(u.costGrowth)); /* e^600 ≈ 1e260 */
   }
@@ -1824,11 +2000,18 @@ CC.Core = class {
   pendingSeeds() { return Math.max(0, this.seedsEarnedTotal() - this.seeds); }
   nextSeedAt() { return Math.pow(this.seedsEarnedTotal() + 1, 2) * 1e6; }
 
-  prestige() {
+  prestige(trialId) {
     const gain = this.pendingSeeds();
     if (gain < 1) return 0;
     /* a deed done in the dying second of a spring still counts (review F3) */
     if (!this.mirrorBook) this.latchPages();
+    /* Trials (R22): remember this spring, then maybe open the next one
+       under a rule. Going to seed mid-Trial abandons it — a spring is the
+       unit, and the goal was this spring's. */
+    const goal = trialId && this.trialAvailable(trialId) && !this.trial ? this.trialGoal(trialId) : 0;
+    this.runLog = this.runLog.concat([this.totalRun]).slice(-CC.TRIAL.runLog);
+    this.trial = goal > 0 ? { id: trialId, goal, t: 0 } : null;
+    this.haltT = 0;
     this.seeds += gain;
     this.sprouts += gain * this.mintMult(); /* every seed sprouts (R13); doublers stack (R15) */
     this.prestiges++;
@@ -1841,11 +2024,18 @@ CC.Core = class {
     /* a spring clears the weather, never a Parish reward: Bumper Day/Week
        are earned by the whole world and outlive any one run (R21) */
     this.buffs = this.buffs.filter(b => b.keep);
-    /* resprout (R15): heirloom strains regrow themselves each spring */
+    /* resprout (R15): heirloom strains regrow themselves each spring —
+       deeper with the Short Rows perk (R22) */
+    const cap = CC.TRIAL.resproutCapBase + this.perks.resproutCap;
     for (const u of CC.SHED) {
       if (u.resprout && u.building !== undefined) {
-        this.owned[u.building] = Math.min(this.shedLevel(u.id), 100);
+        this.owned[u.building] = Math.min(this.shedLevel(u.id), cap);
       }
+    }
+    /* Crop Rotation perk (R22): springs start with the first n tiers of
+       building upgrades already on the shelf */
+    for (let ti = 0; ti < this.perks.startTier; ti++) {
+      for (let i = 0; i < CC.BUILDINGS.length; i++) this.bought[`b${i}t${ti}`] = true;
     }
     /* pre-seed, silently: resprouted rows must not fire a bumper toast storm */
     this._bumperSeen = CC.BUILDINGS.map((_, i) => this.bumperCount(i));
@@ -1867,6 +2057,43 @@ CC.Core = class {
     const expired = this.buffs.filter(b => b.left <= 0);
     this.buffs = this.buffs.filter(b => b.left > 0);
     for (const b of expired) events.push({ type: 'buffEnd', name: b.name });
+    /* Trials (R22): the thaw, the clock, the goal */
+    if (this.haltT > 0) this.haltT = Math.max(0, this.haltT - dt);
+    if (this.trial) {
+      const tr = this.trial;
+      tr.t += dt;
+      if (this.totalRun >= tr.goal) {
+        const t = this.trialData();
+        const n = this.trialDone(tr.id) + 1;
+        this.trialsDone[tr.id] = n;
+        if (!(this.trialBest[tr.id] <= tr.t)) this.trialBest[tr.id] = tr.t;
+        if (t && t.reward) this.applyReward(t.reward);
+        events.push({ type: 'trial', id: tr.id, won: true, n, t: tr.t });
+        this.trial = null;
+        this.haltT = 0;
+      } else if (tr.t >= CC.TRIAL.hours * 3600) {
+        events.push({ type: 'trial', id: tr.id, won: false, n: this.trialDone(tr.id), t: tr.t });
+        this.trial = null;
+        this.haltT = 0;
+      }
+    }
+    /* the Scarecrow (R22 perk): every minute it buys one of the cheapest
+       affordable building among the rows it tends, if that costs no more
+       than 1% of the bank — a patient hand, never a multiplier. It rests
+       during Late Frost (its purchase would still the garden). */
+    if (this.perks.scarecrow > 0 && !this.rule('haltOnBuy')) {
+      this.scT += dt;
+      if (this.scT >= CC.TRIAL.scarecrowEvery) {
+        this.scT = 0;
+        let pick = -1, best = Infinity;
+        for (let i = 0; i < Math.min(CC.BUILDINGS.length, 2 * this.perks.scarecrow); i++) {
+          if (this.rowRoom(i) < 1) continue;
+          const c = this.costOf(i, 1);
+          if (c <= this.bank * CC.TRIAL.scarecrowPct && c < best) { best = c; pick = i; }
+        }
+        if (pick >= 0 && this.buy(pick, 1)) events.push({ type: 'scarecrow', b: pick });
+      }
+    }
     const rc = this.ribbons().length;
     if (rc > this._ribbonCount) {
       /* index, not object — same event shape as economy.py, so one UI
@@ -1907,6 +2134,8 @@ CC.Core = class {
       prestiges: this.prestiges, rabbits: this.rabbits, sproutsSpent: this.sproutsSpent,
       tins: this.tins, stalls: this.stalls, weathers: this.weathers,
       honey: this.honey, beeT: this.beeT,
+      trial: this.trial ? { ...this.trial } : null, trialsDone: this.trialsDone, trialBest: this.trialBest,
+      runLog: this.runLog, perks: this.perks, haltT: this.haltT,
       almanac: this.almanac,
       /* season deliberately NOT saved: the dev garden has no calendar, and a
          ?season= theme test must never persist its bonus into the solo save;
@@ -1945,6 +2174,30 @@ CC.Core = class {
     this.weathers = Math.max(0, Math.floor(s.weathers) || 0);
     this.honey = Math.max(0, Math.floor(s.honey) || 0);
     this.beeT = Math.max(0, Math.min(+s.beeT || 0, 86400));
+    /* Trials (R22): ids must exist, counts stay inside the ladder, the
+       goal must be a real number — a forged Infinity goal would never end */
+    const T = CC.TRIAL || { maxDone: 5, runLog: 5, hours: 48 };
+    this.trialsDone = {};
+    this.trialBest = {};
+    for (const t of (CC.TRIALS || [])) {
+      const n = Math.floor((s.trialsDone || {})[t.id]) || 0;
+      if (n > 0) this.trialsDone[t.id] = Math.min(n, T.maxDone);
+      const b = +(s.trialBest || {})[t.id];
+      if (b > 0 && isFinite(b)) this.trialBest[t.id] = b;
+    }
+    const tr = s.trial;
+    this.trial = tr && this.trialData(tr.id) && tr.goal > 0 && isFinite(tr.goal)
+      ? { id: tr.id, goal: +tr.goal, t: Math.max(0, Math.min(+tr.t || 0, T.hours * 3600)) } : null;
+    this.runLog = (Array.isArray(s.runLog) ? s.runLog : []).map(x => +x).filter(x => x >= 0 && isFinite(x)).slice(-T.runLog);
+    const pk = s.perks || {};
+    const cnt = (v, hi) => Math.min(hi, Math.max(0, Math.floor(v) || 0));
+    this.perks = {
+      scarecrow: cnt(pk.scarecrow, 5), startTier: cnt(pk.startTier, CC.TIERS.length),
+      resproutCap: cnt(pk.resproutCap, 100), longEars: cnt(pk.longEars, 5), clickFrenzy: cnt(pk.clickFrenzy, 5),
+      cap: {},
+    };
+    for (const u of CC.SHED) { const v = cnt((pk.cap || {})[u.id], 10); if (v > 0 && u.max !== undefined) this.perks.cap[u.id] = v; }
+    this.haltT = Math.max(0, Math.min(+s.haltT || 0, 3600));
     /* known page ids are historical fact and stay latched; junk ids would
        mint ×1.02 each forever — dropped */
     this.almanac = {};
@@ -2147,6 +2400,15 @@ CC.Patch = class {
       c.honey = s.honey || 0;
       c.handsBonus = s.handsBonus || 1;
       c.marketHour = !!s.marketHour;
+      /* Trials (R22): the rule, the ledger and the perks are the server's */
+      c.trial = s.trial ? { ...s.trial } : null;
+      c.trialsDone = s.trialsDone || {};
+      c.trialBest = s.trialBest || {};
+      c.runLog = s.runLog || [];
+      c.perks = s.perks ? { cap: {}, ...s.perks } : CC.Core.freshPerks();
+      c.haltT = s.haltT || 0;
+      /* the Quilt (R22): diffs ride as events; a version gap means a refetch */
+      if (msg.quiltV !== undefined && msg.quiltV > ui.quilt.v) ui.fetchQuilt();
       this.order = msg.order || null;
       this.market = msg.market || null;
       if (msg.now) this.skew = msg.now - Date.now() / 1000;
@@ -2309,6 +2571,32 @@ CC.UI = class {
       this.$('tender-list').innerHTML =
         '<div class="board-empty">The world signs here — this is the dev garden.</div>';
     }
+
+    /* the Quilt (R22): a canvas the world paints — world mode paints through
+       the server, the dev garden paints its own cloth */
+    const Q = CC.QUILT || { w: 48, h: 48, palette: ['#fff'], cooldown: 30, costSeconds: 1 };
+    this.quilt = { w: Q.w, h: Q.h, v: -1, cells: new Uint8Array(Q.w * Q.h), lastPaint: -1e9, painted: 0 };
+    this.quiltColor = 2;
+    this.quiltCtx = this.$('quilt').getContext('2d');
+    const pal = this.$('quilt-palette');
+    Q.palette.forEach((hex, i) => {
+      const b = document.createElement('button');
+      b.style.background = hex; b.title = `colour ${i}`;
+      b.classList.toggle('on', i === this.quiltColor);
+      b.addEventListener('click', () => {
+        this.quiltColor = i;
+        for (const x of pal.children) x.classList.toggle('on', x === b);
+      });
+      pal.appendChild(b);
+    });
+    this.$('quilt').addEventListener('pointerdown', e => {
+      const r = e.currentTarget.getBoundingClientRect();
+      const x = Math.floor((e.clientX - r.left) / r.width * this.quilt.w);
+      const y = Math.floor((e.clientY - r.top) / r.height * this.quilt.h);
+      if (x >= 0 && y >= 0 && x < this.quilt.w && y < this.quilt.h) this.paintCell(y * this.quilt.w + x, this.quiltColor);
+    });
+    this.$('quilt-copy').addEventListener('click', () => this.copyQuilt());
+    this.drawQuilt();
 
     let last = performance.now();
     const frame = now => {
@@ -2536,6 +2824,104 @@ CC.UI = class {
     const done = () => this.toast('📋 Today’s Patch copied — paste it anywhere.');
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => this.toast(text));
     else this.toast(text);
+  }
+
+  /* ---------------- the Quilt (R22) ---------------- */
+  fetchQuilt() {
+    if (!this.worldMode || this._quiltFetching) return;
+    this._quiltFetching = true;
+    const dir = location.pathname.replace(/[^/]*$/, '');
+    fetch(dir + 'api/quilt').then(r => r.json()).then(j => {
+      this._quiltFetching = false;
+      if (!j || !j.cells || j.v <= this.quilt.v) return;
+      const raw = j.cells;
+      for (let i = 0; i < this.quilt.cells.length && 2 * i + 1 < raw.length; i++) {
+        this.quilt.cells[i] = parseInt(raw.substr(2 * i, 2), 16) || 0;
+      }
+      this.quilt.v = j.v; this.quilt.painted = j.painted || 0;
+      this.drawQuilt();
+    }).catch(() => { this._quiltFetching = false; });
+  }
+
+  paintCell(i, c) {
+    if (this.awaitingWorld()) return;
+    const Q = CC.QUILT || { cooldown: 30, costSeconds: 1 };
+    const wait = Q.cooldown - (this.t - this.quilt.lastPaint);
+    if (wait > 0) { this.toast(`🧵 The needle rests — ${Math.ceil(wait)}s before your next stitch.`); return; }
+    if (this.quilt.cells[i] === c) return;
+    this.quilt.lastPaint = this.t;
+    if (this.worldMode) { this.patch.send({ type: 'paint', i, c }); return; }
+    this.quilt.cells[i] = c; this.quilt.painted++;
+    this.core.bank = Math.max(0, this.core.bank - this.core.cps() * Q.costSeconds);
+    this.drawQuilt();
+  }
+
+  drawQuilt() {
+    const Q = CC.QUILT || { palette: ['#fff'] }, x = this.quiltCtx, q = this.quilt;
+    for (let i = 0; i < q.cells.length; i++) {
+      x.fillStyle = Q.palette[q.cells[i]] || Q.palette[0];
+      x.fillRect(i % q.w, Math.floor(i / q.w), 1, 1);
+    }
+    let n = 0; for (const c of q.cells) if (c) n++;
+    this.$('quilt-info').textContent =
+      `${Math.round(n / q.cells.length * 100)}% stitched · ${CC.fmt(q.painted)} stitches ever · one stitch per ${(Q.cooldown || 30)}s, for a second of harvest`;
+  }
+
+  /* the quilt as a picture: ×6 upscale, pixel-crisp, to the clipboard (or a
+     new tab when the clipboard is shy) */
+  copyQuilt() {
+    const q = this.quilt, big = document.createElement('canvas');
+    big.width = q.w * 6; big.height = q.h * 6;
+    const bx = big.getContext('2d');
+    bx.imageSmoothingEnabled = false;
+    bx.drawImage(this.$('quilt'), 0, 0, big.width, big.height);
+    const open = () => { try { window.open(big.toDataURL('image/png'), '_blank'); } catch (e) { /* blocked */ } };
+    if (navigator.clipboard && window.ClipboardItem && big.toBlob) {
+      big.toBlob(blob => {
+        navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+          .then(() => this.toast('🧵 The quilt is on your clipboard — paste it anywhere.'), open);
+      });
+    } else open();
+  }
+
+  /* ---------------- Trials (R22) ---------------- */
+  trialGoalText(id) { return CC.fog ? '???' : CC.fmt(this.core.trialGoal(id)); }
+
+  /* the picker inside the Go to Seed modal: one rule, or a plain spring */
+  buildTrialPick() {
+    const c = this.core, box = this.$('trial-pick');
+    box.innerHTML = '';
+    this._trialChoice = null;
+    if (!CC.TRIALS || !CC.TRIALS.length || c.trial) { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    const head = document.createElement('div'); head.className = 'tp-head';
+    head.textContent = 'WHICH SPRING? — a Trial is one rule for the whole world\'s next spring, 48 h to get back to where we were';
+    box.appendChild(head);
+    const mk = (id, name, line, meta, reward, maxed) => {
+      const l = document.createElement('label');
+      if (maxed) l.classList.add('maxed');
+      const r = document.createElement('input'); r.type = 'radio'; r.name = 'trial'; r.disabled = maxed;
+      r.checked = id === null;
+      r.addEventListener('change', () => {
+        this._trialChoice = id;
+        for (const x of box.querySelectorAll('label')) x.classList.toggle('on', x === l);
+      });
+      const b = document.createElement('b'); b.textContent = name;
+      const m = document.createElement('span'); m.className = 'tp-meta'; m.textContent = meta;
+      const ln = document.createElement('span'); ln.className = 'tp-line'; ln.textContent = line;
+      l.append(r, b, m, ln);
+      if (reward) { const rw = document.createElement('span'); rw.className = 'tp-reward'; rw.textContent = reward; l.appendChild(rw); }
+      if (id === null) l.classList.add('on');
+      box.appendChild(l);
+    };
+    mk(null, 'A plain spring', 'No rule. The garden simply begins again.', '', '');
+    for (const t of CC.TRIALS) {
+      const n = c.trialDone(t.id), maxed = !c.trialAvailable(t.id);
+      const best = c.trialBest[t.id];
+      mk(t.id, t.name, t.line,
+        maxed ? `${n}/${CC.TRIAL.maxDone} — complete` : `goal ${this.trialGoalText(t.id)} · ${n}/${CC.TRIAL.maxDone}${best ? ` · best ${CC.fmtDur(best)}` : ''}`,
+        maxed ? '' : `pays: ${t.rewardText}`, maxed);
+    }
   }
 
   /* ---------------- persistence (dev garden only) ---------------- */
@@ -2846,16 +3232,19 @@ CC.UI = class {
         return a === b ? `${a}, stacking +8% deeper` : `${a} → <b>${b}</b>`;
       })()}.` +
       (patch ? `<br><br><i>Your name will not be recorded. Your deed will be felt.</i>` : '');
+    this.buildTrialPick();
     const yes = this.$('modal-yes');
     yes.textContent = `Go to seed (+${CC.fmt(n)})`;
     yes.onclick = () => {
       this.$('modal').classList.add('hidden');
+      const trial = this._trialChoice || null;
       if (patch) {
-        this.patch.send({ type: 'prestige' });
+        this.patch.send(trial ? { type: 'prestige', trial } : { type: 'prestige' });
         return; /* the server announces it to the world */
       }
       const before = this.core.seedMult();
-      const gained = this.core.prestige();
+      const gained = this.core.prestige(trial);
+      if (this.core.trial) this.toast(`🧪 ${CC.TRIALS.find(t => t.id === trial).name} begins. Goal: ${this.trialGoalText(trial)}.`);
       CC.audio.seed();
       const b = this.core.seedMult() / before;
       this.toast(`🌸 Second spring. +${CC.fmt(gained)} seeds — ` + (b >= 1.0005
@@ -2981,8 +3370,9 @@ CC.UI = class {
       const what = boost >= 1.0005
         ? `seed bonus ${this.fmtX(boost)}, now ${this.fmtX(this.core.seedMult())}`
         : `seed bonus now ${this.fmtX(this.core.seedMult())}`;
+      const tt = ev.trial && (CC.TRIALS || []).find(x => x.id === ev.trial);
       this.toast(`🌸 SOMEONE SENT THE WHOLE GARDEN TO SEED. +${CC.fmt(ev.gained)} seeds ` +
-        `— ${what}. A new spring begins.`);
+        `— ${what}. ${tt ? `A TRIAL SPRING begins: ${tt.name} — ${tt.line}` : 'A new spring begins.'}`);
     } else if (ev.type === 'shed') {
       const u = CC.SHED.find(u => u.id === ev.id);
       if (!u) return;
@@ -3020,6 +3410,22 @@ CC.UI = class {
         const got = (ev.applied || []).join(', ');
         if (ev.tier > 0) { CC.audio.fanfare(); this.toast(`📜 ${ev.name} — tier ${ev.tier} met! The Parish pays: ${got}.`); }
         else { CC.audio.rabbit(); this.toast(`📜 ${ev.name} — missed. The Parish is not pleased: ${got}.`); }
+      }
+    } else if (ev.type === 'trial') {
+      const t = (CC.TRIALS || []).find(x => x.id === ev.id);
+      if (!t) return;
+      if (ev.won) {
+        CC.audio.fanfare();
+        this.toast(`🧪 ${t.name} — WON in ${CC.fmtDur(ev.t || 0)}! The world is back where it was. ${t.rewardText} (${ev.n}/${CC.TRIAL.maxDone}).`);
+      } else {
+        CC.audio.rabbit();
+        this.toast(`🧪 ${t.name} — the clock ran out. The spring carries on, rule lifted.`);
+      }
+    } else if (ev.type === 'paint') {
+      if (ev.i >= 0 && ev.i < this.quilt.cells.length) {
+        this.quilt.cells[ev.i] = ev.c; this.quilt.painted++;
+        if (ev.v !== undefined) this.quilt.v = ev.v;
+        this.drawQuilt();
       }
     } else if (ev.type === 'quiet') {
       const q = CC.QUIET || { boost: 2, boostHours: 1 };
@@ -3142,9 +3548,13 @@ CC.UI = class {
     /* visitor lifecycle (locally scheduled only in the dev garden, from
        the same data table the server reads — one brain, two clocks) */
     if (!this.worldMode && !this.visitor && this.t >= this.nextVisitor) {
-      let w = CC.VISITORS.reduce((s, v) => s + v.weight, 0) * Math.random();
-      const pick = CC.VISITORS.find(v => (w -= v.weight) < 0) || CC.VISITORS[0];
-      this.spawnVisitor(pick.id, pick.ttl);
+      if (this.core.rule('noVisitors')) { /* Quiet Hedge (R22): nobody comes */
+        this.nextVisitor = this.t + CC.VISITOR_GAP[0] + Math.random() * (CC.VISITOR_GAP[1] - CC.VISITOR_GAP[0]);
+      } else {
+        let w = CC.VISITORS.reduce((s, v) => s + v.weight, 0) * Math.random();
+        const pick = CC.VISITORS.find(v => (w -= v.weight) < 0) || CC.VISITORS[0];
+        this.spawnVisitor(pick.id, pick.ttl + (this.core.perks.longEars || 0) * CC.TRIAL.longEarsSec);
+      }
     }
     if (this.visitor && !this.visitor.gone) {
       const r = this.visitor;
@@ -3210,6 +3620,26 @@ CC.UI = class {
   updateDOM() {
     const c = this.core;
     this.applyTheme(); /* season turns and auto-day/night flips re-skin live */
+    /* the Fog Trial (R22): every number on the page goes dark together */
+    const fog = !!c.rule('hidden');
+    if (fog !== !!CC.fog) {
+      CC.fog = fog;
+      this._shopSig = this._upgSig = this._shedSig = this._statHtml = this._almanacSeen = null;
+    }
+    /* the Trial banner (R22) */
+    {
+      const tl = this.$('trial-line'), tr = c.trial, td = tr && c.trialData();
+      tl.classList.toggle('hidden', !td);
+      if (td) {
+        const left = Math.max(0, CC.TRIAL.hours * 3600 - tr.t);
+        const halt = c.rule('haltOnBuy') && c.haltT > 0;
+        tl.classList.toggle('halt', !!halt);
+        tl.textContent = halt
+          ? `🧪 ${td.name} · ❄ stilled — thaws in ${CC.fmtDur(c.haltT)} · ${CC.fmtDur(left)} left`
+          : `🧪 ${td.name} · ${CC.fmt(c.totalRun)} / ${CC.fmt(tr.goal)} · ${CC.fmtDur(left)} left`;
+        tl.title = td.line;
+      }
+    }
     this.$('bank').textContent = CC.fmt(Math.floor(c.bank));
     this.$('cps').textContent = `${CC.fmt(c.cps())} per second · click for ${CC.fmt(c.clickPower())}`;
 
@@ -3344,13 +3774,15 @@ CC.UI = class {
         const known = i === 0 || c.owned[i] > 0 || c.totalAllTime >= b.cost / 5;
         const isNextMystery = !known && revealed === i;
         if (known) revealed++;
-        row.classList.toggle('hidden', !known && !isNextMystery);
+        /* Short Rows (R22): plots past the rule do not exist this spring */
+        row.classList.toggle('hidden', (!known && !isNextMystery) || !c.rowExists(i));
         row.classList.toggle('mystery', isNextMystery);
         /* Max shows what it would actually buy right now (≥1 so an
            unaffordable row still shows the single price, greyed) */
         const bn = this.buyN === 'max' ? Math.max(1, c.maxAffordable(i)) : this.buyN;
         const cost = c.costOf(i, bn);
-        row.classList.toggle('cant', isNextMystery || c.bank < cost);
+        /* Crop Rotation (R22): a row with no room in the chain is greyed */
+        row.classList.toggle('cant', isNextMystery || c.bank < cost || c.rowRoom(i) < bn);
         const next = c.nextBumperAt(i);
         row.querySelector('.b-name').textContent = isNextMystery ? '???' : b.name;
         /* ceil the label: fractional prices (1.15^n, Market discounts) must
@@ -3410,6 +3842,19 @@ CC.UI = class {
         `<div>Production bonus <b>${this.fmtX(c.globalMult())}${c.buffMult() > 1 ? ` · ⚡${this.fmtX(c.buffMult())}` : ''}${c.seasonMult() > 1 ? ` · 🎪${this.fmtX(c.seasonMult())}` : ''}${c.handsBonus > 1 ? ` · 🤝${this.fmtX(c.handsBonus)}` : ''}</b></div>` +
         `<div class="stat-sub">seeds ${this.fmtX(c.seedMult())} · ribbons ${this.fmtX(c.ribbonMult())} · rest ${this.fmtX(c.globalMult() / (c.seedMult() * c.ribbonMult()))}</div>` +
         (c.honey > 0 ? `<div>Honey in the jar 🍯 <b>${CC.fmt(c.honey)}</b></div>` : '') +
+        (() => { /* Trials (R22): the ledger and what it paid */
+          const done = (CC.TRIALS || []).reduce((a, t) => a + c.trialDone(t.id), 0);
+          if (!done) return '';
+          const p = c.perks, bits = [];
+          if (p.scarecrow) bits.push(`Scarecrow ${p.scarecrow}`);
+          if (p.startTier) bits.push(`tier-${p.startTier} start`);
+          if (p.resproutCap) bits.push(`resprout +${p.resproutCap}`);
+          for (const k in p.cap) bits.push(`${k} cap +${p.cap[k]}`);
+          if (p.longEars) bits.push(`Long Ears ${p.longEars}`);
+          if (p.clickFrenzy) bits.push(`Click Frenzy ${p.clickFrenzy}`);
+          return `<div>Trials won 🧪 <b>${done}</b></div>` +
+            (bits.length ? `<div class="stat-sub">${bits.join(' · ')}</div>` : '');
+        })() +
         `<div>Next seed in <b>${CC.fmt(Math.max(0, c.nextSeedAt() - c.totalAllTime))} 🥕</b></div>` +
         (() => { /* the tail must never fade into fog: name the next rung */
           const r = CC.RIBBONS.find(r => r.at > c.totalAllTime);

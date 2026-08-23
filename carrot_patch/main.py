@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import random
 import time
@@ -26,7 +27,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 
 from .economy import Economy, dist_dir, fmt, load_data, market_hour_at
-from .parish import Chronicle, OrderBook
+from .parish import Chronicle, OrderBook, Quilt
 from .tenders import TenderBook
 
 MAX_CLICKS_PER_MSG = 1000    # anti-flood only, never game balance (DESIGN P4/R2):
@@ -71,6 +72,10 @@ def chronicle_file() -> Path:
     return state_file().with_name(state_file().stem + "_events.jsonl")
 
 
+def quilt_file() -> Path:
+    return state_file().with_name(state_file().stem + "_quilt.json")
+
+
 class Patch:
     def __init__(self) -> None:
         self.eco = Economy(load_data())
@@ -82,7 +87,8 @@ class Patch:
         self.tenders = TenderBook(tenders_file(),
                                   Path(__file__).resolve().parent / "blocklist.txt")
         self.chronicle = Chronicle(chronicle_file())   # R21: the world's day-book
-        self.orders = OrderBook(self.eco.d, parish_file(), self.chronicle)
+        self.quilt = Quilt(self.eco.d, quilt_file())   # R22: the canvas the world paints
+        self.orders = OrderBook(self.eco.d, parish_file(), self.chronicle, self.quilt)
         self._names_7d = 0                              # Many Hands: distinct names, 7 days
         self._names_at = 0.0
         self.clients: set[WebSocket] = set()
@@ -168,6 +174,7 @@ class Patch:
             "order": self.orders.snapshot(self.eco, wall),
             "market": {"active": mh["active"], "next": mh["next"], "end": mh["end"]},
             "now": wall,  # server wall clock so deadlines render without trusting the tab
+            "quiltV": self.quilt.version,  # R22: a client behind this version refetches /api/quilt
         }
 
     # ---------- persistence ----------
@@ -177,6 +184,7 @@ class Patch:
         tmp.write_text(json.dumps(self.eco.serialize()))
         tmp.replace(target)
         self.orders.save()
+        self.quilt.save()
 
     def save_soon(self) -> None:
         """Durable-ish save for hot paths: at most one write per 5 s — a
@@ -252,6 +260,11 @@ class Patch:
             if out == "embargo":
                 return "🥀 Parsnip embargo! Production ×0.5 for 45 seconds. He got us this time."
             return None
+        if ev["type"] == "trial":
+            t = next((x for x in d.get("trials", []) if x["id"] == ev["id"]), None)
+            name = t["name"] if t else "the Trial"
+            return (f"🧪 {name} — won! The world gets back to where it was. ({ev.get('n', 1)}/5)"
+                    if ev.get("won") else f"🧪 {name} — the clock ran out. The spring carries on.")
         if ev["type"] == "season":
             s = next((x for x in d.get("seasons", []) if x["id"] == ev["id"]), None)
             return f"🎪 A new season begins: {s['name']}! {s['bonus']}." if s else None
@@ -283,9 +296,13 @@ class Patch:
             wall = time.time()
             self.parish_tick(wall)
             for ev in self.eco.tick(dt):
+                if ev["type"] == "scarecrow":
+                    continue  # a patient hand, once a minute — the snapshot shows it; no toast
                 self.emit(ev)
-                if ev["type"] in ("ribbon", "almanac", "bumper"):
+                if ev["type"] in ("ribbon", "almanac", "bumper", "trial"):
                     self.chronicle.log(ev)
+                if ev["type"] == "trial":
+                    self.save()
 
             # seasons rotate on real time (R17); the server owns the calendar
             period = self.eco.d.get("seasonDays", 14) * 86400.0
@@ -309,10 +326,14 @@ class Patch:
             if self.visitor and now > self.visitor["until"]:
                 self.visitor = None
                 self.next_visitor = now + self.visitor_wait(*gap)
+            if not self.visitor and now >= self.next_visitor and self.eco.rule("noVisitors"):
+                self.next_visitor = now + self.visitor_wait(*gap)  # Quiet Hedge (R22): nobody comes
             if not self.visitor and now >= self.next_visitor:
                 vs = self.eco.d.get("visitors") or [{"id": "rabbit", "ttl": 12}]
                 v = random.choices(vs, weights=[x.get("weight", 1) for x in vs])[0]
-                ttl = float(v.get("ttl", 12))
+                # Long Ears (R22 perk): guests linger a few seconds more
+                ttl = float(v.get("ttl", 12)) + self.eco.perks.get("longEars", 0) * (
+                    self.eco.d.get("trial") or {}).get("longEarsSec", 3)
                 self.visitor = {"kind": v["id"], "until": now + ttl}
                 self._pending.append({"type": "visitor", "kind": v["id"], "ttl": ttl})
                 if v["id"] in ("rabbit", "tin"):  # stale tabs see gold — tin fools them too
@@ -424,15 +445,39 @@ class Patch:
 
         elif kind == "prestige":
             before = eco.seed_mult()
-            gained = eco.prestige()
+            # Trials (R22): "go to seed… into a Trial" — one rule for the
+            # whole planet's next spring; junk ids fall back to a plain spring
+            tid = msg.get("trial")
+            tid = tid if isinstance(tid, str) and eco.trial_available(tid) and not eco.trial else None
+            gained = eco.prestige(tid)
             if gained:
                 # boost = the world's actual seed-bonus change; the old
                 # "+8N% forever" copy overstated it by orders of magnitude
                 self.emit({"type": "prestige", "gained": gained,
-                           "boost": eco.seed_mult() / before})
+                           "boost": eco.seed_mult() / before,
+                           "trial": eco.trial["id"] if eco.trial else None})
                 self.chronicle.log({"type": "prestige", "gained": gained,
+                                    "trial": eco.trial["id"] if eco.trial else None,
                                     "who": conn.get("name") or ""})
                 self.save()
+
+        elif kind == "paint":
+            # the Quilt (R22): one stitch per connection per cooldown, for a
+            # second of the world's harvest — bots painting are welcome (P4)
+            if now - conn.get("last_paint", -1e9) < self.quilt.cooldown:
+                return None
+            raw_i, raw_c = msg.get("i"), msg.get("c")
+            if not all(isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+                       for x in (raw_i, raw_c)):
+                return None  # garbage is not a stitch (and never a crash)
+            i, c = int(raw_i), int(raw_c)
+            if self.quilt.paint(i, c):
+                conn["last_paint"] = now
+                eco.bank = max(0.0, eco.bank - eco.cps() * self.quilt.cost_seconds)
+                self._pending.append({"type": "event", "ev": {"type": "paint", "i": i, "c": c,
+                                                              "v": self.quilt.version}})
+                self.chronicle.log({"type": "paint", "who": conn.get("name") or ""})
+                self.save_soon()
 
 
 def create_app() -> FastAPI:
@@ -479,6 +524,13 @@ def create_app() -> FastAPI:
         ensure_loop()
         return JSONResponse({"tenders": patch.tenders.top(10),
                              "presence": patch.tenders.presence()})  # R21
+
+    @app.get("/api/quilt")
+    async def quilt() -> JSONResponse:
+        """The whole quilt (R22): fetched on connect and whenever a client's
+        version falls behind the snapshot's quiltV. Diffs ride as events."""
+        ensure_loop()
+        return JSONResponse(patch.quilt.snapshot())
 
     @app.get("/api/chronicle")
     async def chronicle(since: float = 0) -> JSONResponse:

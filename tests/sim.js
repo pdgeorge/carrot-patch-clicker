@@ -202,8 +202,8 @@ check(!bad.almanac.fake && bad.almanac.sd0 === true
 
 /* the Almanac (R16): deeds latch forever, once, and compound */
 console.log('\n=== the Almanac ===');
-check(CC.ALMANAC.length === 78, `78 pages in the catalog (got ${CC.ALMANAC.length})`);
-check(new Set(CC.ALMANAC.map(p => p.id)).size === 78, 'page ids unique');
+check(CC.ALMANAC.length === 87, `87 pages in the catalog — 78 + nine Trial pages (got ${CC.ALMANAC.length})`);
+check(new Set(CC.ALMANAC.map(p => p.id)).size === 87, 'page ids unique');
 const al = new CC.Core();
 al.seeds = 100;
 check(al.almanacCount() === 0, 'nothing latches without a tick');
@@ -541,6 +541,109 @@ const badH = new CC.Core();
 badH.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0, owned: [], bought: {},
   seeds: 0, sprouts: 0, shed: {}, honey: -7.5, beeT: 1e12 });
 check(badH.honey === 0 && badH.beeT <= 86400, 'negative honey and a runaway bee clock are clamped');
+
+/* Trials (R22): one rule for one spring; rewards are never multipliers */
+console.log('\n=== Trials (R22) ===');
+const T = CC.TRIAL;
+/* a spring with `run` harvested so far and enough lifetime for a seed; bank set, not earned */
+const spring = (core, run) => { core.totalRun = run; core.lifetimeBase = Math.max(core.lifetimeBase, 1e7); core.bank = 1e6; };
+const tr = new CC.Core();
+spring(tr, 3e6); tr.buy(0, 10); tr.buy(1, 5);
+check(tr.trialGoal('frost') === 3e6, 'goal is the spring being left (no log yet)');
+check(!tr.prestige('nope') || tr.trial === null, 'an unknown trial id is a plain spring');
+const tr2 = new CC.Core();
+spring(tr2, 3e6);
+check(tr2.prestige('frost') > 0 && tr2.trial && tr2.trial.id === 'frost' && tr2.trial.goal === 3e6,
+  'going to seed into Late Frost opens a Trial at the spring\'s goal');
+check(tr2.runLog.length === 1 && tr2.runLog[0] === 3e6, 'the run log remembers the spring');
+tr2.bank = 1e4; tr2.buy(0, 5);
+check(tr2.cps() === 0 && tr2.haltT === 180, 'a purchase stills the garden');
+tr2.tick(90); /* ribbons/pages latch here too, so compare against the live base */
+check(Math.abs(tr2.cps() / tr2.baseCps() - 0.5) < 1e-9, 'half thawed at 90 s');
+tr2.tick(100);
+check(Math.abs(tr2.cps() / tr2.baseCps() - 1) < 1e-9 && tr2.haltT === 0, 'fully thawed after three minutes');
+tr2.bank = 1e6; tr2.buy(0, 5); tr2.haltT = 0; tr2.buyUpgrade('b0t0');
+check(tr2.haltT === 180, 'an upgrade is a purchase too');
+tr2.trial.t = 0; tr2.haltT = 0;
+tr2.bank = 0; tr2.earn(3e6); /* reach the goal */
+const won = tr2.tick(0.1);
+check(won.some(e => e.type === 'trial' && e.won && e.id === 'frost' && e.n === 1), 'reaching the goal wins the Trial');
+check(tr2.trial === null && tr2.trialsDone.frost === 1 && tr2.trialBest.frost > 0 && tr2.perks.scarecrow === 1,
+  'the Trial clears, the count and best time record, the Scarecrow is paid');
+check(tr2.trialGoal('frost') >= 3e7 && tr2.trialGoal('frost') < 3.1e7, 'the next Late Frost asks a decade more');
+tr2.latchPages();
+check(tr2.almanac.tr0 === true && !tr2.almanac.tr7, 'The Thaw is written; the set page waits');
+/* expiry */
+const tx = new CC.Core();
+spring(tx, 1e9); tx.prestige('drought');
+const gm = tx.globalMult();
+tx.trial = null; const gmRaw = tx.globalMult(); tx.trial = { id: 'drought', goal: 1e9, t: 0 };
+check(Math.abs(gm - Math.pow(gmRaw, 0.75)) < 1e-12 * gmRaw, 'Drought raises every blessing to the 3/4 power');
+const lost = tx.tick(T.hours * 3600 + 1);
+check(lost.some(e => e.type === 'trial' && !e.won) && tx.trial === null && !tx.trialsDone.drought,
+  'the clock runs out: the spring simply continues, nothing is paid');
+/* Crop Rotation: a pyramid of plots */
+const cr = new CC.Core();
+spring(cr, 1e7); cr.prestige('rotation'); cr.bank = 1e9;
+check(!cr.buy(1, 1) && cr.owned[1] === 0, 'no plot may outnumber the one before it');
+check(cr.buy(0, 3) && cr.buy(1, 3) && !cr.buy(1, 1) && cr.maxAffordable(1) === 0, 'the chain holds at equal counts');
+check(cr.maxAffordable(2) === 3 && cr.buy(2, 2) && cr.rowRoom(2) === 1, 'Max respects the room left in the chain');
+/* Short Rows: only six plots exist */
+const sr = new CC.Core();
+spring(sr, 1e7); sr.prestige('rows'); sr.bank = 1e12; sr.owned[7] = 50;
+check(!sr.buy(6, 1) && sr.maxAffordable(6) === 0 && sr.buy(5, 1), 'the seventh plot does not exist; the sixth does');
+check(sr.baseCps() === sr.owned[5] * CC.BUILDINGS[5].cps * sr.buildingMult(5) * sr.globalMult(), 'rows past six make nothing');
+check(!sr.visibleUpgrades().some(u => u.id === 'b7t0'), 'their upgrades stay off the shelf');
+/* Hands Only: the sanctioned bot spring */
+const ho = new CC.Core();
+spring(ho, 1e7); ho.buyUpgrade('c0');
+ho.prestige('hands'); ho.bank = 1e9; ho.buy(0, 50); ho.buy(1, 20);
+ho.bought.c1 = true; /* a cpsPct click upgrade, if any — harmless otherwise */
+check(ho.cps() === 0 && ho.baseCps(true) > 0, 'the plots sleep');
+const pctAny = CC.CLICK_UPGRADES.some(u => u.cpsPct);
+ho.shed.l1 = 2;
+check(ho.clickPower() > 1 + 0 && ho.clickPower() >= 0.01 * ho.baseCps(true) * ho.buffMult(), 'clicks keep their share of what the plots would make');
+void pctAny;
+/* the Scarecrow */
+const sc = new CC.Core();
+sc.perks.scarecrow = 1; sc.earn(1e6);
+sc.tick(T.scarecrowEvery + 0.01);
+check(sc.owned[0] === 1 && sc.owned[1] === 0, 'Scarecrow lv 1 buys one Window Box a minute (cheapest ≤ 1% of bank)');
+sc.bank = 100; sc.tick(T.scarecrowEvery + 0.01);
+check(sc.owned[0] === 1, 'and never spends more than 1% of the bank');
+/* perks at the next spring */
+const pk = new CC.Core();
+pk.perks.startTier = 1; pk.perks.resproutCap = 20; pk.shed.h0 = 150;
+spring(pk, 1e7); pk.prestige();
+check(CC.BUILDINGS.every((_, i) => pk.bought[`b${i}t0`]) && !pk.bought.b0t1, 'springs start with tier-1 upgrades');
+check(pk.owned[CC.SHED.find(u => u.id === 'h0').building] === 120, 'heirlooms resprout to 120');
+pk.perks.cap.l1 = 2;
+check(pk.shedCap(CC.SHED.find(u => u.id === 'l1')) === 8, 'the Sprinkler Network cap rises to 8 valves');
+pk.perks.clickFrenzy = 1;
+pk.buffs.push({ name: 'Rabbit Frenzy', mult: 7, left: 10 });
+const cpF = pk.clickPower(); pk.perks.clickFrenzy = 0;
+check(Math.abs(cpF / pk.clickPower() - 3) < 1e-9, 'Click Frenzy lv 1 triples clicks during a frenzy');
+/* a spring mid-Trial abandons it */
+const ab = new CC.Core();
+spring(ab, 1e7); ab.prestige('fog'); spring(ab, 1e8);
+ab.prestige();
+check(ab.trial === null && !ab.trialsDone.fog, 'going to seed mid-Trial abandons it');
+/* save / load */
+const sv = new CC.Core();
+spring(sv, 1e7); sv.prestige('hedge'); sv.perks.longEars = 2; sv.trialsDone.frost = 3; sv.trialBest.frost = 1234.5;
+sv.haltT = 0; sv.trial.t = 100;
+const sv2 = new CC.Core();
+sv2.deserialize(JSON.parse(JSON.stringify(sv.serialize())));
+check(sv2.trial && sv2.trial.id === 'hedge' && sv2.trial.goal === sv.trial.goal && sv2.trial.t === 100
+  && sv2.trialsDone.frost === 3 && sv2.trialBest.frost === 1234.5 && sv2.perks.longEars === 2 && sv2.runLog.length === 1,
+  'a Trial, its ledger and the perks survive a save');
+const junk = new CC.Core();
+junk.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0, owned: [], bought: {}, seeds: 0, sprouts: 0, shed: {},
+  trial: { id: 'frost', goal: Infinity, t: -5 }, trialsDone: { frost: 99, bogus: 3 }, perks: { scarecrow: 1e9, cap: { l1: 50, zz: 1 } }, runLog: [1, 'x', -2, Infinity], haltT: 1e12 });
+check(junk.trial === null && junk.trialsDone.frost === T.maxDone && junk.trialsDone.bogus === undefined
+  && junk.perks.scarecrow === 5 && junk.perks.cap.l1 === 10 && junk.perks.cap.zz === undefined && junk.runLog.length === 1 && junk.haltT === 3600,
+  'forged Trial state is clamped: no infinite goal, no ladder past its top');
+check(!junk.trialAvailable('frost') && junk.trialAvailable('fog'), 'a maxed Trial cannot be entered again');
 
 console.log(fails ? `\n${fails} FAILURE(S)` : '\nALL CHECKS PASSED');
 process.exit(fails ? 1 : 0);

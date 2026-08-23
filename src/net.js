@@ -172,6 +172,15 @@ CC.Patch = class {
       c.honey = s.honey || 0;
       c.handsBonus = s.handsBonus || 1;
       c.marketHour = !!s.marketHour;
+      /* Trials (R22): the rule, the ledger and the perks are the server's */
+      c.trial = s.trial ? { ...s.trial } : null;
+      c.trialsDone = s.trialsDone || {};
+      c.trialBest = s.trialBest || {};
+      c.runLog = s.runLog || [];
+      c.perks = s.perks ? { cap: {}, ...s.perks } : CC.Core.freshPerks();
+      c.haltT = s.haltT || 0;
+      /* the Quilt (R22): diffs ride as events; a version gap means a refetch */
+      if (msg.quiltV !== undefined && msg.quiltV > ui.quilt.v) ui.fetchQuilt();
       this.order = msg.order || null;
       this.market = msg.market || null;
       if (msg.now) this.skew = msg.now - Date.now() / 1000;

@@ -10,3 +10,5 @@ carrot_patch/patch_state_parish.json
 carrot_patch/patch_state_parish.tmp
 carrot_patch/patch_state_events.jsonl
 carrot_patch/orders_override.json
+carrot_patch/patch_state_quilt.json
+carrot_patch/patch_state_quilt.tmp

@@ -203,6 +203,11 @@ restatement of the value.
 | Chronicle | append-only `<state>_events.jsonl`, 7-day window, 500-event cap on `/api/chronicle?since=` | `carrot_patch/parish.py` | The world's day-book: backs "while you were away" (R5, shipped here), the Today's Patch card and the presence board. JSONL, not SQLite — it is a record, never a gate: a write failure is swallowed. |
 | Presence board | hands today, streaks (names ≥ 7 days old, top 5), founders (first 5) | `carrot_patch/tenders.py` `presence()` | The board a bot cannot own (R6): a sybil account gains one presence-day each — nothing to farm. Streaks are consecutive UTC days with one intent. |
 | Readable numbers | 🔢 short (`1.23Td`) / long (`1.23 tredecillion`) | `src/core.js` `CC.fmtLong`, `src/ui.js` | A display preference stored beside the day/night toggle; the value never changes, only the unit's name. |
+| Trial clock & ladder | 48 h; 5 completions per Trial; goal = max(last 5 springs' run totals, incl. the one ending) × 10^completions, floor 1e6 (`CC.TRIAL`) | `src/data.js`; `trialGoal`/`tick` in both engines | "Get back to where we were" is a goal that never stales and needs no tuning; one decade per completion keeps a Trial hard exactly five times. 48 h spans two evenings for a two-person world. The clock is wall time — downtime counts against it. |
+| Trial rules | Late Frost halt 180 s · Short Rows 6 plots · Drought exponent 0.75 (`CC.TRIALS[].rule`) | `src/data.js`; `haltMult`/`rowExists`/`rowRoom`/`globalMult` in both engines | Each rule is ONE line in the engine read at one hook, so a rule can never leak into a normal spring: every hook returns neutral when `trial` is null. Hands Only zeroes the plots but clicks keep their cpsPct share of the raw base — the sanctioned bot spring (P4). |
+| Trial rewards | Scarecrow ≤5, start-tier ≤4, resprout +20/≤100, Sprinkler cap +2/≤10, Long Ears ≤5 (+3 s/level), Click Frenzy ≤5 (×(1+2·lv) during a frenzy), Fog 150 honey (`CC.TRIALS[].reward`) | `applyReward` in both engines | Automation, caps and unlocks, never a production multiplier — zero β. Every ladder is clamped in `applyReward` AND in the save sanitizer, so a forged perk can't climb. Click Frenzy touches clicks only, inside a 30 s buff: time-boxed, free. |
+| Scarecrow | every 60 s, one unit of the cheapest affordable building among the first 2·lv rows, only if ≤ 1% of the bank; rests during Late Frost | `tick` in both engines | A patient hand for humans who aren't running the bot; the 1% rule means it can never out-spend a person's plan or starve a Max buy. Deterministic, so both engines stay in step. Silent on the wire — the snapshot shows it. |
+| The Quilt | 48×48, 16 colours, one stitch per connection per 30 s, costing 1 s of cps (`CC.QUILT`) | `src/data.js`; `carrot_patch/parish.py` `Quilt` | 2304 cells at 2/min/connection is a multi-day project for a handful of people — an artifact, not a minigame. The price is nominal by design (a second of harvest), so the quilt is never an economy sink; the cooldown is per socket, so bots paint at human pace (Knights of the Button: welcome). Diffs ride as `paint` events; `quiltV` in the snapshot lets a client refetch `/api/quilt` after a gap. Survives Go to Seed; framed and cleared at Lie Fallow (R24). |
 
 ## Unlock conditions
 
@@ -376,6 +381,25 @@ Numbered for reference. R7 and R14 are the active priorities.
   week boundaries); everything else is server business in `parish.py`.
   Next: R22 Trials & the Quilt, R23 the Seed Bed (honey's sink), R24 Lie
   Fallow (the second prestige).
+- **R22 — Trials & the Quilt. ✅ Shipped (2026-08).** Second slice of The
+  Fallow Year. **Trials:** the Go to Seed modal gains "which spring?" — a
+  plain one, or one of seven data-defined rules (`CC.TRIALS`) for the whole
+  world's next spring: Late Frost (purchases still the garden), Crop
+  Rotation (no plot may outnumber the one before), Short Rows (six plots),
+  Hands Only (plots sleep; clicks, guests, rain count), Drought (every
+  blessing ^0.75), Fog (numbers hidden), Quiet Hedge (no guests). The goal
+  is "get back to where we were" within 48 h; the spring carries on either
+  way. Each completion pays a perk — Scarecrow, upgrade-tier starts, deeper
+  resprouts, a sprinkler cap, Long Ears, Click Frenzy, honey — automation
+  and caps only, five times per Trial, with nine Almanac pages for the
+  chapter. The engine pair learns `trial`, `trialsDone`, `trialBest`,
+  `runLog`, `perks`, `haltT`; every rule is one hook that returns neutral
+  when no Trial runs (parity-tested per rule). One Trial for the planet: a
+  griefer's worst case is a constrained spring for 48 h (P1). The
+  autogardener waits for the thaw under Late Frost. **The Quilt:** a 48×48
+  canvas on the noticeboard wall, painted one stitch per connection per
+  30 s for a second of harvest; copy-as-image for the share. Two new Order
+  kinds (quilt fill, trials won). Next: R23 the Seed Bed.
 
 ## Process for changing the game
 

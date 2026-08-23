@@ -3,6 +3,7 @@
 globalThis.CC = globalThis.CC || {};
 
 CC.fmt = function (n) {
+  if (CC.fog) return '???'; /* the Fog Trial (R22): numbers hidden, tend by feel */
   if (!isFinite(n)) return '∞';
   if (n < 0) return '-' + CC.fmt(-n);
   if (n < 1000) return n < 10 && n % 1 !== 0 ? n.toFixed(1) : Math.floor(n).toString();
@@ -74,6 +75,14 @@ CC.Core = class {
     this.beeT = 0;                /* seconds toward the Bee Cooperative's next drop */
     this.handsBonus = 1;          /* R21 Many Hands: presence-boxed, server-set (transient) */
     this.marketHour = false;      /* R21: the weekly window, server-set (transient) */
+    /* Trials (R22): one rule for one spring; what they paid survives everything */
+    this.trial = null;            /* {id, goal, t} while a Trial spring runs */
+    this.trialsDone = {};         /* id -> completions (0..CC.TRIAL.maxDone) */
+    this.trialBest = {};          /* id -> fastest completion, seconds */
+    this.runLog = [];             /* last five springs' run totals: the goal's memory */
+    this.perks = CC.Core.freshPerks(); /* automation, caps, unlocks — never multipliers */
+    this.haltT = 0;               /* Late Frost: seconds of stillness left after a purchase */
+    this.scT = 0;                 /* Scarecrow clock */
     this.buffs = [];              /* {name, mult, left} */
     this.t = 0;
     this._ribbonCount = 0;
@@ -85,6 +94,46 @@ CC.Core = class {
      ulp is ~4M carrots and a naive `+=` silently drops clicks and small
      ticks (and freezes entirely past 2^75). Reads still round to one ulp of
      the sum — a display grain, never lost carrots. Mirrored in economy.py. */
+  static freshPerks() {
+    return { scarecrow: 0, startTier: 0, resproutCap: 0, cap: {}, longEars: 0, clickFrenzy: 0 };
+  }
+
+  /* ---------- Trials (R22) ---------- */
+  trialData(id) { return (CC.TRIALS || []).find(t => t.id === (id === undefined ? (this.trial && this.trial.id) : id)) || null; }
+  /* the active rule's value for k, else undefined — every hook asks here */
+  rule(k) { const t = this.trialData(); return t ? t.rule[k] : undefined; }
+  trialDone(id) { return this.trialsDone[id] || 0; }
+  /* "get back to where we were": the largest of the last five springs
+     (including the one ending now), one decade higher per completion */
+  trialGoal(id) {
+    const runs = this.runLog.concat([this.totalRun]);
+    const best = Math.max(1e6, ...runs);
+    return best * Math.pow(10, this.trialDone(id));
+  }
+  trialAvailable(id) {
+    const t = this.trialData(id);
+    return !!t && this.trialDone(id) < CC.TRIAL.maxDone;
+  }
+  /* Late Frost: production stills on every purchase and thaws linearly */
+  haltMult() {
+    const h = this.rule('haltOnBuy');
+    return h && this.haltT > 0 ? Math.max(0, 1 - this.haltT / h) : 1;
+  }
+  touchHalt() { const h = this.rule('haltOnBuy'); if (h) this.haltT = h; }
+  /* a building "exists" unless Short Rows has cut the field */
+  rowExists(i) { const m = this.rule('buildingsMax'); return m === undefined || i < m; }
+  /* apply one Trial reward to the world's perks; returns the ledger line */
+  applyReward(r) {
+    const p = this.perks;
+    if (r.scarecrow) p.scarecrow = Math.min(5, p.scarecrow + r.scarecrow);
+    if (r.startTier) p.startTier = Math.min(CC.TIERS.length, p.startTier + r.startTier);
+    if (r.resproutCap) p.resproutCap = Math.min(100, p.resproutCap + r.resproutCap);
+    if (r.cap) p.cap[r.cap] = Math.min(10, (p.cap[r.cap] || 0) + (r.n || 1));
+    if (r.longEars) p.longEars = Math.min(5, p.longEars + r.longEars);
+    if (r.clickFrenzy) p.clickFrenzy = Math.min(5, p.clickFrenzy + r.clickFrenzy);
+    if (r.honey) this.honey += r.honey;
+  }
+
   get totalAllTime() { return this.lifetimeBase + this.totalRun; }
   set totalAllTime(v) { this.lifetimeBase = v - this.totalRun; }
 
@@ -140,11 +189,17 @@ CC.Core = class {
     if (c.heirloomEvery !== undefined) {
       return CC.SHED.every(u => !u.resprout || this.shedLevel(u.id) >= c.heirloomEvery);
     }
+    /* Trials (R22) */
+    if (c.trial !== undefined) return this.trialDone(c.trial) >= (c.n || 1);
+    if (c.trialMax !== undefined) {
+      return (CC.TRIALS || []).filter(t => this.trialDone(t.id) >= CC.TRIAL.maxDone).length >= c.trialMax;
+    }
     return false;
   }
 
   upgradeVisible(u) {
     if (this.bought[u.id]) return false;
+    if (u.type === 'building' && !this.rowExists(u.b)) return false; /* Short Rows */
     if (u.unlock) return u.unlock.every(c => this.condMet(c));
     if (u.type === 'building') return this.owned[u.b] >= u.need;
     if (u.type === 'synergy') return this.owned[u.target] >= u.needTarget && this.owned[u.per] >= u.needPer;
@@ -158,6 +213,7 @@ CC.Core = class {
   buyUpgrade(id) {
     const u = this.allUpgrades().find(u => u.id === id);
     if (!u || this.bought[id] || this.bank < u.cost || !this.upgradeVisible(u)) return false;
+    this.touchHalt(); /* Late Frost: an upgrade is a purchase too */
     this.bank -= u.cost;
     this.bought[id] = true;
     return true;
@@ -211,7 +267,8 @@ CC.Core = class {
     for (const u of CC.SHED) if (u.mult) m *= Math.pow(u.mult, this.shedLevel(u.id));
     m *= this.almanacMult();
     m *= Math.pow(CC.MILESTONE_MULT, this.bumperTotal());
-    return m;
+    const e = this.rule('expAll');  /* Drought: every blessing at three-quarter power */
+    return e ? Math.pow(m, e) : m;
   }
 
   buffMult() {
@@ -224,15 +281,20 @@ CC.Core = class {
   seasonData() { return CC.SEASONS.find(s => s.id === this.season) || null; }
   seasonMult() { const s = this.seasonData(); return (s && s.mult) || 1; }
 
-  baseCps() {
+  /* `raw` ignores Hands Only (the plots sleep, but clicks are still worth
+     their share of what the plots WOULD make — the sanctioned bot spring);
+     Short Rows cuts the field for both */
+  baseCps(raw = false) {
+    if (!raw && this.rule('buildingsOff')) return 0;
     let c = 0;
     for (let i = 0; i < CC.BUILDINGS.length; i++) {
+      if (!this.rowExists(i)) continue;
       c += this.owned[i] * CC.BUILDINGS[i].cps * this.buildingMult(i);
     }
     return c * this.globalMult();
   }
 
-  cps() { return this.baseCps() * this.buffMult() * this.seasonMult() * this.handsBonus; }
+  cps() { return this.baseCps() * this.buffMult() * this.seasonMult() * this.handsBonus * this.haltMult(); }
 
   /* one multiplier for every price discount in play: a priceOff season and
      Market Hour stack multiplicatively (R17/R21) */
@@ -257,7 +319,10 @@ CC.Core = class {
       if (u.cpsPct) pct += u.cpsPct;
     }
     for (const u of CC.SHED) if (u.cpsPct) pct += u.cpsPct * this.shedLevel(u.id);
-    return (base + pct * this.baseCps()) * this.buffMult() * this.seasonMult() * this.handsBonus;
+    /* Click Frenzy (R22 perk): a Rabbit Frenzy also multiplies clicks ×(1+2·lv) */
+    const cf = this.perks.clickFrenzy && this.buffs.some(b => b.name === 'Rabbit Frenzy')
+      ? 1 + 2 * this.perks.clickFrenzy : 1;
+    return (base + pct * this.baseCps(true)) * this.buffMult() * this.seasonMult() * this.handsBonus * cf;
   }
 
   /* ---------- actions ---------- */
@@ -277,11 +342,21 @@ CC.Core = class {
     return c0 * (Math.pow(r, count) - 1) / (r - 1) * this.priceDisc();
   }
 
+  /* Trials (R22): the most a row may hold right now — Short Rows cuts the
+     field, Crop Rotation chains each row to the one before it */
+  rowRoom(i) {
+    if (!this.rowExists(i)) return 0;
+    if (this.rule('chain') && i > 0) return Math.max(0, this.owned[i - 1] - this.owned[i]);
+    return Infinity;
+  }
+
   buy(i, count = 1) {
+    if (count < 1 || count > this.rowRoom(i)) return false;
     const cost = this.costOf(i, count);
     if (this.bank < cost) return false;
     this.bank -= cost;
     this.owned[i] += count;
+    this.touchHalt();
     return true;
   }
 
@@ -295,7 +370,7 @@ CC.Core = class {
     let m = Math.min(5000, Math.floor(Math.log(1 + this.bank * (r - 1) / c0) / Math.log(r)));
     while (m > 0 && this.costOf(i, m) > this.bank) m--;
     while (m < 5000 && this.costOf(i, m + 1) <= this.bank) m++;
-    return m;
+    return Math.min(m, this.rowRoom(i));
   }
 
   /* ---------- the Potting Shed (R13/R15) ---------- */
@@ -318,7 +393,7 @@ CC.Core = class {
      1.04 ladder climbs far past what a 1.45 one can: a flat 800 once
      clamped the live world's 1045-turn compost heap on reload. */
   shedCap(u) {
-    if (u.max !== undefined) return u.max;
+    if (u.max !== undefined) return u.max + ((this.perks.cap || {})[u.id] || 0); /* Trial perk (R22) */
     if (!u.repeat || !(u.costGrowth > 1)) return 1;
     return Math.floor(600 / Math.log(u.costGrowth)); /* e^600 ≈ 1e260 */
   }
@@ -393,11 +468,18 @@ CC.Core = class {
   pendingSeeds() { return Math.max(0, this.seedsEarnedTotal() - this.seeds); }
   nextSeedAt() { return Math.pow(this.seedsEarnedTotal() + 1, 2) * 1e6; }
 
-  prestige() {
+  prestige(trialId) {
     const gain = this.pendingSeeds();
     if (gain < 1) return 0;
     /* a deed done in the dying second of a spring still counts (review F3) */
     if (!this.mirrorBook) this.latchPages();
+    /* Trials (R22): remember this spring, then maybe open the next one
+       under a rule. Going to seed mid-Trial abandons it — a spring is the
+       unit, and the goal was this spring's. */
+    const goal = trialId && this.trialAvailable(trialId) && !this.trial ? this.trialGoal(trialId) : 0;
+    this.runLog = this.runLog.concat([this.totalRun]).slice(-CC.TRIAL.runLog);
+    this.trial = goal > 0 ? { id: trialId, goal, t: 0 } : null;
+    this.haltT = 0;
     this.seeds += gain;
     this.sprouts += gain * this.mintMult(); /* every seed sprouts (R13); doublers stack (R15) */
     this.prestiges++;
@@ -410,11 +492,18 @@ CC.Core = class {
     /* a spring clears the weather, never a Parish reward: Bumper Day/Week
        are earned by the whole world and outlive any one run (R21) */
     this.buffs = this.buffs.filter(b => b.keep);
-    /* resprout (R15): heirloom strains regrow themselves each spring */
+    /* resprout (R15): heirloom strains regrow themselves each spring —
+       deeper with the Short Rows perk (R22) */
+    const cap = CC.TRIAL.resproutCapBase + this.perks.resproutCap;
     for (const u of CC.SHED) {
       if (u.resprout && u.building !== undefined) {
-        this.owned[u.building] = Math.min(this.shedLevel(u.id), 100);
+        this.owned[u.building] = Math.min(this.shedLevel(u.id), cap);
       }
+    }
+    /* Crop Rotation perk (R22): springs start with the first n tiers of
+       building upgrades already on the shelf */
+    for (let ti = 0; ti < this.perks.startTier; ti++) {
+      for (let i = 0; i < CC.BUILDINGS.length; i++) this.bought[`b${i}t${ti}`] = true;
     }
     /* pre-seed, silently: resprouted rows must not fire a bumper toast storm */
     this._bumperSeen = CC.BUILDINGS.map((_, i) => this.bumperCount(i));
@@ -436,6 +525,43 @@ CC.Core = class {
     const expired = this.buffs.filter(b => b.left <= 0);
     this.buffs = this.buffs.filter(b => b.left > 0);
     for (const b of expired) events.push({ type: 'buffEnd', name: b.name });
+    /* Trials (R22): the thaw, the clock, the goal */
+    if (this.haltT > 0) this.haltT = Math.max(0, this.haltT - dt);
+    if (this.trial) {
+      const tr = this.trial;
+      tr.t += dt;
+      if (this.totalRun >= tr.goal) {
+        const t = this.trialData();
+        const n = this.trialDone(tr.id) + 1;
+        this.trialsDone[tr.id] = n;
+        if (!(this.trialBest[tr.id] <= tr.t)) this.trialBest[tr.id] = tr.t;
+        if (t && t.reward) this.applyReward(t.reward);
+        events.push({ type: 'trial', id: tr.id, won: true, n, t: tr.t });
+        this.trial = null;
+        this.haltT = 0;
+      } else if (tr.t >= CC.TRIAL.hours * 3600) {
+        events.push({ type: 'trial', id: tr.id, won: false, n: this.trialDone(tr.id), t: tr.t });
+        this.trial = null;
+        this.haltT = 0;
+      }
+    }
+    /* the Scarecrow (R22 perk): every minute it buys one of the cheapest
+       affordable building among the rows it tends, if that costs no more
+       than 1% of the bank — a patient hand, never a multiplier. It rests
+       during Late Frost (its purchase would still the garden). */
+    if (this.perks.scarecrow > 0 && !this.rule('haltOnBuy')) {
+      this.scT += dt;
+      if (this.scT >= CC.TRIAL.scarecrowEvery) {
+        this.scT = 0;
+        let pick = -1, best = Infinity;
+        for (let i = 0; i < Math.min(CC.BUILDINGS.length, 2 * this.perks.scarecrow); i++) {
+          if (this.rowRoom(i) < 1) continue;
+          const c = this.costOf(i, 1);
+          if (c <= this.bank * CC.TRIAL.scarecrowPct && c < best) { best = c; pick = i; }
+        }
+        if (pick >= 0 && this.buy(pick, 1)) events.push({ type: 'scarecrow', b: pick });
+      }
+    }
     const rc = this.ribbons().length;
     if (rc > this._ribbonCount) {
       /* index, not object — same event shape as economy.py, so one UI
@@ -476,6 +602,8 @@ CC.Core = class {
       prestiges: this.prestiges, rabbits: this.rabbits, sproutsSpent: this.sproutsSpent,
       tins: this.tins, stalls: this.stalls, weathers: this.weathers,
       honey: this.honey, beeT: this.beeT,
+      trial: this.trial ? { ...this.trial } : null, trialsDone: this.trialsDone, trialBest: this.trialBest,
+      runLog: this.runLog, perks: this.perks, haltT: this.haltT,
       almanac: this.almanac,
       /* season deliberately NOT saved: the dev garden has no calendar, and a
          ?season= theme test must never persist its bonus into the solo save;
@@ -514,6 +642,30 @@ CC.Core = class {
     this.weathers = Math.max(0, Math.floor(s.weathers) || 0);
     this.honey = Math.max(0, Math.floor(s.honey) || 0);
     this.beeT = Math.max(0, Math.min(+s.beeT || 0, 86400));
+    /* Trials (R22): ids must exist, counts stay inside the ladder, the
+       goal must be a real number — a forged Infinity goal would never end */
+    const T = CC.TRIAL || { maxDone: 5, runLog: 5, hours: 48 };
+    this.trialsDone = {};
+    this.trialBest = {};
+    for (const t of (CC.TRIALS || [])) {
+      const n = Math.floor((s.trialsDone || {})[t.id]) || 0;
+      if (n > 0) this.trialsDone[t.id] = Math.min(n, T.maxDone);
+      const b = +(s.trialBest || {})[t.id];
+      if (b > 0 && isFinite(b)) this.trialBest[t.id] = b;
+    }
+    const tr = s.trial;
+    this.trial = tr && this.trialData(tr.id) && tr.goal > 0 && isFinite(tr.goal)
+      ? { id: tr.id, goal: +tr.goal, t: Math.max(0, Math.min(+tr.t || 0, T.hours * 3600)) } : null;
+    this.runLog = (Array.isArray(s.runLog) ? s.runLog : []).map(x => +x).filter(x => x >= 0 && isFinite(x)).slice(-T.runLog);
+    const pk = s.perks || {};
+    const cnt = (v, hi) => Math.min(hi, Math.max(0, Math.floor(v) || 0));
+    this.perks = {
+      scarecrow: cnt(pk.scarecrow, 5), startTier: cnt(pk.startTier, CC.TIERS.length),
+      resproutCap: cnt(pk.resproutCap, 100), longEars: cnt(pk.longEars, 5), clickFrenzy: cnt(pk.clickFrenzy, 5),
+      cap: {},
+    };
+    for (const u of CC.SHED) { const v = cnt((pk.cap || {})[u.id], 10); if (v > 0 && u.max !== undefined) this.perks.cap[u.id] = v; }
+    this.haltT = Math.max(0, Math.min(+s.haltT || 0, 3600));
     /* known page ids are historical fact and stay latched; junk ids would
        mint ×1.02 each forever — dropped */
     this.almanac = {};

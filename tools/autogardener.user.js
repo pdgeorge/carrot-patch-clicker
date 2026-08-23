@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Carrot Patch Autogardener
 // @namespace    https://github.com/pdgeorge/carrot-patch-clicker
-// @version      1.1.0
+// @version      1.2.0
 // @description  Tends the shared carrot patch: clicks, buys whatever is best value right now, greets visitors. Auto-clickers are gardeners too (DESIGN P4).
 // @author       the gardeners
 // @match        https://pdgeorge.com.au/carrot-patch/*
@@ -251,6 +251,15 @@
         lastAction = `greeted the ${guest.kind || 'rabbit'}`;
         return true;
       }
+    }
+
+    // 1b. Trials (R22): under Late Frost every purchase stills the garden
+    //     for three minutes — a bot that buys every second would freeze the
+    //     world solid. Wait for the thaw, then buy once. Other rules are
+    //     enforced by the engine (rowRoom / rowExists) and need no help.
+    if (core.trial && typeof core.rule === 'function' && core.rule('haltOnBuy') && core.haltT > 0) {
+      lastAction = `waiting for the thaw (${Math.ceil(core.haltT)}s)`;
+      return false;
     }
 
     // 2. spend sprouts (own currency, own race)

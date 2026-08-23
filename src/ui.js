@@ -125,6 +125,32 @@ CC.UI = class {
         '<div class="board-empty">The world signs here — this is the dev garden.</div>';
     }
 
+    /* the Quilt (R22): a canvas the world paints — world mode paints through
+       the server, the dev garden paints its own cloth */
+    const Q = CC.QUILT || { w: 48, h: 48, palette: ['#fff'], cooldown: 30, costSeconds: 1 };
+    this.quilt = { w: Q.w, h: Q.h, v: -1, cells: new Uint8Array(Q.w * Q.h), lastPaint: -1e9, painted: 0 };
+    this.quiltColor = 2;
+    this.quiltCtx = this.$('quilt').getContext('2d');
+    const pal = this.$('quilt-palette');
+    Q.palette.forEach((hex, i) => {
+      const b = document.createElement('button');
+      b.style.background = hex; b.title = `colour ${i}`;
+      b.classList.toggle('on', i === this.quiltColor);
+      b.addEventListener('click', () => {
+        this.quiltColor = i;
+        for (const x of pal.children) x.classList.toggle('on', x === b);
+      });
+      pal.appendChild(b);
+    });
+    this.$('quilt').addEventListener('pointerdown', e => {
+      const r = e.currentTarget.getBoundingClientRect();
+      const x = Math.floor((e.clientX - r.left) / r.width * this.quilt.w);
+      const y = Math.floor((e.clientY - r.top) / r.height * this.quilt.h);
+      if (x >= 0 && y >= 0 && x < this.quilt.w && y < this.quilt.h) this.paintCell(y * this.quilt.w + x, this.quiltColor);
+    });
+    this.$('quilt-copy').addEventListener('click', () => this.copyQuilt());
+    this.drawQuilt();
+
     let last = performance.now();
     const frame = now => {
       const dt = Math.min(0.1, (now - last) / 1000);
@@ -351,6 +377,104 @@ CC.UI = class {
     const done = () => this.toast('📋 Today’s Patch copied — paste it anywhere.');
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => this.toast(text));
     else this.toast(text);
+  }
+
+  /* ---------------- the Quilt (R22) ---------------- */
+  fetchQuilt() {
+    if (!this.worldMode || this._quiltFetching) return;
+    this._quiltFetching = true;
+    const dir = location.pathname.replace(/[^/]*$/, '');
+    fetch(dir + 'api/quilt').then(r => r.json()).then(j => {
+      this._quiltFetching = false;
+      if (!j || !j.cells || j.v <= this.quilt.v) return;
+      const raw = j.cells;
+      for (let i = 0; i < this.quilt.cells.length && 2 * i + 1 < raw.length; i++) {
+        this.quilt.cells[i] = parseInt(raw.substr(2 * i, 2), 16) || 0;
+      }
+      this.quilt.v = j.v; this.quilt.painted = j.painted || 0;
+      this.drawQuilt();
+    }).catch(() => { this._quiltFetching = false; });
+  }
+
+  paintCell(i, c) {
+    if (this.awaitingWorld()) return;
+    const Q = CC.QUILT || { cooldown: 30, costSeconds: 1 };
+    const wait = Q.cooldown - (this.t - this.quilt.lastPaint);
+    if (wait > 0) { this.toast(`🧵 The needle rests — ${Math.ceil(wait)}s before your next stitch.`); return; }
+    if (this.quilt.cells[i] === c) return;
+    this.quilt.lastPaint = this.t;
+    if (this.worldMode) { this.patch.send({ type: 'paint', i, c }); return; }
+    this.quilt.cells[i] = c; this.quilt.painted++;
+    this.core.bank = Math.max(0, this.core.bank - this.core.cps() * Q.costSeconds);
+    this.drawQuilt();
+  }
+
+  drawQuilt() {
+    const Q = CC.QUILT || { palette: ['#fff'] }, x = this.quiltCtx, q = this.quilt;
+    for (let i = 0; i < q.cells.length; i++) {
+      x.fillStyle = Q.palette[q.cells[i]] || Q.palette[0];
+      x.fillRect(i % q.w, Math.floor(i / q.w), 1, 1);
+    }
+    let n = 0; for (const c of q.cells) if (c) n++;
+    this.$('quilt-info').textContent =
+      `${Math.round(n / q.cells.length * 100)}% stitched · ${CC.fmt(q.painted)} stitches ever · one stitch per ${(Q.cooldown || 30)}s, for a second of harvest`;
+  }
+
+  /* the quilt as a picture: ×6 upscale, pixel-crisp, to the clipboard (or a
+     new tab when the clipboard is shy) */
+  copyQuilt() {
+    const q = this.quilt, big = document.createElement('canvas');
+    big.width = q.w * 6; big.height = q.h * 6;
+    const bx = big.getContext('2d');
+    bx.imageSmoothingEnabled = false;
+    bx.drawImage(this.$('quilt'), 0, 0, big.width, big.height);
+    const open = () => { try { window.open(big.toDataURL('image/png'), '_blank'); } catch (e) { /* blocked */ } };
+    if (navigator.clipboard && window.ClipboardItem && big.toBlob) {
+      big.toBlob(blob => {
+        navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+          .then(() => this.toast('🧵 The quilt is on your clipboard — paste it anywhere.'), open);
+      });
+    } else open();
+  }
+
+  /* ---------------- Trials (R22) ---------------- */
+  trialGoalText(id) { return CC.fog ? '???' : CC.fmt(this.core.trialGoal(id)); }
+
+  /* the picker inside the Go to Seed modal: one rule, or a plain spring */
+  buildTrialPick() {
+    const c = this.core, box = this.$('trial-pick');
+    box.innerHTML = '';
+    this._trialChoice = null;
+    if (!CC.TRIALS || !CC.TRIALS.length || c.trial) { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    const head = document.createElement('div'); head.className = 'tp-head';
+    head.textContent = 'WHICH SPRING? — a Trial is one rule for the whole world\'s next spring, 48 h to get back to where we were';
+    box.appendChild(head);
+    const mk = (id, name, line, meta, reward, maxed) => {
+      const l = document.createElement('label');
+      if (maxed) l.classList.add('maxed');
+      const r = document.createElement('input'); r.type = 'radio'; r.name = 'trial'; r.disabled = maxed;
+      r.checked = id === null;
+      r.addEventListener('change', () => {
+        this._trialChoice = id;
+        for (const x of box.querySelectorAll('label')) x.classList.toggle('on', x === l);
+      });
+      const b = document.createElement('b'); b.textContent = name;
+      const m = document.createElement('span'); m.className = 'tp-meta'; m.textContent = meta;
+      const ln = document.createElement('span'); ln.className = 'tp-line'; ln.textContent = line;
+      l.append(r, b, m, ln);
+      if (reward) { const rw = document.createElement('span'); rw.className = 'tp-reward'; rw.textContent = reward; l.appendChild(rw); }
+      if (id === null) l.classList.add('on');
+      box.appendChild(l);
+    };
+    mk(null, 'A plain spring', 'No rule. The garden simply begins again.', '', '');
+    for (const t of CC.TRIALS) {
+      const n = c.trialDone(t.id), maxed = !c.trialAvailable(t.id);
+      const best = c.trialBest[t.id];
+      mk(t.id, t.name, t.line,
+        maxed ? `${n}/${CC.TRIAL.maxDone} — complete` : `goal ${this.trialGoalText(t.id)} · ${n}/${CC.TRIAL.maxDone}${best ? ` · best ${CC.fmtDur(best)}` : ''}`,
+        maxed ? '' : `pays: ${t.rewardText}`, maxed);
+    }
   }
 
   /* ---------------- persistence (dev garden only) ---------------- */
@@ -661,16 +785,19 @@ CC.UI = class {
         return a === b ? `${a}, stacking +8% deeper` : `${a} → <b>${b}</b>`;
       })()}.` +
       (patch ? `<br><br><i>Your name will not be recorded. Your deed will be felt.</i>` : '');
+    this.buildTrialPick();
     const yes = this.$('modal-yes');
     yes.textContent = `Go to seed (+${CC.fmt(n)})`;
     yes.onclick = () => {
       this.$('modal').classList.add('hidden');
+      const trial = this._trialChoice || null;
       if (patch) {
-        this.patch.send({ type: 'prestige' });
+        this.patch.send(trial ? { type: 'prestige', trial } : { type: 'prestige' });
         return; /* the server announces it to the world */
       }
       const before = this.core.seedMult();
-      const gained = this.core.prestige();
+      const gained = this.core.prestige(trial);
+      if (this.core.trial) this.toast(`🧪 ${CC.TRIALS.find(t => t.id === trial).name} begins. Goal: ${this.trialGoalText(trial)}.`);
       CC.audio.seed();
       const b = this.core.seedMult() / before;
       this.toast(`🌸 Second spring. +${CC.fmt(gained)} seeds — ` + (b >= 1.0005
@@ -796,8 +923,9 @@ CC.UI = class {
       const what = boost >= 1.0005
         ? `seed bonus ${this.fmtX(boost)}, now ${this.fmtX(this.core.seedMult())}`
         : `seed bonus now ${this.fmtX(this.core.seedMult())}`;
+      const tt = ev.trial && (CC.TRIALS || []).find(x => x.id === ev.trial);
       this.toast(`🌸 SOMEONE SENT THE WHOLE GARDEN TO SEED. +${CC.fmt(ev.gained)} seeds ` +
-        `— ${what}. A new spring begins.`);
+        `— ${what}. ${tt ? `A TRIAL SPRING begins: ${tt.name} — ${tt.line}` : 'A new spring begins.'}`);
     } else if (ev.type === 'shed') {
       const u = CC.SHED.find(u => u.id === ev.id);
       if (!u) return;
@@ -835,6 +963,22 @@ CC.UI = class {
         const got = (ev.applied || []).join(', ');
         if (ev.tier > 0) { CC.audio.fanfare(); this.toast(`📜 ${ev.name} — tier ${ev.tier} met! The Parish pays: ${got}.`); }
         else { CC.audio.rabbit(); this.toast(`📜 ${ev.name} — missed. The Parish is not pleased: ${got}.`); }
+      }
+    } else if (ev.type === 'trial') {
+      const t = (CC.TRIALS || []).find(x => x.id === ev.id);
+      if (!t) return;
+      if (ev.won) {
+        CC.audio.fanfare();
+        this.toast(`🧪 ${t.name} — WON in ${CC.fmtDur(ev.t || 0)}! The world is back where it was. ${t.rewardText} (${ev.n}/${CC.TRIAL.maxDone}).`);
+      } else {
+        CC.audio.rabbit();
+        this.toast(`🧪 ${t.name} — the clock ran out. The spring carries on, rule lifted.`);
+      }
+    } else if (ev.type === 'paint') {
+      if (ev.i >= 0 && ev.i < this.quilt.cells.length) {
+        this.quilt.cells[ev.i] = ev.c; this.quilt.painted++;
+        if (ev.v !== undefined) this.quilt.v = ev.v;
+        this.drawQuilt();
       }
     } else if (ev.type === 'quiet') {
       const q = CC.QUIET || { boost: 2, boostHours: 1 };
@@ -957,9 +1101,13 @@ CC.UI = class {
     /* visitor lifecycle (locally scheduled only in the dev garden, from
        the same data table the server reads — one brain, two clocks) */
     if (!this.worldMode && !this.visitor && this.t >= this.nextVisitor) {
-      let w = CC.VISITORS.reduce((s, v) => s + v.weight, 0) * Math.random();
-      const pick = CC.VISITORS.find(v => (w -= v.weight) < 0) || CC.VISITORS[0];
-      this.spawnVisitor(pick.id, pick.ttl);
+      if (this.core.rule('noVisitors')) { /* Quiet Hedge (R22): nobody comes */
+        this.nextVisitor = this.t + CC.VISITOR_GAP[0] + Math.random() * (CC.VISITOR_GAP[1] - CC.VISITOR_GAP[0]);
+      } else {
+        let w = CC.VISITORS.reduce((s, v) => s + v.weight, 0) * Math.random();
+        const pick = CC.VISITORS.find(v => (w -= v.weight) < 0) || CC.VISITORS[0];
+        this.spawnVisitor(pick.id, pick.ttl + (this.core.perks.longEars || 0) * CC.TRIAL.longEarsSec);
+      }
     }
     if (this.visitor && !this.visitor.gone) {
       const r = this.visitor;
@@ -1025,6 +1173,26 @@ CC.UI = class {
   updateDOM() {
     const c = this.core;
     this.applyTheme(); /* season turns and auto-day/night flips re-skin live */
+    /* the Fog Trial (R22): every number on the page goes dark together */
+    const fog = !!c.rule('hidden');
+    if (fog !== !!CC.fog) {
+      CC.fog = fog;
+      this._shopSig = this._upgSig = this._shedSig = this._statHtml = this._almanacSeen = null;
+    }
+    /* the Trial banner (R22) */
+    {
+      const tl = this.$('trial-line'), tr = c.trial, td = tr && c.trialData();
+      tl.classList.toggle('hidden', !td);
+      if (td) {
+        const left = Math.max(0, CC.TRIAL.hours * 3600 - tr.t);
+        const halt = c.rule('haltOnBuy') && c.haltT > 0;
+        tl.classList.toggle('halt', !!halt);
+        tl.textContent = halt
+          ? `🧪 ${td.name} · ❄ stilled — thaws in ${CC.fmtDur(c.haltT)} · ${CC.fmtDur(left)} left`
+          : `🧪 ${td.name} · ${CC.fmt(c.totalRun)} / ${CC.fmt(tr.goal)} · ${CC.fmtDur(left)} left`;
+        tl.title = td.line;
+      }
+    }
     this.$('bank').textContent = CC.fmt(Math.floor(c.bank));
     this.$('cps').textContent = `${CC.fmt(c.cps())} per second · click for ${CC.fmt(c.clickPower())}`;
 
@@ -1159,13 +1327,15 @@ CC.UI = class {
         const known = i === 0 || c.owned[i] > 0 || c.totalAllTime >= b.cost / 5;
         const isNextMystery = !known && revealed === i;
         if (known) revealed++;
-        row.classList.toggle('hidden', !known && !isNextMystery);
+        /* Short Rows (R22): plots past the rule do not exist this spring */
+        row.classList.toggle('hidden', (!known && !isNextMystery) || !c.rowExists(i));
         row.classList.toggle('mystery', isNextMystery);
         /* Max shows what it would actually buy right now (≥1 so an
            unaffordable row still shows the single price, greyed) */
         const bn = this.buyN === 'max' ? Math.max(1, c.maxAffordable(i)) : this.buyN;
         const cost = c.costOf(i, bn);
-        row.classList.toggle('cant', isNextMystery || c.bank < cost);
+        /* Crop Rotation (R22): a row with no room in the chain is greyed */
+        row.classList.toggle('cant', isNextMystery || c.bank < cost || c.rowRoom(i) < bn);
         const next = c.nextBumperAt(i);
         row.querySelector('.b-name').textContent = isNextMystery ? '???' : b.name;
         /* ceil the label: fractional prices (1.15^n, Market discounts) must
@@ -1225,6 +1395,19 @@ CC.UI = class {
         `<div>Production bonus <b>${this.fmtX(c.globalMult())}${c.buffMult() > 1 ? ` · ⚡${this.fmtX(c.buffMult())}` : ''}${c.seasonMult() > 1 ? ` · 🎪${this.fmtX(c.seasonMult())}` : ''}${c.handsBonus > 1 ? ` · 🤝${this.fmtX(c.handsBonus)}` : ''}</b></div>` +
         `<div class="stat-sub">seeds ${this.fmtX(c.seedMult())} · ribbons ${this.fmtX(c.ribbonMult())} · rest ${this.fmtX(c.globalMult() / (c.seedMult() * c.ribbonMult()))}</div>` +
         (c.honey > 0 ? `<div>Honey in the jar 🍯 <b>${CC.fmt(c.honey)}</b></div>` : '') +
+        (() => { /* Trials (R22): the ledger and what it paid */
+          const done = (CC.TRIALS || []).reduce((a, t) => a + c.trialDone(t.id), 0);
+          if (!done) return '';
+          const p = c.perks, bits = [];
+          if (p.scarecrow) bits.push(`Scarecrow ${p.scarecrow}`);
+          if (p.startTier) bits.push(`tier-${p.startTier} start`);
+          if (p.resproutCap) bits.push(`resprout +${p.resproutCap}`);
+          for (const k in p.cap) bits.push(`${k} cap +${p.cap[k]}`);
+          if (p.longEars) bits.push(`Long Ears ${p.longEars}`);
+          if (p.clickFrenzy) bits.push(`Click Frenzy ${p.clickFrenzy}`);
+          return `<div>Trials won 🧪 <b>${done}</b></div>` +
+            (bits.length ? `<div class="stat-sub">${bits.join(' · ')}</div>` : '');
+        })() +
         `<div>Next seed in <b>${CC.fmt(Math.max(0, c.nextSeedAt() - c.totalAllTime))} 🥕</b></div>` +
         (() => { /* the tail must never fade into fog: name the next rung */
           const r = CC.RIBBONS.find(r => r.at > c.totalAllTime);

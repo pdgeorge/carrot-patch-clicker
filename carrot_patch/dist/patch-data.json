@@ -1576,6 +1576,114 @@
      "weathers": 1
     }
    ]
+  },
+  {
+   "id": "tr0",
+   "name": "The Thaw",
+   "flavor": "Late Frost, survived. Every purchase was a held breath.",
+   "unlock": [
+    {
+     "trial": "frost"
+    }
+   ]
+  },
+  {
+   "id": "tr1",
+   "name": "Pyramids of Plots",
+   "flavor": "Crop Rotation, survived. Nothing outnumbered what came before it.",
+   "unlock": [
+    {
+     "trial": "rotation"
+    }
+   ]
+  },
+  {
+   "id": "tr2",
+   "name": "Six Rows Wide",
+   "flavor": "Short Rows, survived. The far field lay empty and it was enough.",
+   "unlock": [
+    {
+     "trial": "rows"
+    }
+   ]
+  },
+  {
+   "id": "tr3",
+   "name": "By Hand Alone",
+   "flavor": "Hands Only, survived. The plots slept. Somebody did not.",
+   "unlock": [
+    {
+     "trial": "hands"
+    }
+   ]
+  },
+  {
+   "id": "tr4",
+   "name": "The Dry Year",
+   "flavor": "Drought, survived. Every blessing at three-quarter strength.",
+   "unlock": [
+    {
+     "trial": "drought"
+    }
+   ]
+  },
+  {
+   "id": "tr5",
+   "name": "The Hidden Chapter",
+   "flavor": "Fog, survived. This page was written without looking.",
+   "unlock": [
+    {
+     "trial": "fog"
+    }
+   ]
+  },
+  {
+   "id": "tr6",
+   "name": "Hedge and Silence",
+   "flavor": "Quiet Hedge, survived. No guest came, and the garden grew anyway.",
+   "unlock": [
+    {
+     "trial": "hedge"
+    }
+   ]
+  },
+  {
+   "id": "tr7",
+   "name": "Seven Springs, Seven Rules",
+   "flavor": "Every Trial, at least once. The Almanac closes the chapter.",
+   "unlock": [
+    {
+     "trial": "frost"
+    },
+    {
+     "trial": "rotation"
+    },
+    {
+     "trial": "rows"
+    },
+    {
+     "trial": "hands"
+    },
+    {
+     "trial": "drought"
+    },
+    {
+     "trial": "fog"
+    },
+    {
+     "trial": "hedge"
+    }
+   ]
+  },
+  {
+   "id": "tr8",
+   "name": "Old Hand",
+   "flavor": "Five completions of one Trial. The rule is a friend now.",
+   "unlock": [
+    {
+     "trialMax": 1
+    }
+   ]
   }
  ],
  "almanacMult": 1.02,
@@ -1742,6 +1850,30 @@
    ],
    "line": "Spend what the shed is hoarding.",
    "unit": "of the sprouts held at posting"
+  },
+  {
+   "id": "quilt",
+   "name": "Stitch the Quilt",
+   "kind": "quilt",
+   "tiers": [
+    0.25,
+    0.5,
+    0.75
+   ],
+   "line": "Paint the quilt on the noticeboard — a quarter, a half, three-quarters full.",
+   "unit": "of the quilt painted"
+  },
+  {
+   "id": "trial",
+   "name": "A Trial Spring",
+   "kind": "trials",
+   "tiers": [
+    1,
+    2,
+    3
+   ],
+   "line": "Go to seed into a Trial, and win it.",
+   "unit": "trials completed"
   }
  ],
  "orderRewards": {
@@ -1791,5 +1923,125 @@
    "weatherGapMult": 2,
    "dur": 86400
   }
- ]
+ ],
+ "trial": {
+  "hours": 48,
+  "maxDone": 5,
+  "runLog": 5,
+  "scarecrowEvery": 60,
+  "scarecrowPct": 0.01,
+  "resproutCapBase": 100,
+  "longEarsSec": 3
+ },
+ "trials": [
+  {
+   "id": "frost",
+   "name": "Late Frost",
+   "rule": {
+    "haltOnBuy": 180
+   },
+   "line": "Every purchase stills the whole garden; it thaws over three minutes.",
+   "reward": {
+    "scarecrow": 1
+   },
+   "rewardText": "Scarecrow +1 (tends two more rows)"
+  },
+  {
+   "id": "rotation",
+   "name": "Crop Rotation",
+   "rule": {
+    "chain": true
+   },
+   "line": "No plot may outnumber the plot before it.",
+   "reward": {
+    "startTier": 1
+   },
+   "rewardText": "springs start with one more tier of upgrades"
+  },
+  {
+   "id": "rows",
+   "name": "Short Rows",
+   "rule": {
+    "buildingsMax": 6
+   },
+   "line": "Only the first six plots exist.",
+   "reward": {
+    "resproutCap": 20
+   },
+   "rewardText": "heirlooms resprout 20 deeper"
+  },
+  {
+   "id": "hands",
+   "name": "Hands Only",
+   "rule": {
+    "buildingsOff": true
+   },
+   "line": "The plots sleep. Hands, guests and rain do all the work.",
+   "reward": {
+    "cap": "l1",
+    "n": 2
+   },
+   "rewardText": "Sprinkler Network cap +2 valves"
+  },
+  {
+   "id": "drought",
+   "name": "Drought",
+   "rule": {
+    "expAll": 0.75
+   },
+   "line": "Every blessing shrinks to its three-quarter power.",
+   "reward": {
+    "longEars": 1
+   },
+   "rewardText": "Long Ears +1 (guests linger 3 s longer)"
+  },
+  {
+   "id": "fog",
+   "name": "Fog",
+   "rule": {
+    "hidden": true
+   },
+   "line": "The numbers are gone. Tend by feel.",
+   "reward": {
+    "honey": 150
+   },
+   "rewardText": "150 honey and the hidden chapter"
+  },
+  {
+   "id": "hedge",
+   "name": "Quiet Hedge",
+   "rule": {
+    "noVisitors": true
+   },
+   "line": "No guests. Not one.",
+   "reward": {
+    "clickFrenzy": 1
+   },
+   "rewardText": "Click Frenzy +1 (a frenzy also triples clicks)"
+  }
+ ],
+ "quilt": {
+  "w": 48,
+  "h": 48,
+  "cooldown": 30,
+  "costSeconds": 1,
+  "palette": [
+   "#f4ecd8",
+   "#2f2414",
+   "#d9741f",
+   "#f2b33d",
+   "#4c7a3a",
+   "#8fc174",
+   "#6d4c2a",
+   "#b08a5a",
+   "#c9473a",
+   "#e89cb0",
+   "#3f5f9e",
+   "#8fb8de",
+   "#6a4d8c",
+   "#b9a0d6",
+   "#8c8c86",
+   "#f7f2e8"
+  ]
+ }
 }

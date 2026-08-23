@@ -329,7 +329,54 @@ CC.ALMANAC = [];
   page('vp0', 'The First Gamble', 'The stall appeared. Somebody dared, for all of us.', { stalls: 1 });
   page('vp1', 'Fifty Market Mornings', 'The Parsnip Man respects you now. Somehow that is worse.', { stalls: 50 });
   page('vw0', 'Rain on Record', 'The first recorded gentle rain. Everyone just stood in it.', { weathers: 1 });
+  /* Trials (R22): one page per rule survived, and one for the set */
+  page('tr0', 'The Thaw', 'Late Frost, survived. Every purchase was a held breath.', { trial: 'frost' });
+  page('tr1', 'Pyramids of Plots', 'Crop Rotation, survived. Nothing outnumbered what came before it.', { trial: 'rotation' });
+  page('tr2', 'Six Rows Wide', 'Short Rows, survived. The far field lay empty and it was enough.', { trial: 'rows' });
+  page('tr3', 'By Hand Alone', 'Hands Only, survived. The plots slept. Somebody did not.', { trial: 'hands' });
+  page('tr4', 'The Dry Year', 'Drought, survived. Every blessing at three-quarter strength.', { trial: 'drought' });
+  page('tr5', 'The Hidden Chapter', 'Fog, survived. This page was written without looking.', { trial: 'fog' });
+  page('tr6', 'Hedge and Silence', 'Quiet Hedge, survived. No guest came, and the garden grew anyway.', { trial: 'hedge' });
+  page('tr7', 'Seven Springs, Seven Rules', 'Every Trial, at least once. The Almanac closes the chapter.',
+    { trial: 'frost' }, { trial: 'rotation' }, { trial: 'rows' }, { trial: 'hands' },
+    { trial: 'drought' }, { trial: 'fog' }, { trial: 'hedge' });
+  page('tr8', 'Old Hand', 'Five completions of one Trial. The rule is a friend now.', { trialMax: 1 });
 })();
+
+/* Trials (R22): a spring replayed under ONE rule. The goal is "get back to
+   where we were" — the largest run-total of the last five springs, one decade
+   higher per completion — inside 48 h; then the spring simply carries on.
+   Rewards are automation, caps and unlocks, never multipliers (β-free). */
+CC.TRIAL = { hours: 48, maxDone: 5, runLog: 5, scarecrowEvery: 60, scarecrowPct: 0.01,
+  resproutCapBase: 100, longEarsSec: 3 };
+CC.TRIALS = [
+  { id: 'frost', name: 'Late Frost', rule: { haltOnBuy: 180 },
+    line: 'Every purchase stills the whole garden; it thaws over three minutes.',
+    reward: { scarecrow: 1 }, rewardText: 'Scarecrow +1 (tends two more rows)' },
+  { id: 'rotation', name: 'Crop Rotation', rule: { chain: true },
+    line: 'No plot may outnumber the plot before it.',
+    reward: { startTier: 1 }, rewardText: 'springs start with one more tier of upgrades' },
+  { id: 'rows', name: 'Short Rows', rule: { buildingsMax: 6 },
+    line: 'Only the first six plots exist.',
+    reward: { resproutCap: 20 }, rewardText: 'heirlooms resprout 20 deeper' },
+  { id: 'hands', name: 'Hands Only', rule: { buildingsOff: true },
+    line: 'The plots sleep. Hands, guests and rain do all the work.',
+    reward: { cap: 'l1', n: 2 }, rewardText: 'Sprinkler Network cap +2 valves' },
+  { id: 'drought', name: 'Drought', rule: { expAll: 0.75 },
+    line: 'Every blessing shrinks to its three-quarter power.',
+    reward: { longEars: 1 }, rewardText: 'Long Ears +1 (guests linger 3 s longer)' },
+  { id: 'fog', name: 'Fog', rule: { hidden: true },
+    line: 'The numbers are gone. Tend by feel.',
+    reward: { honey: 150 }, rewardText: '150 honey and the hidden chapter' },
+  { id: 'hedge', name: 'Quiet Hedge', rule: { noVisitors: true },
+    line: 'No guests. Not one.',
+    reward: { clickFrenzy: 1 }, rewardText: 'Click Frenzy +1 (a frenzy also triples clicks)' },
+];
+
+/* the Patchwork Quilt (R22): a canvas the world paints and, one day, frames */
+CC.QUILT = { w: 48, h: 48, cooldown: 30, costSeconds: 1,
+  palette: ['#f4ecd8', '#2f2414', '#d9741f', '#f2b33d', '#4c7a3a', '#8fc174', '#6d4c2a', '#b08a5a',
+    '#c9473a', '#e89cb0', '#3f5f9e', '#8fb8de', '#6a4d8c', '#b9a0d6', '#8c8c86', '#f7f2e8'] };
 
 /* Ribbons: permanent multipliers at lifetime-harvest milestones (your trophy shelf). */
 CC.RIBBONS = [
@@ -489,6 +536,10 @@ CC.ORDERS = [
     line: 'Send the garden to seed, again and again.', unit: 'springs' },
   { id: 'grounds', name: 'Plant the Grounds', kind: 'sprouts', tiers: [0.25, 0.5, 1],
     line: 'Spend what the shed is hoarding.', unit: 'of the sprouts held at posting' },
+  { id: 'quilt', name: 'Stitch the Quilt', kind: 'quilt', tiers: [0.25, 0.5, 0.75],
+    line: 'Paint the quilt on the noticeboard — a quarter, a half, three-quarters full.', unit: 'of the quilt painted' },
+  { id: 'trial', name: 'A Trial Spring', kind: 'trials', tiers: [1, 2, 3],
+    line: 'Go to seed into a Trial, and win it.', unit: 'trials completed' },
 ];
 CC.ORDER_REWARDS = {
   1: [{ honey: 50 }],

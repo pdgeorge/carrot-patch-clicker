@@ -63,6 +63,10 @@ def load_data() -> dict:
         return json.load(f)
 
 
+def fresh_perks() -> dict:
+    return {"scarecrow": 0, "startTier": 0, "resproutCap": 0, "cap": {}, "longEars": 0, "clickFrenzy": 0}
+
+
 class Economy:
     def __init__(self, data: dict):
         self.d = data
@@ -88,6 +92,14 @@ class Economy:
         self.bee_t: float = 0.0         # seconds toward the Bee Cooperative's next drop
         self.hands_bonus: float = 1.0   # R21 Many Hands: presence-boxed, set by the server
         self.market_hour: bool = False  # R21: the weekly window, set by the server
+        # Trials (R22): one rule for one spring; what they paid survives everything
+        self.trial: dict | None = None   # {id, goal, t} while a Trial spring runs
+        self.trials_done: dict[str, int] = {}
+        self.trial_best: dict[str, float] = {}
+        self.run_log: list[float] = []   # last five springs' run totals
+        self.perks: dict = fresh_perks()
+        self.halt_t: float = 0.0         # Late Frost: seconds of stillness left
+        self.sc_t: float = 0.0           # Scarecrow clock
         self.buffs: list[dict] = []  # {name, mult, left}
         self._ribbon_seen = 0
         self._bumper_seen = [0] * len(data["buildings"])
@@ -161,11 +173,79 @@ class Economy:
         if "heirloomEvery" in c:
             return all(self.shed_level(u["id"]) >= c["heirloomEvery"]
                        for u in self.d["shed"] if u.get("resprout"))
+        # Trials (R22)
+        if "trial" in c:
+            return self.trial_done(c["trial"]) >= c.get("n", 1)
+        if "trialMax" in c:
+            mx = self.d.get("trial", {}).get("maxDone", 5)
+            return sum(1 for t in self.d.get("trials", []) if self.trial_done(t["id"]) >= mx) >= c["trialMax"]
         return False
+
+    # ---------- Trials (R22) — mirror of core.js ----------
+    def trial_data(self, tid: str | None = None) -> dict | None:
+        if tid is None:
+            tid = self.trial["id"] if self.trial else None
+        return next((t for t in self.d.get("trials", []) if t["id"] == tid), None)
+
+    def rule(self, k: str):
+        t = self.trial_data()
+        return t["rule"].get(k) if t else None
+
+    def trial_done(self, tid: str) -> int:
+        return self.trials_done.get(tid, 0)
+
+    def trial_goal(self, tid: str) -> float:
+        """The largest of the last five springs (including the one ending
+        now), one decade higher per completion."""
+        best = max([1e6] + self.run_log + [self.total_run])
+        return best * 10 ** self.trial_done(tid)
+
+    def trial_available(self, tid: str) -> bool:
+        t = self.trial_data(tid)
+        return bool(t) and self.trial_done(tid) < self.d.get("trial", {}).get("maxDone", 5)
+
+    def halt_mult(self) -> float:
+        h = self.rule("haltOnBuy")
+        return max(0.0, 1 - self.halt_t / h) if h and self.halt_t > 0 else 1.0
+
+    def touch_halt(self) -> None:
+        h = self.rule("haltOnBuy")
+        if h:
+            self.halt_t = float(h)
+
+    def row_exists(self, i: int) -> bool:
+        m = self.rule("buildingsMax")
+        return m is None or i < m
+
+    def row_room(self, i: int) -> float:
+        if not self.row_exists(i):
+            return 0
+        if self.rule("chain") and i > 0:
+            return max(0, self.owned[i - 1] - self.owned[i])
+        return math.inf
+
+    def apply_reward(self, r: dict) -> None:
+        p = self.perks
+        if r.get("scarecrow"):
+            p["scarecrow"] = min(5, p["scarecrow"] + r["scarecrow"])
+        if r.get("startTier"):
+            p["startTier"] = min(len(self.d["tiers"]), p["startTier"] + r["startTier"])
+        if r.get("resproutCap"):
+            p["resproutCap"] = min(100, p["resproutCap"] + r["resproutCap"])
+        if r.get("cap"):
+            p["cap"][r["cap"]] = min(10, p["cap"].get(r["cap"], 0) + r.get("n", 1))
+        if r.get("longEars"):
+            p["longEars"] = min(5, p["longEars"] + r["longEars"])
+        if r.get("clickFrenzy"):
+            p["clickFrenzy"] = min(5, p["clickFrenzy"] + r["clickFrenzy"])
+        if r.get("honey"):
+            self.honey += int(r["honey"])
 
     def upgrade_visible(self, u: dict) -> bool:
         if self.bought.get(u["id"]):
             return False
+        if u["type"] == "building" and not self.row_exists(u["b"]):
+            return False  # Short Rows
         if u.get("unlock"):
             return all(self.cond_met(c) for c in u["unlock"])
         if u["type"] == "building":
@@ -181,6 +261,7 @@ class Economy:
             return False
         self.bank -= u["cost"]
         self.bought[uid] = True
+        self.touch_halt()  # Late Frost: an upgrade is a purchase too
         return True
 
     # ---------- production ----------
@@ -225,7 +306,8 @@ class Economy:
                 m *= u["mult"] ** self.shed_level(u["id"])
         m *= self.almanac_mult()
         m *= self.d["milestoneMult"] ** self.bumper_total()
-        return m
+        e = self.rule("expAll")  # Drought: every blessing at three-quarter power
+        return m ** e if e else m
 
     def almanac_count(self) -> int:
         return len(self.almanac)
@@ -247,13 +329,18 @@ class Economy:
         s = self.season_data()
         return (s or {}).get("mult") or 1
 
-    def base_cps(self) -> float:
+    def base_cps(self, raw: bool = False) -> float:
+        """`raw` ignores Hands Only (clicks keep their share of what the plots
+        WOULD make); Short Rows cuts the field for both. Mirror of core.js."""
+        if not raw and self.rule("buildingsOff"):
+            return 0.0
         c = sum(self.owned[i] * b["cps"] * self.building_mult(i)
-                for i, b in enumerate(self.d["buildings"]))
+                for i, b in enumerate(self.d["buildings"]) if self.row_exists(i))
         return c * self.global_mult()
 
     def cps(self) -> float:
-        return self.base_cps() * self.buff_mult() * self.season_mult() * self.hands_bonus
+        return (self.base_cps() * self.buff_mult() * self.season_mult() * self.hands_bonus
+                * self.halt_mult())
 
     def price_disc(self) -> float:
         """Every price discount in play: a priceOff season and Market Hour
@@ -281,7 +368,11 @@ class Economy:
         for u in self.d["shed"]:
             if u.get("cpsPct"):
                 pct += u["cpsPct"] * self.shed_level(u["id"])
-        return (base + pct * self.base_cps()) * self.buff_mult() * self.season_mult() * self.hands_bonus
+        # Click Frenzy (R22 perk): a Rabbit Frenzy also multiplies clicks ×(1+2·lv)
+        cf = (1 + 2 * self.perks["clickFrenzy"]
+              if self.perks["clickFrenzy"] and any(b["name"] == "Rabbit Frenzy" for b in self.buffs) else 1)
+        return ((base + pct * self.base_cps(True)) * self.buff_mult() * self.season_mult()
+                * self.hands_bonus * cf)
 
     # ---------- actions ----------
     def earn(self, n: float) -> None:
@@ -303,11 +394,14 @@ class Economy:
         """Buy exactly `count` or nothing, at the summed geometric price —
         matching core.js buy() and the ×N price the shop row displays.
         Returns the number bought (count or 0)."""
+        if count < 1 or count > self.row_room(i):
+            return 0
         cost = self.cost_of(i, count)
         if self.bank < cost:
             return 0
         self.bank -= cost
         self.owned[i] += count
+        self.touch_halt()
         return count
 
     def max_affordable(self, i: int) -> int:
@@ -323,7 +417,7 @@ class Economy:
             m -= 1
         while m < 5000 and self.cost_of(i, m + 1) <= self.bank:
             m += 1
-        return m
+        return int(min(m, self.row_room(i)))
 
     # ---------- the Potting Shed (R13/R15) ----------
     # Levels: a one-shot item goes 0->1; a `repeat` item climbs forever (or
@@ -347,7 +441,7 @@ class Economy:
         flat 800 once clamped the live world's 1045-turn compost on reload.
         Mirror of core.js shedCap."""
         if "max" in u:
-            return u["max"]
+            return u["max"] + self.perks.get("cap", {}).get(u["id"], 0)  # Trial perk (R22)
         if not u.get("repeat") or not (u.get("costGrowth", 0) > 1):
             return 1
         return int(600 / math.log(u["costGrowth"]))  # e^600 ≈ 1e260
@@ -424,12 +518,19 @@ class Economy:
     def next_seed_at(self) -> float:
         return (self.seeds_earned_total() + 1) ** 2 * 1e6
 
-    def prestige(self) -> int:
+    def prestige(self, trial_id: str | None = None) -> int:
         gain = self.pending_seeds()
         if gain < 1:
             return 0
         # a deed done in the dying second of a spring still counts (review F3)
         self._latch_pages()
+        # Trials (R22): remember this spring, then maybe open the next one
+        # under a rule. Going to seed mid-Trial abandons it.
+        goal = (self.trial_goal(trial_id)
+                if trial_id and self.trial_available(trial_id) and not self.trial else 0)
+        self.run_log = (self.run_log + [self.total_run])[-self.d.get("trial", {}).get("runLog", 5):]
+        self.trial = {"id": trial_id, "goal": goal, "t": 0.0} if goal > 0 else None
+        self.halt_t = 0.0
         self.seeds += gain
         self.sprouts += gain * self.mint_mult()  # every seed sprouts (R13); doublers stack (R15)
         self.prestiges += 1
@@ -441,10 +542,17 @@ class Economy:
         self.bought = {}
         # a spring clears the weather, never a Parish reward (R21)
         self.buffs = [b for b in self.buffs if b.get("keep")]
-        # resprout (R15): heirloom strains regrow themselves each spring
+        # resprout (R15): heirloom strains regrow themselves each spring —
+        # deeper with the Short Rows perk (R22)
+        cap = self.d.get("trial", {}).get("resproutCapBase", 100) + self.perks["resproutCap"]
         for u in self.d["shed"]:
             if u.get("resprout") and "building" in u:
-                self.owned[u["building"]] = min(self.shed_level(u["id"]), 100)
+                self.owned[u["building"]] = min(self.shed_level(u["id"]), cap)
+        # Crop Rotation perk (R22): springs start with the first n tiers of
+        # building upgrades already on the shelf
+        for ti in range(self.perks["startTier"]):
+            for i in range(len(self.owned)):
+                self.bought[f"b{i}t{ti}"] = True
         # pre-seed, silently: resprouted rows must not fire a bumper toast storm
         self._bumper_seen = [self.bumper_count(i) for i in range(len(self.owned))]
         return gain
@@ -463,7 +571,50 @@ class Economy:
             while self.bee_t >= per:
                 self.bee_t -= per
                 self.honey += 1
+        expired = [b for b in self.buffs if b["left"] <= 0]
         self.buffs = [b for b in self.buffs if b["left"] > 0]
+        for b in expired:
+            events.append({"type": "buffEnd", "name": b["name"]})
+        # Trials (R22): the thaw, the clock, the goal
+        if self.halt_t > 0:
+            self.halt_t = max(0.0, self.halt_t - dt)
+        if self.trial:
+            tr = self.trial
+            tr["t"] += dt
+            td = self.d.get("trial", {})
+            if self.total_run >= tr["goal"]:
+                t = self.trial_data()
+                n = self.trial_done(tr["id"]) + 1
+                self.trials_done[tr["id"]] = n
+                if not (self.trial_best.get(tr["id"], math.inf) <= tr["t"]):
+                    self.trial_best[tr["id"]] = tr["t"]
+                if t and t.get("reward"):
+                    self.apply_reward(t["reward"])
+                events.append({"type": "trial", "id": tr["id"], "won": True, "n": n, "t": tr["t"]})
+                self.trial = None
+                self.halt_t = 0.0
+            elif tr["t"] >= td.get("hours", 48) * 3600:
+                events.append({"type": "trial", "id": tr["id"], "won": False,
+                               "n": self.trial_done(tr["id"]), "t": tr["t"]})
+                self.trial = None
+                self.halt_t = 0.0
+        # the Scarecrow (R22 perk): every minute, one of the cheapest
+        # affordable building among its rows, if ≤ 1% of the bank; it rests
+        # during Late Frost. Mirror of core.js.
+        if self.perks["scarecrow"] > 0 and not self.rule("haltOnBuy"):
+            td = self.d.get("trial", {})
+            self.sc_t += dt
+            if self.sc_t >= td.get("scarecrowEvery", 60):
+                self.sc_t = 0.0
+                pick, best = -1, math.inf
+                for i in range(min(len(self.owned), 2 * self.perks["scarecrow"])):
+                    if self.row_room(i) < 1:
+                        continue
+                    c = self.cost_of(i, 1)
+                    if c <= self.bank * td.get("scarecrowPct", 0.01) and c < best:
+                        best, pick = c, i
+                if pick >= 0 and self.buy(pick, 1):
+                    events.append({"type": "scarecrow", "b": pick})
 
         # structured events, same shapes as core.js tick() — presentation
         # happens client-side (F1); main.py composes legacy prose for
@@ -503,6 +654,9 @@ class Economy:
             "sproutsSpent": self.sprouts_spent, "almanac": self.almanac,
             "tins": self.tins, "stalls": self.stalls, "weathers": self.weathers,
             "honey": self.honey, "beeT": self.bee_t,
+            "trial": dict(self.trial) if self.trial else None, "trialsDone": self.trials_done,
+            "trialBest": self.trial_best, "runLog": self.run_log, "perks": self.perks,
+            "haltT": self.halt_t,
             "season": self.season, "seasonStart": self.season_start,
             "saved": time.time(),
         }
@@ -547,6 +701,51 @@ class Economy:
         self.bee_t = (min(float(raw_bee), 86400.0)
                       if isinstance(raw_bee, (int, float)) and not isinstance(raw_bee, bool)
                       and math.isfinite(raw_bee) and raw_bee > 0 else 0.0)
+        # Trials (R22): ids must exist, counts stay inside the ladder, the
+        # goal must be a real number — a forged inf goal would never end
+        td = self.d.get("trial", {"maxDone": 5, "runLog": 5, "hours": 48})
+        self.trials_done = {}
+        self.trial_best = {}
+        raw_td, raw_tb = s.get("trialsDone") or {}, s.get("trialBest") or {}
+        for t in self.d.get("trials", []):
+            n = _cnt(raw_td.get(t["id"], 0)) if isinstance(raw_td, dict) else 0
+            if n > 0:
+                self.trials_done[t["id"]] = min(n, td.get("maxDone", 5))
+            b = raw_tb.get(t["id"]) if isinstance(raw_tb, dict) else None
+            if isinstance(b, (int, float)) and not isinstance(b, bool) and math.isfinite(b) and b > 0:
+                self.trial_best[t["id"]] = float(b)
+        tr = s.get("trial")
+        self.trial = None
+        if (isinstance(tr, dict) and self.trial_data(tr.get("id"))
+                and isinstance(tr.get("goal"), (int, float)) and not isinstance(tr.get("goal"), bool)
+                and math.isfinite(tr["goal"]) and tr["goal"] > 0):
+            raw_t = tr.get("t", 0)
+            tt = (float(raw_t) if isinstance(raw_t, (int, float)) and not isinstance(raw_t, bool)
+                  and math.isfinite(raw_t) and raw_t > 0 else 0.0)
+            self.trial = {"id": tr["id"], "goal": float(tr["goal"]),
+                          "t": min(tt, td.get("hours", 48) * 3600.0)}
+        raw_log = s.get("runLog")
+        self.run_log = ([float(x) for x in raw_log
+                         if isinstance(x, (int, float)) and not isinstance(x, bool)
+                         and math.isfinite(x) and x >= 0][-td.get("runLog", 5):]
+                        if isinstance(raw_log, list) else [])
+        pk = s.get("perks") if isinstance(s.get("perks"), dict) else {}
+
+        def cnt(v, hi):
+            return min(hi, _cnt(v))
+        self.perks = {
+            "scarecrow": cnt(pk.get("scarecrow"), 5), "startTier": cnt(pk.get("startTier"), len(self.d["tiers"])),
+            "resproutCap": cnt(pk.get("resproutCap"), 100), "longEars": cnt(pk.get("longEars"), 5),
+            "clickFrenzy": cnt(pk.get("clickFrenzy"), 5), "cap": {},
+        }
+        raw_cap = pk.get("cap") if isinstance(pk.get("cap"), dict) else {}
+        for u in self.d["shed"]:
+            v = cnt(raw_cap.get(u["id"]), 10)
+            if v > 0 and "max" in u:
+                self.perks["cap"][u["id"]] = v
+        raw_h = s.get("haltT", 0)
+        self.halt_t = (min(float(raw_h), 3600.0) if isinstance(raw_h, (int, float))
+                       and not isinstance(raw_h, bool) and math.isfinite(raw_h) and raw_h > 0 else 0.0)
         # known page ids are historical fact and stay latched; junk ids
         # would mint ×1.02 each forever — dropped
         self.almanac = {}
@@ -574,6 +773,8 @@ class Economy:
         for b in self.buffs:  # buffs kept ticking while we were down
             b["left"] -= away
         self.buffs = [b for b in self.buffs if b["left"] > 0]
+        if self.trial:  # a Trial's 48 h is wall time; downtime counts against it
+            self.trial["t"] += away
         if away > 1:
             self.earn(self.base_cps() * away)
 
@@ -588,6 +789,8 @@ class Economy:
             "sproutsSpent": self.sprouts_spent,  # clients gate keystone visibility on these
             "tins": self.tins, "stalls": self.stalls, "weathers": self.weathers,
             "honey": self.honey, "handsBonus": self.hands_bonus, "marketHour": self.market_hour,
+            "trial": self.trial, "trialsDone": self.trials_done, "trialBest": self.trial_best,
+            "runLog": self.run_log, "perks": self.perks, "haltT": self.halt_t,
             "almanac": self.almanac,
             "season": self.season,
             "seasonEnds": (self.season_start + self.d.get("seasonDays", 14) * 86400.0

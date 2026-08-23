@@ -533,6 +533,98 @@ check(p21c.honey == 0 and p21c.bee_t <= 86400, "negative honey and a runaway bee
 check(p21.snapshot()["honey"] == p21.honey and p21.snapshot()["handsBonus"] == 1.035
       and p21.snapshot()["marketHour"] is True, "snapshot carries honey, Many Hands and the Market Hour")
 
+# ---------- 1h. Trials (R22): the same rule-bound spring in both engines ----------
+print("\n=== R22 Trials parity ===")
+JS_R22 = r"""
+const fs = require('fs'), path = require('path'), vm = require('vm');
+for (const f of ['data.js', 'core.js']) {
+  vm.runInThisContext(fs.readFileSync(path.join(process.argv[1], 'src', f), 'utf8'));
+}
+const out = {};
+const run = (id, fn) => { const c = new CC.Core(); c.totalRun = 5e6; c.lifetimeBase = 2e7; c.bank = 1e6; c.shed.l1 = 3;
+  c.bought.c0 = true; c.prestige(id); c.bank = 1e9; fn(c); return c; };
+const f = run('frost', c => { c.buy(0, 12); c.buy(1, 4); c.tick(45); });
+out.frost = { cps: f.cps(), click: f.clickPower(), halt: f.haltT, goal: f.trial.goal, t: f.trial.t };
+const r = run('rotation', c => { c.buy(0, 7); c.buy(1, 7); c.buy(1, 1); c.buy(2, 3); });
+out.rotation = { owned: r.owned.slice(0, 4), max2: r.maxAffordable(2), max1: r.maxAffordable(1), cps: r.cps() };
+const s = run('rows', c => { c.buy(5, 2); c.buy(6, 1); c.owned[8] = 9; });
+out.rows = { owned: s.owned, cps: s.cps(), vis: s.visibleUpgrades().map(u => u.id), max6: s.maxAffordable(6) };
+const h = run('hands', c => { c.buy(0, 30); c.buy(3, 4); });
+out.hands = { cps: h.cps(), click: h.clickPower(), raw: h.baseCps(true) };
+const d = run('drought', c => { c.buy(0, 30); c.buy(2, 4); c.seeds = 50; });
+out.drought = { cps: d.cps(), gm: d.globalMult() };
+/* win a trial, collect the perk, carry it into the next spring */
+const w = run('frost', c => { c.haltT = 0; c.earn(1e7); c.tick(0.5); });
+w.perks.startTier = 1; w.perks.cap.l1 = 2; w.perks.clickFrenzy = 1;
+w.totalRun = 1e8; w.lifetimeBase = 1e9; w.bank = 0; w.prestige();
+w.buffs.push({ name: 'Rabbit Frenzy', mult: 7, left: 10 });
+out.won = { done: w.trialsDone, best: w.trialBest.frost, scarecrow: w.perks.scarecrow, goalNext: w.trialGoal('frost'),
+  bought: Object.keys(w.bought).sort(), cap: w.shedCap(CC.SHED.find(u => u.id === 'l1')), click: w.clickPower(), log: w.runLog };
+const sc = new CC.Core(); sc.perks.scarecrow = 2; sc.bank = 5e6; sc.tick(61); sc.tick(61);
+out.scarecrow = { owned: sc.owned, bank: sc.bank };
+out.snap = w.serialize();
+console.log(JSON.stringify(out));
+"""
+js22 = json.loads(subprocess.run(
+    ["node", "-e", JS_R22, str(ROOT)], capture_output=True, text=True, check=True).stdout)
+
+
+def run22(tid, fn):
+    c = Economy(load_data())
+    c.total_run = 5e6; c._lifetime_base = 2e7; c.bank = 1e6; c.shed["l1"] = 3
+    c.bought["c0"] = True
+    c.prestige(tid); c.bank = 1e9
+    fn(c)
+    return c
+
+
+def near(a, b, tol=1e-9):
+    return abs(a - b) <= tol * max(1.0, abs(b))
+
+
+pf = run22("frost", lambda c: (c.buy(0, 12), c.buy(1, 4), c.tick(45)))
+j = js22["frost"]
+check(near(pf.cps(), j["cps"]) and near(pf.click_power(), j["click"]) and pf.halt_t == j["halt"]
+      and pf.trial["goal"] == j["goal"] and pf.trial["t"] == j["t"], f"Late Frost: cps/click/halt/goal identical (halt {pf.halt_t})")
+pr = run22("rotation", lambda c: (c.buy(0, 7), c.buy(1, 7), c.buy(1, 1), c.buy(2, 3)))
+j = js22["rotation"]
+check(pr.owned[:4] == j["owned"] and pr.max_affordable(2) == j["max2"] and pr.max_affordable(1) == j["max1"]
+      and near(pr.cps(), j["cps"]), f"Crop Rotation: the chain refuses the same buys ({pr.owned[:4]})")
+ps = run22("rows", lambda c: (c.buy(5, 2), c.buy(6, 1), c.owned.__setitem__(8, 9)))
+j = js22["rows"]
+check(ps.owned == j["owned"] and near(ps.cps(), j["cps"]) and ps.max_affordable(6) == j["max6"]
+      and sorted(u["id"] for u in ps.all_upgrades() if ps.upgrade_visible(u)) == sorted(j["vis"]),
+      "Short Rows: six plots, same cps, same shelf")
+ph = run22("hands", lambda c: (c.buy(0, 30), c.buy(3, 4)))
+j = js22["hands"]
+check(ph.cps() == j["cps"] == 0 and near(ph.click_power(), j["click"]) and near(ph.base_cps(True), j["raw"]),
+      "Hands Only: plots make nothing, clicks keep their share")
+pd = run22("drought", lambda c: (c.buy(0, 30), c.buy(2, 4), setattr(c, "seeds", 50)))
+j = js22["drought"]
+check(near(pd.cps(), j["cps"]) and near(pd.global_mult(), j["gm"]), "Drought: the 3/4 power agrees")
+pw = run22("frost", lambda c: (setattr(c, "halt_t", 0.0), c.earn(1e7), c.tick(0.5)))
+pw.perks["startTier"] = 1; pw.perks["cap"]["l1"] = 2; pw.perks["clickFrenzy"] = 1
+pw.total_run = 1e8; pw._lifetime_base = 1e9; pw.bank = 0.0; pw.prestige()
+pw.buffs.append({"name": "Rabbit Frenzy", "mult": 7, "left": 10.0})
+j = js22["won"]
+check(pw.trials_done == j["done"] and near(pw.trial_best["frost"], j["best"]) and pw.perks["scarecrow"] == j["scarecrow"]
+      and near(pw.trial_goal("frost"), j["goalNext"]), "a won Trial records the same ledger and next goal")
+check(sorted(pw.bought) == j["bought"] and pw.shed_cap(next(u for u in pw.d["shed"] if u["id"] == "l1")) == j["cap"]
+      and near(pw.click_power(), j["click"]) and pw.run_log == j["log"], "perks land identically at the next spring")
+psc = Economy(load_data()); psc.perks["scarecrow"] = 2; psc.bank = 5e6; psc.tick(61); psc.tick(61)
+check(psc.owned == js22["scarecrow"]["owned"] and near(psc.bank, js22["scarecrow"]["bank"]), f"the Scarecrow buys the same rows ({psc.owned[:4]})")
+p22 = Economy(load_data()); p22.deserialize(js22["snap"])
+check(p22.trials_done == pw.trials_done and p22.perks == pw.perks and p22.run_log == pw.run_log and p22.trial is None,
+      "a JS save's Trial ledger and perks load into Python")
+p22b = Economy(load_data())
+p22b.deserialize({"v": 1, "bank": 0, "totalAllTime": 0, "totalRun": 0, "clicks": 0, "owned": [], "bought": {}, "seeds": 0,
+                  "sprouts": 0, "shed": {}, "trial": {"id": "frost", "goal": float("inf"), "t": -5},
+                  "trialsDone": {"frost": 99, "bogus": 3}, "perks": {"scarecrow": 1e9, "cap": {"l1": 50, "zz": 1}},
+                  "runLog": [1, "x", -2, 1e999], "haltT": 1e12})
+check(p22b.trial is None and p22b.trials_done == {"frost": 5} and p22b.perks["scarecrow"] == 5
+      and p22b.perks["cap"] == {"l1": 10} and p22b.run_log == [1.0] and p22b.halt_t == 3600.0,
+      "forged Trial state clamps identically (py)")
+
 # ---------- 2. live protocol over a real websocket ----------
 print("\n=== protocol (in-process server) ===")
 import os  # noqa: E402

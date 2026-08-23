@@ -73,11 +73,76 @@ class Chronicle:
         return sorted(buckets.values(), key=lambda b: b["day"], reverse=True)
 
 
+class Quilt:
+    """The Patchwork Quilt (R22): w×h cells, a palette index each (0 = bare
+    cloth). One pixel per connection per cooldown, costing a second of the
+    world's cps. Survives Go to Seed; framed into the chronicle and cleared
+    at Lie Fallow (R24). Lives in `<state>_quilt.json`."""
+
+    def __init__(self, data: dict, path: Path):
+        q = data.get("quilt") or {"w": 48, "h": 48, "cooldown": 30, "costSeconds": 1, "palette": ["#fff"] * 16}
+        self.w, self.h = int(q["w"]), int(q["h"])
+        self.colors = len(q.get("palette") or []) or 16
+        self.cooldown = float(q.get("cooldown", 30))
+        self.cost_seconds = float(q.get("costSeconds", 1))
+        self.path = path
+        self.cells = bytearray(self.w * self.h)
+        self.version = 0
+        self.painted = 0
+        self.load()
+
+    def load(self) -> None:
+        try:
+            s = json.loads(self.path.read_text())
+            raw = bytes.fromhex(s.get("cells", ""))
+        except (OSError, ValueError, TypeError, AttributeError):
+            return
+        if len(raw) == self.w * self.h:
+            self.cells = bytearray(min(b, self.colors - 1) for b in raw)
+            self.version = int(s.get("version", 0) or 0)
+            self.painted = int(s.get("painted", 0) or 0)
+
+    def save(self) -> None:
+        tmp = self.path.with_suffix(".tmp")
+        try:
+            tmp.write_text(json.dumps({"cells": self.cells.hex(), "version": self.version,
+                                       "painted": self.painted}))
+            tmp.replace(self.path)
+        except OSError:
+            pass
+
+    def paint(self, i: int, c: int) -> bool:
+        if not (0 <= i < self.w * self.h and 0 <= c < self.colors):
+            return False
+        if self.cells[i] == c:
+            return False  # painting the same colour is not a stitch
+        self.cells[i] = c
+        self.version += 1
+        self.painted += 1
+        return True
+
+    def fill(self) -> float:
+        """Share of the quilt that is not bare cloth — the Order's reading."""
+        return sum(1 for b in self.cells if b) / max(1, self.w * self.h)
+
+    def clear(self) -> str:
+        """Frame the quilt (returns its hex) and start a fresh one."""
+        framed = self.cells.hex()
+        self.cells = bytearray(self.w * self.h)
+        self.version += 1
+        self.save()
+        return framed
+
+    def snapshot(self) -> dict:
+        return {"w": self.w, "h": self.h, "v": self.version, "cells": self.cells.hex(), "painted": self.painted}
+
+
 class OrderBook:
-    def __init__(self, data: dict, state_path: Path, chronicle: Chronicle):
+    def __init__(self, data: dict, state_path: Path, chronicle: Chronicle, quilt: Quilt | None = None):
         self.d = data
         self.path = state_path
         self.chronicle = chronicle
+        self.quilt = quilt
         self.order: dict | None = None
         self.history: list[dict] = []     # last outcomes, newest last
         self.override_used = 0
@@ -133,6 +198,7 @@ class OrderBook:
             "lifetime": eco.total_all_time, "visitors": eco.rabbits + eco.tins + eco.stalls,
             "stalls": eco.stalls, "pages": len(eco.almanac), "springs": eco.prestiges,
             "sproutsSpent": eco.sprouts_spent, "cps": eco.cps(), "sprouts": eco.sprouts,
+            "trials": sum(eco.trials_done.values()),
         }
 
     def targets(self, spec: dict, base: dict) -> list[float]:
@@ -186,6 +252,10 @@ class OrderBook:
             return eco.prestiges - b["springs"]
         if k == "sprouts":
             return eco.sprouts_spent - b["sproutsSpent"]
+        if k == "trials":
+            return sum(eco.trials_done.values()) - b.get("trials", 0)
+        if k == "quilt":  # absolute, not relative: how full the quilt IS
+            return self.quilt.fill() if self.quilt else 0.0
         return 0.0
 
     def tier(self, eco: Economy) -> int:
