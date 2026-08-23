@@ -147,8 +147,8 @@ CC.Core = class {
   fallowAvailable() { return !!CC.FALLOW && this.loamPending() >= CC.FALLOW.minLoam; }
   /* Tilth: each Fallow sweetens the sprout mint a little, to a cap */
   tilthMult() { return CC.FALLOW ? 1 + CC.FALLOW.tilthPerFallow * Math.min(this.fallows, CC.FALLOW.tilthCap) : 1; }
-  scarecrowEvery() { return Math.max(10, CC.TRIAL.scarecrowEvery - 10 * this.cellarLevel('pace')); }
-  gateRate() { return 1 + 0.05 * this.cellarLevel('gate'); }
+  scarecrowEvery() { return Math.max(10, CC.TRIAL.scarecrowEvery - (this.cellarData('pace') || { per: 10 }).per * this.cellarLevel('pace')); }
+  gateRate() { return 1 + (this.cellarData('gate') || { per: 0.05 }).per * this.cellarLevel('gate'); }
   /* the world lies fallow: seeds → loam; bank, plots, upgrades, lifetime
      (hence ribbons), seeds, sprouts and the shed LADDERS reset. The Almanac,
      counters, one-shots, the seed log, Trials' ledger and perks, honey and

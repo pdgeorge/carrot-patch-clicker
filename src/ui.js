@@ -708,8 +708,17 @@ CC.UI = class {
   askBell() {
     if (this.awaitingWorld()) return;
     const c = this.core, bell = this.worldMode ? this.patch.bell : null;
-    if (bell) { /* silence it */
-      this.patch.send({ type: 'silence' });
+    if (bell) { /* a voice for quiet — confirmed, never a misclick (R24 review) */
+      const votes = Object.keys(bell.silences || {}).length;
+      this.$('modal-title').textContent = '🔕 Ask for quiet?';
+      this.$('modal-body').innerHTML = `The bell is ringing (${bell.rung} of ${CC.FALLOW.rings}${bell.rehearsal ? ', a rehearsal' : ''}). ` +
+        `Silencing it takes <b>half the tenders online</b> agreeing — ${votes} voice${votes === 1 ? '' : 's'} so far. ` +
+        `Once silenced, the bell rests ${CC.fmtDur(CC.FALLOW.ringRest || 600)} before it can ring again.`;
+      this.$('trial-pick').classList.add('hidden');
+      const yes = this.$('modal-yes');
+      yes.textContent = 'Add my voice for quiet';
+      yes.onclick = () => { this.$('modal').classList.add('hidden'); this.patch.send({ type: 'silence' }); };
+      this.$('modal').classList.remove('hidden');
       return;
     }
     if (!c.fallowAvailable()) return;
@@ -1350,6 +1359,8 @@ CC.UI = class {
       this.tickerT = -6;
     } else if (ev.type === 'silence') {
       this.toast(`🔕 ${ev.who || 'Someone'} silenced the bell${ev.reason ? ` — ${ev.reason}` : ''}.`);
+    } else if (ev.type === 'silenceVote') {
+      this.toast(`🔕 ${ev.who || 'Someone'} asks for quiet — ${ev.votes} of ${ev.needed} voices needed to silence the bell.`);
     } else if (ev.type === 'rehearsed') {
       this.ceremony(ev);
     } else if (ev.type === 'fallow') {
@@ -1746,7 +1757,8 @@ CC.UI = class {
       bb.classList.toggle('ringing', !!bell);
       if (bell) {
         const F = CC.FALLOW, nextAt = bell.at + bell.rung * F.ringGap;
-        bb.textContent = '🔕 Silence the bell';
+        const votes = Object.keys(bell.silences || {}).length;
+        bb.textContent = votes ? `🔕 Ask for quiet (${votes} so far)` : '🔕 Ask for quiet';
         bl.classList.remove('hidden');
         bl.textContent = `🔔 ring ${bell.rung} of ${F.rings}${bell.rehearsal ? ' (rehearsal)' : ''} · ` +
           (bell.rung < F.rings ? `next in ${CC.fmtDur(nextAt - this.now())}` : 'ringing out…') +

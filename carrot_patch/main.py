@@ -19,6 +19,7 @@ import json
 import math
 import os
 import random
+import sys
 import time
 import traceback
 from pathlib import Path
@@ -95,6 +96,7 @@ class Patch:
         self._paint_at: dict[str, float] = {}           # quilt cooldown per ADDRESS — sockets are free (R22 review)
         self._quilt_sent_v = 0                          # the quilt version whose diffs every client has seen
         self.clients: set[WebSocket] = set()
+        self._conns: list[dict] = []       # the per-connection dicts, for the bell's electorate
         self.click_window = 0          # clicks landed in the current snapshot window
         self.click_rate = 0            # last window's global clicks/sec, for display
         self.visitor: dict | None = None  # R19: {kind, until} — one guest at a time
@@ -160,11 +162,21 @@ class Patch:
                 o = self.orders.post(eco, wall)
                 self.emit({"type": "order", "phase": "posted", "id": o["id"], "name": o["name"],
                            "deadline": o["deadline"]})
-        # Lie Fallow's bell (R24)
+        # Lie Fallow's bell (R24): on a Fallow the world is saved FIRST, then
+        # the quilt is framed and cleared, then the parish file — the three
+        # files can never disagree about whether the Fallow happened
         for ev in self.orders.bell_tick(eco, wall, self.quilt):
-            self.emit(ev)
-            if ev["type"] in ("fallow", "rehearsed"):
+            if ev["type"] == "fallow":
                 self.save()
+                self.orders.frame_quilt(ev, self.quilt)
+                self.orders.save()
+            elif ev["type"] == "rehearsed":
+                self.save()
+            self.emit(ev)
+
+    def online_addrs(self) -> int:
+        """Distinct client addresses connected right now (the bell's electorate)."""
+        return len({c.get("addr") or "?" for c in self._conns}) or 1
 
     def touch(self, conn: dict) -> None:
         """An intent arrived. A quiet garden stirs for whoever came back."""
@@ -198,8 +210,11 @@ class Patch:
     def save(self) -> None:
         target = state_file()
         tmp = target.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.eco.serialize()))
-        tmp.replace(target)
+        try:
+            tmp.write_text(json.dumps(self.eco.serialize()))
+            tmp.replace(target)
+        except OSError as e:  # a full disk must not kill the world loop; the next autosave retries
+            print(f"carrot-patch: save failed: {e}", file=sys.stderr)
         self.orders.save()
         self.quilt.save()
 
@@ -546,15 +561,19 @@ class Patch:
 
         elif kind == "ring":
             # Lie Fallow's bell (R24): anyone may ring it once the loam is there
-            b = self.orders.ring(eco, time.time(), conn.get("name") or "")
+            b = self.orders.ring(eco, time.time(), conn.get("name") or "", conn.get("addr") or "")
             if b:
                 self.emit({"type": "bell", "ring": 1, "of": eco.d["fallow"]["rings"], "rehearsal": b["rehearsal"],
                            "next": b["at"] + eco.d["fallow"]["ringGap"], "who": b["who"]})
                 self.save()
 
         elif kind == "silence":
-            if self.orders.silence(conn.get("name") or ""):
+            # a voice for quiet: half the addresses online must agree (R24 review)
+            r = self.orders.silence(conn.get("name") or "", conn.get("addr") or "", self.online_addrs(), time.time())
+            if r and r["silenced"]:
                 self.emit({"type": "silence", "who": conn.get("name") or ""})
+            elif r:
+                self.emit({"type": "silenceVote", "who": conn.get("name") or "", "votes": r["votes"], "needed": r["needed"]})
 
         elif kind == "cellar":
             # the Root Cellar (R24): loam buys a rule
@@ -656,6 +675,7 @@ def create_app() -> FastAPI:
         fwd = (ws.headers.get("x-forwarded-for") or "").split(",")[0].strip()
         conn = {"last_click_msg": 0.0, "msg_times": [],
                 "addr": fwd or (ws.client.host if ws.client else "")}
+        patch._conns.append(conn)
         try:
             # the greeting must carry the live visitor too, or a reconnect
             # mid-visit makes the client walk it off and respawn it (review)
@@ -688,6 +708,8 @@ def create_app() -> FastAPI:
             pass
         finally:
             patch.clients.discard(ws)
+            if conn in patch._conns:
+                patch._conns.remove(conn)
 
     return app
 

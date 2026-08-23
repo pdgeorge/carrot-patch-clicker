@@ -1073,7 +1073,7 @@ html, body { margin: 0; padding: 0; }
 </div>
 
 <script>
-globalThis.CC = globalThis.CC || {}; CC.BUILD = '0fd9a77'; CC.GARDENERS = ["pdgeorge","Claude Fable 5","T_B0N3"];
+globalThis.CC = globalThis.CC || {}; CC.BUILD = '911393e'; CC.GARDENERS = ["pdgeorge","Claude Fable 5","T_B0N3"];
 /* ==== data.js ==== */
 /* Carrot Clicker — content: buildings, upgrades, ribbons, news. */
 globalThis.CC = globalThis.CC || {};
@@ -1549,7 +1549,7 @@ CC.PLANTS = [
    world's first; 400 at 1e20, 576 at 1e24) and "one more Fallow" never
    stales. The bell rings four times, two hours apart; anyone may ring it,
    anyone may silence it; the first Fallow is rehearsed first. */
-CC.FALLOW = { minLoam: 400, rings: 4, ringGap: 7200, tilthPerFallow: 0.05, tilthCap: 25 };
+CC.FALLOW = { minLoam: 400, rings: 4, ringGap: 7200, ringRest: 600, tilthPerFallow: 0.05, tilthCap: 25 };
 /* the Root Cellar: Loam buys RULE CHANGES — automation, caps, head starts —
    at triangular prices (level n costs n Loam). Never a production multiplier. */
 CC.CELLAR = [
@@ -1918,8 +1918,8 @@ CC.Core = class {
   fallowAvailable() { return !!CC.FALLOW && this.loamPending() >= CC.FALLOW.minLoam; }
   /* Tilth: each Fallow sweetens the sprout mint a little, to a cap */
   tilthMult() { return CC.FALLOW ? 1 + CC.FALLOW.tilthPerFallow * Math.min(this.fallows, CC.FALLOW.tilthCap) : 1; }
-  scarecrowEvery() { return Math.max(10, CC.TRIAL.scarecrowEvery - 10 * this.cellarLevel('pace')); }
-  gateRate() { return 1 + 0.05 * this.cellarLevel('gate'); }
+  scarecrowEvery() { return Math.max(10, CC.TRIAL.scarecrowEvery - (this.cellarData('pace') || { per: 10 }).per * this.cellarLevel('pace')); }
+  gateRate() { return 1 + (this.cellarData('gate') || { per: 0.05 }).per * this.cellarLevel('gate'); }
   /* the world lies fallow: seeds → loam; bank, plots, upgrades, lifetime
      (hence ribbons), seeds, sprouts and the shed LADDERS reset. The Almanac,
      counters, one-shots, the seed log, Trials' ledger and perks, honey and
@@ -3708,8 +3708,17 @@ CC.UI = class {
   askBell() {
     if (this.awaitingWorld()) return;
     const c = this.core, bell = this.worldMode ? this.patch.bell : null;
-    if (bell) { /* silence it */
-      this.patch.send({ type: 'silence' });
+    if (bell) { /* a voice for quiet — confirmed, never a misclick (R24 review) */
+      const votes = Object.keys(bell.silences || {}).length;
+      this.$('modal-title').textContent = '🔕 Ask for quiet?';
+      this.$('modal-body').innerHTML = `The bell is ringing (${bell.rung} of ${CC.FALLOW.rings}${bell.rehearsal ? ', a rehearsal' : ''}). ` +
+        `Silencing it takes <b>half the tenders online</b> agreeing — ${votes} voice${votes === 1 ? '' : 's'} so far. ` +
+        `Once silenced, the bell rests ${CC.fmtDur(CC.FALLOW.ringRest || 600)} before it can ring again.`;
+      this.$('trial-pick').classList.add('hidden');
+      const yes = this.$('modal-yes');
+      yes.textContent = 'Add my voice for quiet';
+      yes.onclick = () => { this.$('modal').classList.add('hidden'); this.patch.send({ type: 'silence' }); };
+      this.$('modal').classList.remove('hidden');
       return;
     }
     if (!c.fallowAvailable()) return;
@@ -4350,6 +4359,8 @@ CC.UI = class {
       this.tickerT = -6;
     } else if (ev.type === 'silence') {
       this.toast(`🔕 ${ev.who || 'Someone'} silenced the bell${ev.reason ? ` — ${ev.reason}` : ''}.`);
+    } else if (ev.type === 'silenceVote') {
+      this.toast(`🔕 ${ev.who || 'Someone'} asks for quiet — ${ev.votes} of ${ev.needed} voices needed to silence the bell.`);
     } else if (ev.type === 'rehearsed') {
       this.ceremony(ev);
     } else if (ev.type === 'fallow') {
@@ -4746,7 +4757,8 @@ CC.UI = class {
       bb.classList.toggle('ringing', !!bell);
       if (bell) {
         const F = CC.FALLOW, nextAt = bell.at + bell.rung * F.ringGap;
-        bb.textContent = '🔕 Silence the bell';
+        const votes = Object.keys(bell.silences || {}).length;
+        bb.textContent = votes ? `🔕 Ask for quiet (${votes} so far)` : '🔕 Ask for quiet';
         bl.classList.remove('hidden');
         bl.textContent = `🔔 ring ${bell.rung} of ${F.rings}${bell.rehearsal ? ' (rehearsal)' : ''} · ` +
           (bell.rung < F.rings ? `next in ${CC.fmtDur(nextAt - this.now())}` : 'ringing out…') +

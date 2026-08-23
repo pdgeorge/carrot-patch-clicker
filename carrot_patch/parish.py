@@ -179,7 +179,8 @@ class OrderBook:
         self.quilt = quilt
         self.live: list[dict] = []        # the orders on the board (Wider Orders: up to 3)
         self.history: list[dict] = []     # last outcomes, newest last
-        self.bell: dict | None = None     # Lie Fallow's bell: {at, rehearsal, rung, who}
+        self.bell: dict | None = None     # Lie Fallow's bell: {at, rehearsal, rung, who, silences}
+        self.bell_rest = 0.0              # epoch of the last silence: the bell rests a while after
         self.rotation = 0                 # next table index — its own counter, not len(history)
         self.override_used = 0
         self.last_intent = 0.0
@@ -205,6 +206,7 @@ class OrderBook:
             live = s.get("orders") if isinstance(s.get("orders"), list) else [s.get("order")]
             self.live = [o for o in live if isinstance(o, dict) and "deadline" in o][:3]
             self.bell = s.get("bell") if isinstance(s.get("bell"), dict) and "at" in s.get("bell") else None
+            self.bell_rest = float(s.get("bellRest", 0) or 0)
             self.history = [h for h in (s.get("history") or []) if isinstance(h, dict)][-20:]
             self.rotation = int(s.get("rotation", len(self.history)) or 0)
             self.override_used = int(s.get("overrideUsed", 0) or 0)
@@ -215,7 +217,7 @@ class OrderBook:
         tmp = self.path.with_suffix(".tmp")
         try:
             tmp.write_text(json.dumps({
-                "order": self.order, "orders": self.live, "bell": self.bell,
+                "order": self.order, "orders": self.live, "bell": self.bell, "bellRest": self.bell_rest,
                 "history": self.history[-20:], "rotation": self.rotation,
                 "overrideUsed": self.override_used, "lastIntent": self.last_intent,
                 "effects": self.effects,
@@ -424,24 +426,46 @@ class OrderBook:
         return outcome
 
     # ---------- the bell (R24): four rings, two hours apart ----------
-    def ring(self, eco: Economy, now: float, who: str = "") -> dict | None:
+    def ring(self, eco: Economy, now: float, who: str = "", addr: str = "") -> dict | None:
         """Anyone may ring it once the loam is there. The first bell of the
-        world is a REHEARSAL: it rings out and nothing resets."""
+        world is a REHEARSAL: it rings out and nothing resets. After a
+        silence the bell rests (ringRest) so ring/silence cannot be a siren."""
         f = self.d.get("fallow")
         if not f or self.bell or not eco.fallow_available():
             return None
-        self.bell = {"at": now, "rehearsal": not eco.rehearsed, "rung": 1, "who": who[:20]}
-        self.chronicle.log({"type": "bell", "ring": 1, "rehearsal": self.bell["rehearsal"]})
+        if now - self.bell_rest < f.get("ringRest", 600):
+            return None
+        self.bell = {"at": now, "rehearsal": not eco.rehearsed, "rung": 1, "who": who[:20],
+                     "silences": {}}  # address -> epoch: the voices asking for quiet
+        self.chronicle.log({"type": "bell", "ring": 1, "rehearsal": self.bell["rehearsal"], "who": who[:20]})
         self.save()
         return self.bell
 
-    def silence(self, who: str = "") -> bool:
+    def silence_needed(self, online_addrs: int) -> int:
+        """Voices needed to silence: half the addresses online, at least one.
+        One tab cannot hold the whole world hostage (R24 review)."""
+        return max(1, -(-online_addrs // 2))
+
+    def silence(self, who: str = "", addr: str = "", online_addrs: int = 1, now: float = 0.0) -> dict | None:
+        """A voice for quiet. The bell falls silent when enough distinct
+        addresses ask. Returns {'silenced': bool, 'votes': n, 'needed': n}
+        or None if there is no bell or this voice already spoke."""
         if not self.bell:
-            return False
-        self.bell = None
-        self.chronicle.log({"type": "silence", "who": who[:20]})
+            return None
+        votes = self.bell.setdefault("silences", {})
+        key = addr or who or "?"
+        if key in votes:
+            return None
+        votes[key] = now
+        needed = self.silence_needed(online_addrs)
+        if len(votes) >= needed:
+            self.bell = None
+            self.bell_rest = now
+            self.chronicle.log({"type": "silence", "who": who[:20]})
+            self.save()
+            return {"silenced": True, "votes": len(votes), "needed": needed}
         self.save()
-        return True
+        return {"silenced": False, "votes": len(votes), "needed": needed}
 
     def bell_tick(self, eco: Economy, now: float, quilt: Quilt | None = None) -> list[dict]:
         """Ring the next bell when its time comes; on the last, the world
@@ -470,16 +494,33 @@ class OrderBook:
             self.chronicle.log({"type": "rehearsed", "loam": eco.loam_pending()})
         else:
             pending = eco.loam_pending()
+            was = dict(eco.trial) if eco.trial else None
             gain = eco.fallow()
-            framed = quilt.clear() if quilt else ""
             if gain:
-                events.append({"type": "fallow", "loam": gain, "fallows": eco.fallows, "quilt": framed})
-                self.chronicle.log({"type": "fallow", "loam": gain, "fallows": eco.fallows, "quilt": framed})
+                if was:  # a Trial under the bell is abandoned — on the record, like Go to Seed
+                    events.append({"type": "trial", "id": was["id"], "won": False, "abandoned": True,
+                                   "n": eco.trial_done(was["id"]), "t": was["t"], "who": "the bell"})
+                    self.chronicle.log({"type": "trial", "id": was["id"], "won": False, "abandoned": True, "t": was["t"]})
+                # every live Order was posted against the old world: its baseline
+                # is meaningless now, so the board is wiped without effect
+                for o in self.live:
+                    self.chronicle.log({"type": "order_skipped", "id": o["id"], "reason": "fallow"})
+                self.live = []
+                # the quilt is framed by the CALLER after the world is saved, so
+                # a crash between the two files can never lose the cloth
+                events.append({"type": "fallow", "loam": gain, "fallows": eco.fallows, "quilt": ""})
             else:  # the loam drained away while the bell rang (a Fallow elsewhere): nothing to do
                 events.append({"type": "silence", "who": "the ground", "reason": "nothing to retire", "pending": pending})
         self.bell = None
         self.save()
         return events
+
+    def frame_quilt(self, ev: dict, quilt: Quilt | None = None) -> None:
+        """Frame the quilt into the Fallow record and clear it — called once
+        the world save is on disk."""
+        quilt = quilt or self.quilt
+        ev["quilt"] = quilt.clear() if quilt else ""
+        self.chronicle.log({"type": "fallow", "loam": ev["loam"], "fallows": ev["fallows"], "quilt": ev["quilt"]})
 
     def apply(self, eco: Economy, effects: list[dict], now: float) -> list[str]:
         """Reward/failure shapes: {honey}, {buff:{name,mult,dur}},
@@ -491,8 +532,15 @@ class OrderBook:
                 applied.append(f"+{int(e['honey'])} honey")
             if "buff" in e:
                 b = e["buff"]
-                eco.buffs.append({"name": b["name"], "mult": b["mult"], "left": float(b["dur"]),
-                                  "keep": True})
+                # a buff by the same name REFRESHES, never stacks: three cards
+                # resolving at one bell are one Embargo, not ×0.125 (R24 review)
+                same = next((x for x in eco.buffs if x["name"] == b["name"]), None)
+                if same:
+                    same["left"] = max(float(same["left"]), float(b["dur"]))
+                    same["mult"] = b["mult"]
+                else:
+                    eco.buffs.append({"name": b["name"], "mult": b["mult"], "left": float(b["dur"]),
+                                      "keep": True})
                 applied.append(f"{b['name']} ×{b['mult']} for {round(b['dur'] / 3600)}h")
             if "visitorRate" in e:
                 self.effects["visitorRate"] = now + float(e.get("dur", DAY))

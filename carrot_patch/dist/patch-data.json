@@ -2568,6 +2568,7 @@
   "minLoam": 400,
   "rings": 4,
   "ringGap": 7200,
+  "ringRest": 600,
   "tilthPerFallow": 0.05,
   "tilthCap": 25
  },

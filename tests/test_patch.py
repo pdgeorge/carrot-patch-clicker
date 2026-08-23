@@ -1120,6 +1120,13 @@ check(all(e["type"] in ("order_posted", "order_resolved", "order_skipped", "quie
 chron2 = Chronicle(pdir / "w_events.jsonl")
 check(len(chron2.recent) == len(chron.recent) and chron2.days(7)[0]["counts"] == days[0]["counts"],
       "a restart reads the day-book back from the file tail into memory")
+# R24 review: three cards at one bell are one Embargo, not ×0.125
+emb = Economy(load_data())
+b_e = OrderBook(load_data(), pdir / "w12_parish.json", chron)
+b_e.apply(emb, load_data()["orderFail"], t0); b_e.apply(emb, load_data()["orderFail"], t0); b_e.apply(emb, load_data()["orderFail"], t0)
+check(sum(1 for b in emb.buffs if b["name"] == "Parish Embargo") == 1 and abs(emb.buff_mult() - 0.5) < 1e-9,
+      "a buff by the same name refreshes, never stacks")
+
 # R22 review: the quilt order is a share of the bare cloth at posting, and never a sure fail
 q_half = Quilt(load_data(), pdir / "qh.json")
 for i in range(len(q_half.cells) // 2):
@@ -1166,7 +1173,14 @@ check(b and b["rehearsal"] is True and b["rung"] == 1 and book_b.ring(fb, t0 + 1
 check(book_b.bell_tick(fb, t0 + F["ringGap"] - 1) == [], "quiet until the second ring")
 ev2 = book_b.bell_tick(fb, t0 + F["ringGap"])
 check(ev2 and ev2[0]["type"] == "bell" and ev2[0]["ring"] == 2 and ev2[0]["rehearsal"], "the second ring, two hours on")
-check(book_b.silence("pdgeorge") and book_b.bell is None and not book_b.silence(), "anyone can silence it; once")
+v1 = book_b.silence("pdgeorge", "10.0.0.2", online_addrs=3, now=t0 + 10)
+check(v1 and not v1["silenced"] and v1["votes"] == 1 and v1["needed"] == 2 and book_b.bell, "one voice of three online is not enough to silence")
+check(book_b.silence("pdgeorge", "10.0.0.2", online_addrs=3, now=t0 + 11) is None, "the same address cannot vote twice")
+v2 = book_b.silence("griefer2", "10.0.0.9", online_addrs=3, now=t0 + 12)
+check(v2 and v2["silenced"] and book_b.bell is None and book_b.silence() is None, "two of three voices silence it; then there is nothing to silence")
+check(book_b.ring(fb, t0 + 13, "tbone") is None and book_b.ring(fb, t0 + 13 + F["ringRest"], "tbone") is not None,
+      "after a silence the bell rests before it can ring again")
+book_b.bell = None; book_b.bell_rest = 0.0
 book_b.ring(fb, t0, "tbone")
 evs_b = []
 for k in range(1, F["rings"] + 1):
@@ -1174,6 +1188,8 @@ for k in range(1, F["rings"] + 1):
 check([e["type"] for e in evs_b] == ["bell", "bell", "rehearsed"] and fb.rehearsed and fb.fallows == 0 and fb.seeds == 1.96e22,
       "the rehearsal rings out: nothing resets, the bell is armed")
 book_b.quilt.cells[0] = 5
+fb.trial = {"id": "drought", "goal": 1e9, "t": 100.0}
+book_b.post(fb, t0)
 book_b.ring(fb, t0, "tbone")
 evs_b = []
 for k in range(1, F["rings"] + 1):
@@ -1181,6 +1197,11 @@ for k in range(1, F["rings"] + 1):
 fal = next((e for e in evs_b if e["type"] == "fallow"), None)
 check(fal and fal["loam"] == 496 and fb.fallows == 1 and fb.seeds == 0 and fb.loam == 496 and book_b.bell is None,
       "the real bell: the world lies fallow for 496 loam")
+check(any(e["type"] == "trial" and e.get("abandoned") for e in evs_b) and fb.trial is None, "a Trial under the bell is abandoned on the record")
+check(book_b.live == [] and any(e["type"] == "order_skipped" and e.get("reason") == "fallow" for e in chron.read(0)),
+      "the old world's Orders are wiped without effect")
+check(fal["quilt"] == "" and book_b.quilt.cells[0] == 5, "the quilt waits for the caller (the world is saved first)")
+book_b.frame_quilt(fal)
 check(fal["quilt"][:2] == "05" and book_b.quilt.cells[0] == 0 and book_b.quilt.version > 0, "the quilt is framed into the chronicle and cleared")
 check(any(e["type"] == "fallow" for e in chron.read(0)), "the chronicle records the Fallow Year")
 book_b.ring(fb, t0)
@@ -1375,6 +1396,7 @@ with TestClient(app) as client:
         check(patch.eco.cellar.get("quick") == 1 and patch.eco.loam == 4, "loam buys a Cellar level; junk ids buy nothing")
         # the bell rings out for real when the clock says so
         patch.eco.rehearsed = True
+        patch.orders.bell_rest = 0.0  # skip the rest after the silence
         ws.send_json({"type": "ring"})
         time.sleep(0.05)
         check(patch.orders.bell and not patch.orders.bell["rehearsal"], "the armed bell is real")

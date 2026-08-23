@@ -472,7 +472,7 @@ CC.PLANTS = [
    world's first; 400 at 1e20, 576 at 1e24) and "one more Fallow" never
    stales. The bell rings four times, two hours apart; anyone may ring it,
    anyone may silence it; the first Fallow is rehearsed first. */
-CC.FALLOW = { minLoam: 400, rings: 4, ringGap: 7200, tilthPerFallow: 0.05, tilthCap: 25 };
+CC.FALLOW = { minLoam: 400, rings: 4, ringGap: 7200, ringRest: 600, tilthPerFallow: 0.05, tilthCap: 25 };
 /* the Root Cellar: Loam buys RULE CHANGES — automation, caps, head starts —
    at triangular prices (level n costs n Loam). Never a production multiplier. */
 CC.CELLAR = [

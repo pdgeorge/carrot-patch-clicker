@@ -269,10 +269,11 @@ class Economy:
         return 1 + f["tilthPerFallow"] * min(self.fallows, f["tilthCap"]) if f else 1.0
 
     def scarecrow_every(self) -> float:
-        return max(10, self.d.get("trial", {}).get("scarecrowEvery", 60) - 10 * self.cellar_level("pace"))
+        per = (self.cellar_data("pace") or {"per": 10})["per"]
+        return max(10, self.d.get("trial", {}).get("scarecrowEvery", 60) - per * self.cellar_level("pace"))
 
     def gate_rate(self) -> float:
-        return 1 + 0.05 * self.cellar_level("gate")
+        return 1 + (self.cellar_data("gate") or {"per": 0.05})["per"] * self.cellar_level("gate")
 
     def fallow(self) -> int:
         """The world lies fallow — mirror of core.js fallow()."""
