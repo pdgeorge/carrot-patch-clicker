@@ -21,7 +21,7 @@ const readOpt = f => {                 // optional inputs hash/embed as empty wh
 const BUILD_INPUTS = [
   'build.js',
   'src/styles.css', 'src/page.html',
-  'src/data.js', 'src/core.js', 'src/net.js', 'src/ui.js',
+  'src/data.js', 'src/core.js', 'src/art.js', 'src/art-sheet.svg.txt', 'src/net.js', 'src/ui.js',
   'contributors.txt',
   'carrot_patch/__init__.py', 'carrot_patch/economy.py', 'carrot_patch/main.py',
   'carrot_patch/tenders.py', 'carrot_patch/blocklist.txt',
@@ -34,10 +34,12 @@ const BUILD = hash.digest('hex').slice(0, 7);
 const GARDENERS = readOpt('contributors.txt').toString('utf8').split('\n')
   .map(l => l.trim()).filter(l => l && !l.startsWith('#'));
 
-const JS_ORDER = ['data.js', 'core.js', 'net.js', 'ui.js'];
+const JS_ORDER = ['data.js', 'core.js', 'art.js', 'net.js', 'ui.js'];
+/* the Woodcut Almanac symbol sheet: authored as SVG, shipped as a string (skin, never data) */
+const ART_SHEET = readOpt('src/art-sheet.svg.txt').toString('utf8');
 const css = read('styles.css'); /* the noticeboard is pure CSS now (R18) */
 const js = `globalThis.CC = globalThis.CC || {}; CC.BUILD = '${BUILD}'; `
-  + `CC.GARDENERS = ${JSON.stringify(GARDENERS)};\n`
+  + `CC.GARDENERS = ${JSON.stringify(GARDENERS)}; CC.ART = { sheet: ${JSON.stringify(ART_SHEET)} };\n`
   + JS_ORDER.map(f => `/* ==== ${f} ==== */\n${read(f)}`).join('\n');
 const body = read('page.html');
 

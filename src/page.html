@@ -1,152 +1,198 @@
-<div id="cc-root">
+<div id="cc-root" data-tab="patch" data-tenure="settled">
   <div id="ticker"><span id="ticker-text"></span></div>
 
+  <!-- the Parish Order bar: the page's only full-width element (brief P16) -->
+  <div id="order-bar" class="hidden" role="region" aria-label="Parish Orders"></div>
+
+  <!-- mobile: a sticky bank strip (brief P17) -->
+  <div id="bank-strip" aria-hidden="true"><span id="strip-bank"></span><span id="strip-cps"></span><span id="strip-chips"></span></div>
+
   <div id="columns">
-    <div id="col-main">
-    <div id="cols-top">
-    <section id="col-left">
+    <section id="col-left" class="col" aria-label="The patch">
       <h1 class="wordmark">CARROT <span>CLICKER</span></h1>
-      <div id="bank">0</div>
-      <div id="bank-label">carrots</div>
-      <div id="cps">0 per second</div>
-      <div id="patch-line" class="hidden"></div>
-      <div id="season-line" class="hidden"></div>
-      <div id="gate-line" class="hidden"></div>
-      <div id="trial-line" class="hidden"></div>
-      <div id="buff-line"></div>
-      <canvas id="hero" width="320" height="360"></canvas>
-      <div id="bed-wrap">
-        <canvas id="bed" width="256" height="256"></canvas>
-        <div id="bed-bar">
-          <span id="soil-btns"></span>
-          <span id="bed-clock"></span>
-        </div>
-        <div id="bed-menu" class="hidden"></div>
+      <div class="readout slate">
+        <div id="bank" aria-hidden="true">0</div>
+        <div id="bank-label">carrots</div>
+        <div id="cps">0 per second</div>
+        <div id="chips" class="chips" role="status" aria-live="off"></div>
+      </div>
+      <!-- the old status lines stay as the screen reader's summary only -->
+      <div class="sr-only">
+        <div id="patch-line" class="hidden"></div>
+        <div id="season-line" class="hidden"></div>
+        <div id="gate-line" class="hidden"></div>
+        <div id="trial-line" class="hidden"></div>
+        <div id="buff-line"></div>
+        <div id="bell-line" class="hidden"></div>
+      </div>
+      <div id="hero-wrap" class="frame">
+        <canvas id="hero" width="320" height="300" tabindex="0" role="button" aria-label="The carrot. Press Space to pull."></canvas>
+        <div id="sash" class="hidden"></div>
+      </div>
+      <div id="bed-wrap" class="frame">
+        <canvas id="bed" width="320" height="320" tabindex="0" role="button" aria-label="The seed bed"></canvas>
+        <div id="bed-menu" class="hidden" role="dialog" aria-label="Plant a seed"></div>
+      </div>
+      <div id="bed-bar">
+        <span id="soil-btns" class="chips"></span>
+        <span id="bed-clock"></span>
       </div>
       <div id="seed-line"></div>
       <div id="sprout-line"></div>
-      <button id="prestige-btn" class="hidden">🌸 Go to Seed</button>
-      <button id="shed-btn" class="hidden">🌱 The Potting Shed</button>
-      <button id="bell-btn" class="hidden">🔔 Ring the bell — Lie Fallow</button>
-      <div id="bell-line" class="hidden"></div>
-      <div class="small-controls">
-        <button id="mute-btn" title="toggle sound">🔊</button>
-        <button id="daynight-btn" title="day / night / auto">🌗</button>
-        <button id="auto-btn" title="auto-click — rest those wrists">🖱</button>
-        <button id="num-btn" title="numbers: short / in words">🔢</button>
-        <button id="chronicle-btn" title="the chronicle — what the world did" class="hidden">📜</button>
-        <button id="wipe-btn" title="wipe save (hold to confirm)">🗑</button>
+      <button id="prestige-btn" class="ceremony-btn seed hidden">Go to Seed</button>
+      <button id="shed-btn" class="ceremony-btn sprout hidden">The Potting Shed</button>
+      <button id="bell-btn" class="ceremony-btn fallow hidden">Ring the bell — Lie Fallow</button>
+      <div class="small-controls" role="toolbar" aria-label="Settings">
+        <button id="mute-btn" title="toggle sound" aria-label="Toggle sound"></button>
+        <button id="daynight-btn" title="day / night / auto" aria-label="Day, night or auto theme"></button>
+        <button id="auto-btn" title="auto-click — rest those wrists" aria-label="Auto-click"></button>
+        <button id="num-btn" title="numbers: short / in words" aria-label="Number style"></button>
+        <button id="calm-btn" title="calm: fewer animations" aria-label="Calm mode"></button>
+        <button id="chronicle-btn" title="the chronicle — what the world did" class="hidden" aria-label="The chronicle"></button>
+        <button id="wipe-btn" title="wipe save (hold to confirm)" aria-label="Wipe save"></button>
       </div>
     </section>
 
-    <section id="col-mid">
-      <div id="order" class="hidden">
-        <div class="panel-title">PARISH ORDERS</div>
-        <div id="order-cards"></div>
+    <section id="col-mid" class="col" aria-label="The parish">
+      <!-- the Gate (brief P20): a newcomer's first three deeds -->
+      <div id="gate-card" class="paper hidden">
+        <div class="panel-title">THE GATE</div>
+        <p id="gate-copy">One garden, the whole world. Pull a carrot, buy a plot, watch for the rabbit.</p>
+        <div id="gate-deeds"></div>
+        <button id="gate-close" class="wood-btn">I’ve got it</button>
       </div>
-      <div class="panel-title">THE SEED LOG</div>
-      <div id="seedlog-line"></div>
-      <div id="seedlog"></div>
-      <div id="sacrifice-row" class="hidden"><button id="sacrifice-btn"></button><span id="sacrifice-text"></span></div>
-      <div class="panel-title">UPGRADES</div>
-      <div id="upgrades"></div>
-      <div class="panel-title">TROPHY SHELF</div>
-      <div id="ribbons"></div>
-      <div class="panel-title">THE ALMANAC</div>
-      <div id="almanac-line"></div>
-      <div id="almanac-pages"></div>
-      <div class="panel-title">STATS</div>
-      <div id="stats"></div>
-      <div id="tooltip" class="hidden"></div>
-    </section>
-    </div><!-- /cols-top -->
 
-    <section id="noticeboard">
-      <div class="board-half" id="board-tenders">
-        <div class="board-title">🪧 TENDERS</div>
-        <div id="tender-list"></div>
-        <div id="presence" class="hidden"></div>
-        <div id="tender-sign">
-          <input id="tender-name" maxlength="20" placeholder="your name" autocomplete="off">
-          <button id="tender-btn">Sign the board</button>
+      <!-- the Book (brief P18): ledger · shelf · pages · chronicle -->
+      <details id="book" class="paper" open>
+        <summary><span class="book-title">THE BOOK</span><span id="book-summary"></span></summary>
+        <div class="tabs" role="tablist">
+          <label><input type="radio" name="book-tab" value="ledger" checked><span>Ledger</span></label>
+          <label><input type="radio" name="book-tab" value="shelf"><span>Shelf</span></label>
+          <label><input type="radio" name="book-tab" value="pages"><span>Pages</span></label>
+          <label><input type="radio" name="book-tab" value="chronicle"><span>Chronicle</span></label>
         </div>
-      </div>
-      <div class="board-half" id="board-gardeners">
-        <div class="board-title">🌱 GARDENERS</div>
-        <div id="gardener-list"></div>
-      </div>
-      <div class="board-half" id="board-quilt">
-        <div class="board-title">🧵 THE QUILT</div>
-        <canvas id="quilt" width="48" height="48"></canvas>
-        <div id="quilt-palette"></div>
-        <div id="quilt-info"></div>
-        <div id="quilt-tools"><button id="quilt-copy">Copy as image</button></div>
-      </div>
-    </section>
-    </div><!-- /col-main -->
+        <div class="tab-pane" data-pane="ledger"><div id="stats"></div></div>
+        <div class="tab-pane" data-pane="shelf"><div id="ribbons" role="grid" aria-label="Trophy shelf"></div></div>
+        <div class="tab-pane" data-pane="pages"><div id="almanac-line"></div><div id="almanac-pages"></div></div>
+        <div class="tab-pane" data-pane="chronicle">
+          <div id="chronicle-days"></div>
+          <div id="chronicle-buttons"><button id="chronicle-copy" class="wood-btn">Copy Today’s Patch</button></div>
+        </div>
+      </details>
 
-    <section id="col-right">
+      <div id="order" class="hidden"><div class="panel-title">PARISH ORDERS</div><div id="order-cards"></div></div>
+
+      <div class="paper" id="seedlog-paper">
+        <div class="panel-title">THE SEED LOG</div>
+        <div id="seedlog-line"></div>
+        <div id="seedlog"></div>
+        <div id="sacrifice-row" class="hidden"><button id="sacrifice-btn" class="wood-btn"></button><span id="sacrifice-text"></span></div>
+      </div>
+
+      <!-- the noticeboard: three pinned papers (brief P19) -->
+      <section id="noticeboard" aria-label="The noticeboard">
+        <div class="board-paper" id="board-hands">
+          <div class="board-title">HANDS</div>
+          <div id="hands-sentence"></div>
+          <div id="presence" class="hidden"></div>
+          <div class="board-sub">GARDENERS</div>
+          <div id="gardener-list"></div>
+        </div>
+        <div class="board-paper" id="board-tenders">
+          <div class="board-title">TENDERS</div>
+          <div id="tender-list"></div>
+          <div id="tender-sign">
+            <input id="tender-name" maxlength="20" placeholder="your name" autocomplete="off" aria-label="Your name">
+            <button id="tender-btn" class="wood-btn">Sign the board</button>
+          </div>
+        </div>
+        <div class="board-paper" id="board-quilt">
+          <div class="board-title">THE QUILT</div>
+          <div id="quilt-bind"><canvas id="quilt" width="48" height="48" tabindex="0" role="img" aria-label="The patchwork quilt"></canvas></div>
+          <div id="quilt-palette" role="radiogroup" aria-label="Thread colour"></div>
+          <div id="quilt-info"></div>
+          <div id="quilt-tools"><button id="quilt-copy" class="wood-btn">Copy as image</button></div>
+        </div>
+      </section>
+      <div id="tooltip" class="hidden" role="tooltip"></div>
+    </section>
+
+    <section id="col-right" class="col" aria-label="The shop">
+      <div class="panel-title">PACKETS</div>
+      <div id="upgrades"></div>
       <div class="panel-title shop-head">
         <span>THE GARDEN</span>
-        <span id="buy-amount"><button data-n="1" class="on">×1</button><button data-n="5">×5</button><button data-n="10">×10</button><button data-n="max">Max</button></span>
+        <span id="buy-amount" role="radiogroup" aria-label="Buy amount"><button data-n="1" class="on">×1</button><button data-n="5">×5</button><button data-n="10">×10</button><button data-n="max">Max</button></span>
       </div>
       <div id="shop"></div>
     </section>
   </div>
 
-  <div id="toasts"></div>
+  <!-- the Clothesline: toasts in their own lane (brief P4) -->
+  <div id="toasts" aria-hidden="true"></div>
+  <div id="sr-log" class="sr-only" aria-live="polite"></div>
+  <div id="sr-state" class="sr-only" role="status"></div>
+
+  <!-- mobile tab bar (brief P17) -->
+  <nav id="tabbar" aria-label="Sections">
+    <button data-tab="patch" class="on">Patch</button>
+    <button data-tab="shop">Shop</button>
+    <button data-tab="parish">Parish</button>
+    <button data-tab="book">Book</button>
+  </nav>
 
   <div id="build-tag" title="build id — changes whenever any game source changes"></div>
 
-  <div id="shed" class="hidden">
+  <div id="shed" class="hidden" role="dialog" aria-modal="true" aria-labelledby="shed-heading">
     <div id="shed-box">
-      <div id="shed-tabs"><button data-tab="shed" class="on">🌱 The Potting Shed</button><button data-tab="cellar">🪨 The Root Cellar</button></div>
+      <div id="shed-head">
+        <div id="shed-tabs"><button data-tab="shed" class="on">The Potting Shed</button><button data-tab="cellar">The Root Cellar</button></div>
+        <button id="shed-close" class="wood-btn" aria-label="Close">✕</button>
+      </div>
       <div id="shed-pane">
-      <h2>🌱 THE POTTING SHED</h2>
-      <p id="shed-sub">Seeds are forever. Sprouts are for planting.</p>
-      <div id="shed-balance"></div>
-      <div id="shed-items"></div>
+        <h2 id="shed-heading">THE POTTING SHED</h2>
+        <p id="shed-sub">Seeds are forever. Sprouts are for planting.</p>
+        <div id="shed-balance"></div>
+        <div id="shed-items"></div>
+        <details id="shed-done"><summary id="shed-done-sum"></summary><div id="shed-done-items"></div></details>
       </div>
-      <div id="cellar-pane" class="hidden">
-      <h2>🪨 THE ROOT CELLAR</h2>
-      <p id="cellar-sub">Loam buys rules, never numbers. Level n costs n loam.</p>
-      <div id="cellar-balance"></div>
-      <div id="cellar-items"></div>
+      <div id="cellar-pane" class="hidden stone">
+        <h2>THE ROOT CELLAR</h2>
+        <p id="cellar-sub">Loam buys rules, never numbers.</p>
+        <div id="cellar-balance"></div>
+        <div id="cellar-items"></div>
       </div>
-      <button id="shed-close">Back to the garden</button>
     </div>
   </div>
 
-  <div id="ceremony" class="hidden">
+  <div id="ceremony" class="hidden" role="dialog" aria-modal="true">
+    <canvas id="ceremony-canvas"></canvas>
     <div id="ceremony-box">
       <div id="ceremony-eyebrow"></div>
       <h2 id="ceremony-title"></h2>
       <p id="ceremony-body"></p>
       <canvas id="ceremony-quilt" width="48" height="48" class="hidden"></canvas>
-      <button id="ceremony-close">Back to the garden</button>
+      <button id="ceremony-close" class="wood-btn">Back to the garden</button>
     </div>
   </div>
 
-  <div id="chronicle" class="hidden">
-    <div id="chronicle-box">
-      <h2>📜 THE CHRONICLE</h2>
+  <div id="chronicle" class="hidden" role="dialog" aria-modal="true" aria-labelledby="chronicle-heading">
+    <div id="chronicle-box" class="paper">
+      <h2 id="chronicle-heading">THE CHRONICLE</h2>
       <p id="chronicle-sub">What the whole world did, day by day. Written by deeds, never by the clock.</p>
-      <div id="chronicle-days"></div>
-      <div id="chronicle-buttons">
-        <button id="chronicle-copy">Copy Today’s Patch</button>
-        <button id="chronicle-close">Back to the garden</button>
-      </div>
+      <div id="chronicle-days-modal"></div>
+      <div id="chronicle-modal-buttons"><button id="chronicle-copy-modal" class="wood-btn">Copy Today’s Patch</button><button id="chronicle-close" class="wood-btn">Back to the garden</button></div>
     </div>
   </div>
 
-  <div id="modal" class="hidden">
-    <div id="modal-box">
+  <div id="modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div id="modal-box" class="paper">
       <h2 id="modal-title"></h2>
       <p id="modal-body"></p>
       <div id="trial-pick" class="hidden"></div>
       <div id="modal-buttons">
-        <button id="modal-yes"></button>
-        <button id="modal-no">Not yet</button>
+        <button id="modal-yes" class="ceremony-btn seed"></button>
+        <button id="modal-no" class="wood-btn">Not yet</button>
       </div>
     </div>
   </div>
