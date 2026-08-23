@@ -83,6 +83,10 @@ CC.Core = class {
     this.perks = CC.Core.freshPerks(); /* automation, caps, unlocks — never multipliers */
     this.haltT = 0;               /* Late Frost: seconds of stillness left after a purchase */
     this.scT = 0;                 /* Scarecrow clock */
+    /* the Seed Bed (R23): the world's shared bed; the log outlives everything */
+    this.bed = CC.Core.freshBed();
+    this.bedT = 0;                /* seconds toward the next bed tick */
+    this.sacrifices = 0;
     this.buffs = [];              /* {name, mult, left} */
     this.t = 0;
     this._ribbonCount = 0;
@@ -96,6 +100,136 @@ CC.Core = class {
      the sum — a display grain, never lost carrots. Mirrored in economy.py. */
   static freshPerks() {
     return { scarecrow: 0, startTier: 0, resproutCap: 0, cap: {}, longEars: 0, clickFrenzy: 0 };
+  }
+
+  /* ---------- the Seed Bed (R23) ---------- */
+  static freshBed() {
+    const B = CC.BED || { w: 4, h: 4 };
+    return { soil: 'dirt', plots: Array(B.w * B.h).fill(null), log: {}, seed: 1, n: 0,
+      soilAt: 0, sacrificeLeft: 0 };
+  }
+  /* one 32-bit LCG, mirrored bit-for-bit in economy.py, so both engines
+     roll the same mutations from the same seed (the snapshot carries it) */
+  bedRand() {
+    this.bed.seed = (Math.imul(this.bed.seed, 1664525) + 1013904223) >>> 0;
+    return this.bed.seed / 4294967296;
+  }
+  plantData(id) { return (CC.PLANTS || []).find(p => p.id === id) || null; }
+  soilData() { return (CC.SOILS || []).find(x => x.id === this.bed.soil) || (CC.SOILS || [])[0] || { every: 1, effect: 1, mutation: 1 }; }
+  plotMature(pl) { const p = pl && this.plantData(pl.sp); return !!(p && pl.age >= p.mature); }
+  /* steady cps for bed prices: buildings × season, no buffs — a rain at the
+     bell must not make seeds dear; floored so an empty world can still plant */
+  bedCpsRef() { return Math.max(10, this.baseCps(true) * this.seasonMult()); }
+  /* {carrots} for tier-1 seeds, {honey} for anything found, null if not for sale */
+  bedPrice(sp) {
+    const p = this.plantData(sp);
+    if (!p || p.wild) return null;
+    if (p.tier === 1) return { carrots: this.bedCpsRef() * p.cost * 60 };
+    if (this.bed.log[sp]) return { honey: (CC.BED.honeyTierCost || [])[p.tier] || 100 };
+    return null;
+  }
+  bedPlant(i, sp) {
+    if (!(i >= 0 && i < this.bed.plots.length) || this.bed.plots[i]) return false;
+    const price = this.bedPrice(sp);
+    if (!price) return false;
+    if (price.carrots !== undefined) { if (this.bank < price.carrots) return false; this.bank -= price.carrots; }
+    else { if (this.honey < price.honey) return false; this.honey -= price.honey; }
+    this.bed.plots[i] = { sp, age: 0 };
+    return true;
+  }
+  /* only a MATURE plant can be picked: there is no uproot (P1 griefing rule) */
+  bedHarvest(i) {
+    const pl = this.bed.plots[i];
+    if (!this.plotMature(pl)) return null;
+    const p = this.plantData(pl.sp);
+    const soil = this.soilData();
+    let gain = 0;
+    if (p.payout) {
+      gain = Math.min(this.bedCpsRef() * p.payout * 60 * soil.effect, this.bank * CC.BED.payoutCapPct + this.bedCpsRef() * 60);
+      this.earn(gain);
+    }
+    const honey = p.honey ? Math.round(p.honey * soil.effect) : 0;
+    this.honey += honey;
+    const first = !this.bed.log[pl.sp];
+    this.bed.log[pl.sp] = (this.bed.log[pl.sp] || 0) + 1;
+    this.bed.plots[i] = null;
+    return { sp: pl.sp, gain, honey, first };
+  }
+  bedSoil(id, now) {
+    if (!(CC.SOILS || []).some(x => x.id === id) || id === this.bed.soil) return false;
+    if (now - this.bed.soilAt < CC.BED.soilCooldown) return false;
+    this.bed.soil = id;
+    this.bed.soilAt = now;
+    return true;
+  }
+  logFull() { return (CC.PLANTS || []).every(p => this.bed.log[p.id]); }
+  logTier(n) { return (CC.PLANTS || []).some(p => p.tier === n && this.bed.log[p.id]); }
+  /* a complete log may be given up for honey — after a cancellable wait */
+  bedSacrifice() {
+    if (!this.logFull() || this.bed.sacrificeLeft > 0) return false;
+    this.bed.sacrificeLeft = CC.BED.sacrificeWait || 120;
+    return true;
+  }
+  bedCancel() { const was = this.bed.sacrificeLeft > 0; this.bed.sacrificeLeft = 0; return was; }
+  /* aggregates while mature — each capped, so 16 Fairy Rings are a bounded blessing */
+  bedMult() {
+    const e = this.soilData().effect;
+    let m = 1;
+    for (const pl of this.bed.plots) {
+      const p = pl && this.plotMature(pl) ? this.plantData(pl.sp) : null;
+      if (p && p.mult) m *= 1 + (p.mult - 1) * e;
+    }
+    return Math.max(0.5, Math.min(CC.BED.multCap, m));
+  }
+  bedRabbit() {
+    let m = 1;
+    for (const pl of this.bed.plots) { const p = pl && this.plotMature(pl) ? this.plantData(pl.sp) : null; if (p && p.rabbit) m *= p.rabbit; }
+    return Math.min(CC.BED.rabbitCap, m);
+  }
+  bedWeather() {
+    let m = 1;
+    for (const pl of this.bed.plots) { const p = pl && this.plotMature(pl) ? this.plantData(pl.sp) : null; if (p && p.weather) m *= p.weather; }
+    return Math.min(CC.BED.weatherCap, m);
+  }
+  bedNeighbors(i) {
+    const W = CC.BED.w, H = CC.BED.h, x = i % W, y = Math.floor(i / W), out = [];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const nx = x + dx, ny = y + dy;
+      if (nx >= 0 && ny >= 0 && nx < W && ny < H) out.push(ny * W + nx);
+    }
+    return out;
+  }
+  /* one bed tick: age, die, then every empty plot rolls for wild seeds and
+     for a cross between two mature neighbours. Order is fixed (plot index,
+     species table order) and the RNG is shared, so both engines agree. */
+  bedTick() {
+    const events = [];
+    const bed = this.bed, soil = this.soilData();
+    bed.n++;
+    if (bed.n % soil.every !== 0) return events;
+    for (let i = 0; i < bed.plots.length; i++) {
+      const pl = bed.plots[i];
+      if (!pl) continue;
+      const p = this.plantData(pl.sp);
+      if (!p) { bed.plots[i] = null; continue; }
+      pl.age++;
+      if (pl.age >= p.life) { bed.plots[i] = null; events.push({ type: 'bedDied', i, sp: pl.sp }); }
+    }
+    for (let i = 0; i < bed.plots.length; i++) {
+      if (bed.plots[i]) continue;
+      const near = this.bedNeighbors(i).map(j => bed.plots[j]).filter(pl => this.plotMature(pl)).map(pl => pl.sp);
+      let born = null;
+      for (const p of CC.PLANTS) {
+        if (p.wild) { if (this.bedRand() < p.wild) { born = p.id; break; } continue; }
+        if (!p.parents) continue;
+        const [a, b] = p.parents;
+        const ok = a === b ? near.filter(x => x === a).length >= 2 : near.includes(a) && near.includes(b);
+        if (ok && this.bedRand() < p.chance * soil.mutation) { born = p.id; break; }
+      }
+      if (born) { bed.plots[i] = { sp: born, age: 0 }; events.push({ type: 'bedSprout', i, sp: born }); }
+    }
+    return events;
   }
 
   /* ---------- Trials (R22) ---------- */
@@ -194,6 +328,10 @@ CC.Core = class {
     if (c.trialMax !== undefined) {
       return (CC.TRIALS || []).filter(t => this.trialDone(t.id) >= CC.TRIAL.maxDone).length >= c.trialMax;
     }
+    /* the Seed Bed (R23) */
+    if (c.logTier !== undefined) return this.logTier(c.logTier);
+    if (c.logFull !== undefined) return this.logFull();
+    if (c.sacrifices !== undefined) return this.sacrifices >= c.sacrifices;
     return false;
   }
 
@@ -294,7 +432,7 @@ CC.Core = class {
     return c * this.globalMult();
   }
 
-  cps() { return this.baseCps() * this.buffMult() * this.seasonMult() * this.handsBonus * this.haltMult(); }
+  cps() { return this.baseCps() * this.buffMult() * this.seasonMult() * this.handsBonus * this.haltMult() * this.bedMult(); }
 
   /* one multiplier for every price discount in play: a priceOff season and
      Market Hour stack multiplicatively (R17/R21) */
@@ -322,7 +460,7 @@ CC.Core = class {
     /* Click Frenzy (R22 perk): a Rabbit Frenzy also multiplies clicks ×(1+2·lv) */
     const cf = this.perks.clickFrenzy && this.buffs.some(b => b.name === 'Rabbit Frenzy')
       ? 1 + 2 * this.perks.clickFrenzy : 1;
-    return (base + pct * this.baseCps(true)) * this.buffMult() * this.seasonMult() * this.handsBonus * cf;
+    return (base + pct * this.baseCps(true)) * this.buffMult() * this.seasonMult() * this.handsBonus * cf * this.bedMult();
   }
 
   /* ---------- actions ---------- */
@@ -545,6 +683,23 @@ CC.Core = class {
         this.haltT = 0;
       }
     }
+    /* the Seed Bed (R23): ticks on its own clock; a pending sacrifice counts down */
+    if (CC.BED && this.bed) {
+      this.bedT += dt;
+      while (this.bedT >= CC.BED.tick) { this.bedT -= CC.BED.tick; events.push(...this.bedTick()); }
+      if (this.bed.sacrificeLeft > 0) {
+        this.bed.sacrificeLeft -= dt;
+        if (this.bed.sacrificeLeft <= 0) {
+          this.bed.sacrificeLeft = 0;
+          if (this.logFull()) {
+            this.honey += CC.BED.sacrificeHoney;
+            this.sacrifices++;
+            this.bed.log = {};
+            events.push({ type: 'sacrifice', honey: CC.BED.sacrificeHoney });
+          }
+        }
+      }
+    }
     /* the Scarecrow (R22 perk): every minute it buys one of the cheapest
        affordable building among the rows it tends, if that costs no more
        than 1% of the bank — a patient hand, never a multiplier. It rests
@@ -604,6 +759,9 @@ CC.Core = class {
       honey: this.honey, beeT: this.beeT,
       trial: this.trial ? { ...this.trial } : null, trialsDone: this.trialsDone, trialBest: this.trialBest,
       runLog: this.runLog, perks: this.perks, haltT: this.haltT,
+      bed: { soil: this.bed.soil, plots: this.bed.plots.map(p => p && { ...p }), log: { ...this.bed.log },
+        seed: this.bed.seed, n: this.bed.n, soilAt: this.bed.soilAt, sacrificeLeft: this.bed.sacrificeLeft },
+      bedT: this.bedT, sacrifices: this.sacrifices,
       almanac: this.almanac,
       /* season deliberately NOT saved: the dev garden has no calendar, and a
          ?season= theme test must never persist its bonus into the solo save;
@@ -666,6 +824,24 @@ CC.Core = class {
     };
     for (const u of CC.SHED) { const v = cnt((pk.cap || {})[u.id], 10); if (v > 0 && u.max !== undefined) this.perks.cap[u.id] = v; }
     this.haltT = Math.max(0, Math.min(+s.haltT || 0, 3600));
+    /* the Seed Bed (R23): species must exist, ages are ints, the seed is a
+       uint32, the log holds counts — a forged plot never grows a null */
+    const B = CC.BED || { w: 4, h: 4 }, rb = s.bed || {}, fresh = CC.Core.freshBed();
+    this.bed = fresh;
+    if ((CC.SOILS || []).some(x => x.id === rb.soil)) fresh.soil = rb.soil;
+    const plots = Array.isArray(rb.plots) ? rb.plots : [];
+    for (let i = 0; i < B.w * B.h; i++) {
+      const pl = plots[i];
+      const p = pl && typeof pl === 'object' ? this.plantData(pl.sp) : null;
+      if (p) fresh.plots[i] = { sp: p.id, age: Math.max(0, Math.min(Math.floor(+pl.age) || 0, p.life)) };
+    }
+    for (const p of (CC.PLANTS || [])) { const n = Math.floor((rb.log || {})[p.id]) || 0; if (n > 0) fresh.log[p.id] = Math.min(n, 1e9); }
+    fresh.seed = (Math.floor(+rb.seed) >>> 0) || 1;
+    fresh.n = Math.max(0, Math.floor(+rb.n) || 0);
+    fresh.soilAt = Math.max(0, +rb.soilAt || 0);
+    fresh.sacrificeLeft = Math.max(0, Math.min(+rb.sacrificeLeft || 0, 3600));
+    this.bedT = Math.max(0, Math.min(+s.bedT || 0, (B.tick || 300)));
+    this.sacrifices = Math.max(0, Math.floor(s.sacrifices) || 0);
     /* known page ids are historical fact and stay latched; junk ids would
        mint ×1.02 each forever — dropped */
     this.almanac = {};
@@ -679,6 +855,11 @@ CC.Core = class {
       const gone = Math.max(0, (Date.now() - s.last) / 1000);
       for (const b of this.buffs) b.left -= gone;
       this.buffs = this.buffs.filter(b => b.left > 0);
+      /* the bed kept growing too (R23), within the offline cap */
+      if (CC.BED) {
+        this.bedT += Math.min(gone, 8 * 3600);
+        while (this.bedT >= CC.BED.tick) { this.bedT -= CC.BED.tick; this.bedTick(); }
+      }
     }
     this._ribbonCount = this.ribbons().length;
     this._bumperSeen = CC.BUILDINGS.map((_, i) => this.bumperCount(i));

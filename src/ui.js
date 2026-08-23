@@ -156,6 +156,37 @@ CC.UI = class {
     this.$('quilt-copy').addEventListener('click', () => this.copyQuilt());
     this.drawQuilt();
 
+    /* the Seed Bed (R23): a shared bed under the carrot */
+    this.bedCtx = this.$('bed').getContext('2d');
+    this.bedMenuPlot = -1;
+    this.$('bed').addEventListener('pointerdown', e => {
+      const r = e.currentTarget.getBoundingClientRect();
+      const W = CC.BED.w, H = CC.BED.h;
+      const x = Math.floor((e.clientX - r.left) / r.width * W), y = Math.floor((e.clientY - r.top) / r.height * H);
+      if (x < 0 || y < 0 || x >= W || y >= H) return;
+      this.bedClick(y * W + x);
+    });
+    this.$('bed').addEventListener('mousemove', e => {
+      const r = e.currentTarget.getBoundingClientRect();
+      const W = CC.BED.w, H = CC.BED.h;
+      const x = Math.floor((e.clientX - r.left) / r.width * W), y = Math.floor((e.clientY - r.top) / r.height * H);
+      this.bedHover = (x >= 0 && y >= 0 && x < W && y < H) ? y * W + x : -1;
+      this.bedTip();
+    });
+    this.$('bed').addEventListener('mouseleave', () => { this.bedHover = -1; this.tooltip(null); });
+    const sb = this.$('soil-btns');
+    for (const so of (CC.SOILS || [])) {
+      const b = document.createElement('button');
+      b.textContent = so.name; b.dataset.id = so.id; b.title = so.line;
+      b.addEventListener('click', () => this.setSoil(so.id));
+      sb.appendChild(b);
+    }
+    this.$('sacrifice-btn').addEventListener('click', () => this.askSacrifice());
+    document.addEventListener('pointerdown', e => {
+      const m = this.$('bed-menu');
+      if (!m.classList.contains('hidden') && !m.contains(e.target) && e.target !== this.$('bed')) this.closeBedMenu();
+    });
+
     let last = performance.now();
     const frame = now => {
       const dt = Math.min(0.1, (now - last) / 1000);
@@ -451,6 +482,173 @@ CC.UI = class {
           .then(() => this.toast('🧵 The quilt is on your clipboard — paste it anywhere.'), open);
       });
     } else open();
+  }
+
+  /* ---------------- the Seed Bed (R23) ---------------- */
+  plotName(i) { return `${'ABCDEF'[i % CC.BED.w]}${Math.floor(i / CC.BED.w) + 1}`; }
+  plantEffectText(p) {
+    const bits = [];
+    if (p.mult) bits.push(p.mult >= 1 ? `×${p.mult} production` : `×${p.mult} (a weed)`);
+    if (p.rabbit) bits.push(`guests ×${p.rabbit}`);
+    if (p.weather) bits.push(`rain lasts ×${p.weather}`);
+    if (p.honey) bits.push(`+${p.honey} 🍯 on harvest`);
+    if (p.payout) bits.push(`${p.payout} min of harvest on picking`);
+    return bits.join(' · ') || 'keeps the bed company';
+  }
+  bedClick(i) {
+    if (this.awaitingWorld()) return;
+    const c = this.core, pl = c.bed.plots[i];
+    this.closeBedMenu();
+    if (!pl) { this.openBedMenu(i); return; }
+    if (c.plotMature(pl)) {
+      if (this.worldMode) { this.patch.send({ type: 'harvest', i }); return; }
+      const r = c.bedHarvest(i);
+      if (r) this.bedHarvested({ ...r, i, who: '' });
+      return;
+    }
+    const p = c.plantData(pl.sp);
+    this.toast(`🌱 ${p ? p.name : 'Something'} at ${this.plotName(i)} needs ${p ? p.mature - pl.age : '?'} more bed tick${p && p.mature - pl.age === 1 ? '' : 's'} (${CC.fmtDur(CC.BED.tick - c.bedT + Math.max(0, (p ? p.mature - pl.age : 1) - 1) * CC.BED.tick)}).`);
+  }
+  openBedMenu(i) {
+    const c = this.core, m = this.$('bed-menu');
+    this.bedMenuPlot = i;
+    m.innerHTML = '';
+    const head = document.createElement('div'); head.className = 'bm-head'; head.textContent = `PLANT AT ${this.plotName(i)}`; m.appendChild(head);
+    const wait = CC.BED.plantCooldown - (this.t - (this.lastPlant === undefined ? -1e9 : this.lastPlant));
+    if (wait > 0) { const w = document.createElement('div'); w.className = 'bm-sub'; w.textContent = `your trowel rests ${Math.ceil(wait)}s`; m.appendChild(w); }
+    let any = false;
+    for (const p of CC.PLANTS) {
+      const price = c.bedPrice(p.id);
+      if (!price) continue;
+      any = true;
+      const row = document.createElement('div');
+      const can = price.carrots !== undefined ? c.bank >= price.carrots : c.honey >= price.honey;
+      row.className = 'bm-row' + (can ? '' : ' cant');
+      const nm = document.createElement('b'); nm.textContent = p.name;
+      const cost = document.createElement('span');
+      cost.textContent = price.carrots !== undefined ? `${CC.fmt(Math.ceil(price.carrots))} 🥕` : `${price.honey} 🍯`;
+      row.append(nm, cost);
+      row.title = `${p.flavor} — ${this.plantEffectText(p)} · matures in ${p.mature} ticks, lives ${p.life}`;
+      if (can) row.addEventListener('click', () => this.plantAt(i, p.id));
+      m.appendChild(row);
+    }
+    if (!any) { const d = document.createElement('div'); d.className = 'bm-sub'; d.textContent = 'Nothing to plant yet.'; m.appendChild(d); }
+    const sub = document.createElement('div'); sub.className = 'bm-sub';
+    sub.textContent = 'Tier-1 seeds cost minutes of harvest; anything found costs honey. Two mature neighbours may cross.';
+    m.appendChild(sub);
+    const cl = document.createElement('div'); cl.className = 'bm-close'; cl.textContent = 'close ✕';
+    cl.addEventListener('click', () => this.closeBedMenu());
+    m.appendChild(cl);
+    const W = CC.BED.w, x = i % W, y = Math.floor(i / W);
+    m.style.left = `${Math.min(60, x * (100 / W))}%`;
+    m.style.top = `${Math.min(55, (y + 1) * (100 / CC.BED.h))}%`;
+    m.classList.remove('hidden');
+  }
+  closeBedMenu() { this.$('bed-menu').classList.add('hidden'); this.bedMenuPlot = -1; }
+  plantAt(i, sp) {
+    this.closeBedMenu();
+    const wait = CC.BED.plantCooldown - (this.t - (this.lastPlant === undefined ? -1e9 : this.lastPlant));
+    if (wait > 0) { this.toast(`🌱 Your trowel rests — ${Math.ceil(wait)}s before the next seed.`); return; }
+    this.lastPlant = this.t;
+    if (this.worldMode) { this.patch.send({ type: 'plant', i, sp }); return; }
+    if (this.core.bedPlant(i, sp)) { CC.audio.upgrade(); this.toast(`🌱 ${this.core.plantData(sp).name} planted at ${this.plotName(i)}.`); }
+  }
+  bedHarvested(r) {
+    const p = this.core.plantData(r.sp);
+    if (!p) return;
+    const who = r.who ? r.who : 'a tender';
+    if (r.first) {
+      CC.audio.fanfare();
+      this.toast(`📗 NEW IN THE SEED LOG: ${p.name}! ${p.flavor} (${who} picked it at ${this.plotName(r.i)})`);
+    } else {
+      CC.audio.upgrade();
+      const bits = [];
+      if (r.gain > 0) bits.push(`+${CC.fmt(r.gain)} 🥕`);
+      if (r.honey > 0) bits.push(`+${r.honey} 🍯`);
+      this.toast(`🧺 ${who} picked the ${p.name} at ${this.plotName(r.i)}${bits.length ? ` — ${bits.join(', ')}` : ''}.`);
+    }
+  }
+  setSoil(id) {
+    if (this.awaitingWorld()) return;
+    const c = this.core, now = this.now();
+    if (id === c.bed.soil) return;
+    const left = CC.BED.soilCooldown - (now - c.bed.soilAt);
+    if (left > 0) { this.toast(`🪨 The soil was turned ${CC.fmtDur(now - c.bed.soilAt)} ago — ${CC.fmtDur(left)} before it can change again.`); return; }
+    if (this.worldMode) { this.patch.send({ type: 'soil', id }); return; }
+    if (c.bedSoil(id, now)) this.toast(`🪨 The bed is ${CC.SOILS.find(x => x.id === id).name} now.`);
+  }
+  askSacrifice() {
+    const c = this.core;
+    if (c.bed.sacrificeLeft > 0) {
+      if (this.worldMode) this.patch.send({ type: 'cancelSacrifice' }); else { c.bedCancel(); this.toast('🍯 The sacrifice is called off.'); }
+      return;
+    }
+    if (!c.logFull()) return;
+    this.$('modal-title').textContent = '🍯 Give up the seed log?';
+    this.$('modal-body').innerHTML = `Every species is written. Giving the log up pays <b>${CC.BED.sacrificeHoney} honey</b> and a permanent Almanac page — ` +
+      `and clears the log, so every cross must be found again (found seeds cost honey until they are). ` +
+      `A <b>${CC.fmtDur(CC.BED.sacrificeWait)}</b> countdown runs first; anyone can cancel it.`;
+    this.$('trial-pick').classList.add('hidden');
+    const yes = this.$('modal-yes');
+    yes.textContent = 'Start the countdown';
+    yes.onclick = () => {
+      this.$('modal').classList.add('hidden');
+      if (this.worldMode) this.patch.send({ type: 'sacrifice' }); else if (c.bedSacrifice()) this.toast('🍯 The countdown begins.');
+    };
+    this.$('modal').classList.remove('hidden');
+  }
+  bedTip() {
+    const i = this.bedHover, c = this.core;
+    if (i < 0) { this.tooltip(null); return; }
+    const pl = c.bed.plots[i];
+    if (!pl) { this.tooltip(null); return; }
+    const p = c.plantData(pl.sp);
+    if (!p) { this.tooltip(null); return; }
+    const mature = c.plotMature(pl);
+    this.tooltip({ kind: 'plant', p, pl, text: `${p.name} — ${this.plotName(i)}\n${p.flavor}\n${this.plantEffectText(p)}\n` +
+      (mature ? `mature · ${p.life - pl.age} ticks of life left · click to pick` : `${p.mature - pl.age} ticks to maturity`) }, this.$('bed'));
+  }
+  /* a plant as five strokes: stem, leaves, a head coloured by what it does */
+  drawBed() {
+    const x = this.bedCtx, c = this.core, W = CC.BED.w, H = CC.BED.h, cw = 256 / W, ch = 256 / H;
+    const soil = c.soilData();
+    const ground = { dirt: ['#5a3c22', '#4a3019'], clay: ['#7a5540', '#5e4030'], chips: ['#8a6a3a', '#6b5028'] }[soil.id] || ['#5a3c22', '#4a3019'];
+    for (let i = 0; i < W * H; i++) {
+      const px = (i % W) * cw, py = Math.floor(i / W) * ch;
+      x.fillStyle = ground[(i % W + Math.floor(i / W)) % 2];
+      x.fillRect(px, py, cw, ch);
+      x.strokeStyle = 'rgba(0,0,0,0.18)'; x.strokeRect(px + 0.5, py + 0.5, cw - 1, ch - 1);
+      const pl = c.bed.plots[i];
+      if (!pl) { if (i === this.bedHover) { x.fillStyle = 'rgba(255,220,120,0.12)'; x.fillRect(px, py, cw, ch); } continue; }
+      const p = c.plantData(pl.sp);
+      if (!p) continue;
+      const mature = pl.age >= p.mature;
+      const g = Math.min(1, (pl.age + 0.35) / p.mature);           /* growth 0..1 */
+      const old = p.life < 900 && pl.age > p.life - 2;                /* about to die */
+      const cx = px + cw / 2, base = py + ch - 8;
+      const h = 10 + g * (ch - 24);
+      const hue = p.mult && p.mult < 1 ? '#7d8a5a' : p.rabbit ? '#5fa65a' : p.weather ? '#6e8fd6' : p.honey ? '#e7b23a'
+        : p.wild ? '#9a9a70' : p.tier >= 5 ? '#f0c060' : p.tier >= 4 ? '#c58ad0' : '#e8843a';
+      x.strokeStyle = old ? '#6a5a3a' : '#3f7d33'; x.lineWidth = 2.5;
+      x.beginPath(); x.moveTo(cx, base); x.quadraticCurveTo(cx + Math.sin(this.t * 1.3 + i) * 2, base - h / 2, cx, base - h); x.stroke();
+      x.fillStyle = old ? '#7a6a45' : '#4c8a3a';
+      for (let k = 0; k < 2 + Math.floor(g * 3); k++) {
+        const ly = base - h * (0.25 + k * 0.2), dir = k % 2 ? 1 : -1;
+        x.beginPath(); x.ellipse(cx + dir * 6, ly, 7, 3.2, dir * 0.5, 0, Math.PI * 2); x.fill();
+      }
+      if (mature) {
+        const r = 6 + Math.min(3, p.tier);
+        x.fillStyle = hue; x.beginPath(); x.arc(cx, base - h - 2, r, 0, Math.PI * 2); x.fill();
+        x.strokeStyle = `rgba(255,230,150,${0.35 + Math.sin(this.t * 3 + i) * 0.2})`; x.lineWidth = 2;
+        x.beginPath(); x.arc(cx, base - h - 2, r + 3, 0, Math.PI * 2); x.stroke();
+      } else {
+        x.fillStyle = hue; x.beginPath(); x.arc(cx, base - h, 2.5 + g * 3, 0, Math.PI * 2); x.fill();
+      }
+      if (i === this.bedHover) { x.fillStyle = 'rgba(255,220,120,0.12)'; x.fillRect(px, py, cw, ch); }
+    }
+    if (c.bed.sacrificeLeft > 0) {
+      x.fillStyle = `rgba(240,180,60,${0.12 + Math.sin(this.t * 4) * 0.08})`; x.fillRect(0, 0, 256, 256);
+    }
   }
 
   /* ---------------- Trials (R22) ---------------- */
@@ -990,6 +1188,30 @@ CC.UI = class {
         CC.audio.rabbit();
         this.toast(`🧪 ${t.name} — the clock ran out. The spring carries on, rule lifted.`);
       }
+    } else if (ev.type === 'bedPlant') {
+      const p = this.core.plantData(ev.sp);
+      if (p && ev.who) this.toast(`🌱 ${ev.who} planted ${p.name} at ${this.plotName(ev.i)}.`);
+    } else if (ev.type === 'bedHarvest') {
+      this.bedHarvested(ev);
+    } else if (ev.type === 'bedSprout') {
+      const p = this.core.plantData(ev.sp);
+      if (!p) return;
+      if (p.wild) { this.toast(`🌿 ${p.name} blew into the bed at ${this.plotName(ev.i)}.`); return; }
+      CC.audio.upgrade();
+      this.toast(`✨ Something crossed in the bed at ${this.plotName(ev.i)}: ${this.core.bed.log[ev.sp] ? p.name : 'a plant nobody has picked before'}. Let it grow.`);
+    } else if (ev.type === 'bedDied') {
+      /* quiet: the bed shows it */
+    } else if (ev.type === 'soil') {
+      const so = (CC.SOILS || []).find(x => x.id === ev.id);
+      if (so) this.toast(`🪨 ${ev.who || 'A tender'} turned the bed to ${so.name}. ${so.line}`);
+    } else if (ev.type === 'sacrificeStart') {
+      CC.audio.seed();
+      this.toast(`🍯 ${ev.who || 'Someone'} is giving up the seed log — ${CC.fmtDur(ev.left || 120)} to change our minds.`);
+    } else if (ev.type === 'sacrificeCancel') {
+      this.toast(`🍯 ${ev.who || 'Someone'} called off the sacrifice. The log stays.`);
+    } else if (ev.type === 'sacrifice') {
+      CC.audio.fanfare();
+      this.toast(`🍯 The seed log is given up for ${ev.honey} honey. Seedless to Nay — the bed begins again.`);
     } else if (ev.type === 'paint') {
       if (ev.i >= 0 && ev.i < this.quilt.cells.length) {
         this.quilt.cells[ev.i] = ev.c; this.quilt.painted++;
@@ -1018,6 +1240,7 @@ CC.UI = class {
   tooltip(what, el) {
     const tip = this.$('tooltip');
     this._tipKind = what && what.kind;
+    tip.style.whiteSpace = what && what.kind === 'plant' ? 'pre-line' : '';
     if (!what) {
       tip.classList.add('hidden');
       return;
@@ -1046,6 +1269,8 @@ CC.UI = class {
         ? `<b>${pg.name}</b> — +${Math.round((CC.ALMANAC_MULT - 1) * 100)}% production, forever` +
           `<br><span class="flavor">${pg.flavor}</span>`
         : `<b>???</b> — an unwritten page<br><span class="flavor">The deed will name itself when it is done.</span>`;
+    } else if (what.kind === 'plant') {
+      tip.textContent = what.text; /* plain text, pre-wrapped: species names are data, but keep it simple */
     } else if (what.kind === 'prestige') {
       tip.innerHTML = `<b>Go to Seed</b> — prestige reset<br>` +
         `Seeds so far: earned at √(lifetime ÷ 1M). Each seed = +8% production, permanently.` +
@@ -1232,6 +1457,41 @@ CC.UI = class {
       gl.textContent = parts.join(' · ');
     }
 
+    /* the Seed Bed (R23): soil bar, clock, the seed log, the sacrifice */
+    {
+      const soil = c.soilData();
+      for (const b of this.$('soil-btns').children) b.classList.toggle('on', b.dataset.id === c.bed.soil);
+      const left = CC.BED.soilCooldown - (this.now() - c.bed.soilAt);
+      const alive = c.bed.plots.filter(Boolean).length;
+      this.$('bed-clock').textContent =
+        `${soil.name} · tick in ${CC.fmtDur(CC.BED.tick - c.bedT)}${soil.every > 1 ? ` (grows every ${soil.every})` : ''}` +
+        (left > 0 ? ` · soil in ${CC.fmtDur(left)}` : '') + ` · ${alive}/${c.bed.plots.length} plots` +
+        (c.bedMult() !== 1 ? ` · ${this.fmtX(c.bedMult())}` : '');
+      const logSig = CC.PLANTS.map(p => (c.bed.log[p.id] || 0)).join(',') + '|' + Math.round(c.bed.sacrificeLeft) + '|' + c.sacrifices;
+      if (logSig !== this._logSig) {
+        this._logSig = logSig;
+        const known = CC.PLANTS.filter(p => c.bed.log[p.id]).length;
+        this.$('seedlog-line').textContent = `${known}/${CC.PLANTS.length} species found` +
+          (c.sacrifices ? ` · given up ${c.sacrifices}×` : '') + ' — two mature neighbours may cross; the recipes are not written down.';
+        const box = this.$('seedlog');
+        box.innerHTML = '';
+        for (const p of CC.PLANTS) {
+          const d = document.createElement('span');
+          const n = c.bed.log[p.id] || 0;
+          d.className = `sl t${p.tier}` + (n ? '' : ' unknown');
+          d.textContent = n ? `${p.name} ×${n}` : `??? (tier ${p.tier})`;
+          d.title = n ? `${p.flavor} — ${this.plantEffectText(p)}` : (p.wild ? 'Blows in on its own, now and then.' : 'A cross nobody has picked yet.');
+          box.appendChild(d);
+        }
+        const row = this.$('sacrifice-row');
+        const full = c.logFull(), pending = c.bed.sacrificeLeft > 0;
+        row.classList.toggle('hidden', !(full || pending));
+        this.$('sacrifice-btn').textContent = pending ? 'Cancel the sacrifice' : `Give up the log for ${CC.BED.sacrificeHoney} 🍯`;
+        this.$('sacrifice-text').textContent = pending ? '' : 'Every species is written. The bed could begin again.';
+      }
+      if (c.bed.sacrificeLeft > 0) this.$('sacrifice-text').textContent = `the log is given up in ${CC.fmtDur(c.bed.sacrificeLeft)} — anyone may cancel`;
+    }
+
     /* Parish Orders (R21): the board the world can miss */
     {
       const o = this.worldMode && this.patch ? this.patch.order : null;
@@ -1413,6 +1673,7 @@ CC.UI = class {
         `<div>Production bonus <b>${this.fmtX(c.globalMult())}${c.buffMult() > 1 ? ` · ⚡${this.fmtX(c.buffMult())}` : ''}${c.seasonMult() > 1 ? ` · 🎪${this.fmtX(c.seasonMult())}` : ''}${c.handsBonus > 1 ? ` · 🤝${this.fmtX(c.handsBonus)}` : ''}</b></div>` +
         `<div class="stat-sub">seeds ${this.fmtX(c.seedMult())} · ribbons ${this.fmtX(c.ribbonMult())} · rest ${this.fmtX(c.globalMult() / (c.seedMult() * c.ribbonMult()))}</div>` +
         (c.honey > 0 ? `<div>Honey in the jar 🍯 <b>${CC.fmt(c.honey)}</b></div>` : '') +
+        (c.bedMult() !== 1 ? `<div>The bed 🌱 <b>${this.fmtX(c.bedMult())}</b></div>` : '') +
         (() => { /* Trials (R22): the ledger and what it paid */
           const done = (CC.TRIALS || []).reduce((a, t) => a + c.trialDone(t.id), 0);
           if (!done) return '';
@@ -1441,6 +1702,7 @@ CC.UI = class {
 
   /* ---------------- canvas ---------------- */
   render() {
+    this.drawBed();
     const x = this.ctx, W = this.canvas.width, H = this.canvas.height;
     x.drawImage(this.bg, 0, 0);
     const c = this.core;

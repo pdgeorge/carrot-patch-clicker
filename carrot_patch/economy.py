@@ -63,6 +63,12 @@ def load_data() -> dict:
         return json.load(f)
 
 
+def fresh_bed(d: dict) -> dict:
+    b = d.get("bed") or {"w": 4, "h": 4}
+    return {"soil": "dirt", "plots": [None] * (b["w"] * b["h"]), "log": {}, "seed": 1, "n": 0,
+            "soilAt": 0.0, "sacrificeLeft": 0.0}
+
+
 def fresh_perks() -> dict:
     return {"scarecrow": 0, "startTier": 0, "resproutCap": 0, "cap": {}, "longEars": 0, "clickFrenzy": 0}
 
@@ -100,6 +106,10 @@ class Economy:
         self.perks: dict = fresh_perks()
         self.halt_t: float = 0.0         # Late Frost: seconds of stillness left
         self.sc_t: float = 0.0           # Scarecrow clock
+        # the Seed Bed (R23): the world's shared bed; the log outlives everything
+        self.bed: dict = fresh_bed(data)
+        self.bed_t: float = 0.0
+        self.sacrifices: int = 0
         self.buffs: list[dict] = []  # {name, mult, left}
         self._ribbon_seen = 0
         self._bumper_seen = [0] * len(data["buildings"])
@@ -179,7 +189,186 @@ class Economy:
         if "trialMax" in c:
             mx = self.d.get("trial", {}).get("maxDone", 5)
             return sum(1 for t in self.d.get("trials", []) if self.trial_done(t["id"]) >= mx) >= c["trialMax"]
+        # the Seed Bed (R23)
+        if "logTier" in c:
+            return self.log_tier(c["logTier"])
+        if "logFull" in c:
+            return self.log_full()
+        if "sacrifices" in c:
+            return self.sacrifices >= c["sacrifices"]
         return False
+
+    # ---------- the Seed Bed (R23) — mirror of core.js ----------
+    def bed_rand(self) -> float:
+        """The same 32-bit LCG as core.js bedRand, bit for bit."""
+        self.bed["seed"] = (self.bed["seed"] * 1664525 + 1013904223) & 0xFFFFFFFF
+        return self.bed["seed"] / 4294967296
+
+    def plant_data(self, pid) -> dict | None:
+        return next((p for p in self.d.get("plants", []) if p["id"] == pid), None)
+
+    def soil_data(self) -> dict:
+        soils = self.d.get("soils") or [{"id": "dirt", "every": 1, "effect": 1, "mutation": 1}]
+        return next((x for x in soils if x["id"] == self.bed["soil"]), soils[0])
+
+    def plot_mature(self, pl) -> bool:
+        p = self.plant_data(pl["sp"]) if pl else None
+        return bool(p) and pl["age"] >= p["mature"]
+
+    def bed_cps_ref(self) -> float:
+        return max(10.0, self.base_cps(True) * self.season_mult())
+
+    def bed_price(self, sp) -> dict | None:
+        p = self.plant_data(sp)
+        if not p or p.get("wild"):
+            return None
+        if p["tier"] == 1:
+            return {"carrots": self.bed_cps_ref() * p["cost"] * 60}
+        if self.bed["log"].get(sp):
+            costs = self.d["bed"].get("honeyTierCost") or []
+            return {"honey": costs[p["tier"]] if p["tier"] < len(costs) else 100}
+        return None
+
+    def bed_plant(self, i: int, sp) -> bool:
+        if not (0 <= i < len(self.bed["plots"])) or self.bed["plots"][i]:
+            return False
+        price = self.bed_price(sp)
+        if not price:
+            return False
+        if "carrots" in price:
+            if self.bank < price["carrots"]:
+                return False
+            self.bank -= price["carrots"]
+        else:
+            if self.honey < price["honey"]:
+                return False
+            self.honey -= price["honey"]
+        self.bed["plots"][i] = {"sp": sp, "age": 0}
+        return True
+
+    def bed_harvest(self, i: int) -> dict | None:
+        pl = self.bed["plots"][i] if 0 <= i < len(self.bed["plots"]) else None
+        if not self.plot_mature(pl):
+            return None
+        p = self.plant_data(pl["sp"])
+        soil = self.soil_data()
+        gain = 0.0
+        if p.get("payout"):
+            gain = min(self.bed_cps_ref() * p["payout"] * 60 * soil["effect"],
+                       self.bank * self.d["bed"]["payoutCapPct"] + self.bed_cps_ref() * 60)
+            self.earn(gain)
+        honey = round(p["honey"] * soil["effect"]) if p.get("honey") else 0
+        self.honey += honey
+        first = not self.bed["log"].get(pl["sp"])
+        self.bed["log"][pl["sp"]] = self.bed["log"].get(pl["sp"], 0) + 1
+        self.bed["plots"][i] = None
+        return {"sp": pl["sp"], "gain": gain, "honey": honey, "first": first}
+
+    def bed_soil(self, sid, now: float) -> bool:
+        if not any(x["id"] == sid for x in self.d.get("soils", [])) or sid == self.bed["soil"]:
+            return False
+        if now - self.bed["soilAt"] < self.d["bed"]["soilCooldown"]:
+            return False
+        self.bed["soil"] = sid
+        self.bed["soilAt"] = now
+        return True
+
+    def log_full(self) -> bool:
+        return all(self.bed["log"].get(p["id"]) for p in self.d.get("plants", []))
+
+    def log_tier(self, n: int) -> bool:
+        return any(p["tier"] == n and self.bed["log"].get(p["id"]) for p in self.d.get("plants", []))
+
+    def bed_sacrifice(self) -> bool:
+        if not self.log_full() or self.bed["sacrificeLeft"] > 0:
+            return False
+        self.bed["sacrificeLeft"] = float(self.d["bed"].get("sacrificeWait", 120))
+        return True
+
+    def bed_cancel(self) -> bool:
+        was = self.bed["sacrificeLeft"] > 0
+        self.bed["sacrificeLeft"] = 0.0
+        return was
+
+    def _mature_plants(self):
+        for pl in self.bed["plots"]:
+            if pl and self.plot_mature(pl):
+                yield self.plant_data(pl["sp"])
+
+    def bed_mult(self) -> float:
+        e = self.soil_data()["effect"]
+        m = 1.0
+        for p in self._mature_plants():
+            if p.get("mult"):
+                m *= 1 + (p["mult"] - 1) * e
+        return max(0.5, min(self.d["bed"]["multCap"], m))
+
+    def bed_rabbit(self) -> float:
+        m = 1.0
+        for p in self._mature_plants():
+            if p.get("rabbit"):
+                m *= p["rabbit"]
+        return min(self.d["bed"]["rabbitCap"], m)
+
+    def bed_weather(self) -> float:
+        m = 1.0
+        for p in self._mature_plants():
+            if p.get("weather"):
+                m *= p["weather"]
+        return min(self.d["bed"]["weatherCap"], m)
+
+    def bed_neighbors(self, i: int) -> list[int]:
+        w, h = self.d["bed"]["w"], self.d["bed"]["h"]
+        x, y = i % w, i // w
+        out = []
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                if not dx and not dy:
+                    continue
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < w and 0 <= ny < h:
+                    out.append(ny * w + nx)
+        return out
+
+    def bed_tick(self) -> list[dict]:
+        events: list[dict] = []
+        bed, soil = self.bed, self.soil_data()
+        bed["n"] += 1
+        if bed["n"] % soil["every"] != 0:
+            return events
+        for i, pl in enumerate(bed["plots"]):
+            if not pl:
+                continue
+            p = self.plant_data(pl["sp"])
+            if not p:
+                bed["plots"][i] = None
+                continue
+            pl["age"] += 1
+            if pl["age"] >= p["life"]:
+                bed["plots"][i] = None
+                events.append({"type": "bedDied", "i": i, "sp": pl["sp"]})
+        for i in range(len(bed["plots"])):
+            if bed["plots"][i]:
+                continue
+            near = [bed["plots"][j]["sp"] for j in self.bed_neighbors(i) if self.plot_mature(bed["plots"][j])]
+            born = None
+            for p in self.d.get("plants", []):
+                if p.get("wild"):
+                    if self.bed_rand() < p["wild"]:
+                        born = p["id"]
+                        break
+                    continue
+                if not p.get("parents"):
+                    continue
+                a, b = p["parents"]
+                ok = near.count(a) >= 2 if a == b else (a in near and b in near)
+                if ok and self.bed_rand() < p["chance"] * soil["mutation"]:
+                    born = p["id"]
+                    break
+            if born:
+                bed["plots"][i] = {"sp": born, "age": 0}
+                events.append({"type": "bedSprout", "i": i, "sp": born})
+        return events
 
     # ---------- Trials (R22) — mirror of core.js ----------
     def trial_data(self, tid: str | None = None) -> dict | None:
@@ -340,7 +529,7 @@ class Economy:
 
     def cps(self) -> float:
         return (self.base_cps() * self.buff_mult() * self.season_mult() * self.hands_bonus
-                * self.halt_mult())
+                * self.halt_mult() * self.bed_mult())
 
     def price_disc(self) -> float:
         """Every price discount in play: a priceOff season and Market Hour
@@ -372,7 +561,7 @@ class Economy:
         cf = (1 + 2 * self.perks["clickFrenzy"]
               if self.perks["clickFrenzy"] and any(b["name"] == "Rabbit Frenzy" for b in self.buffs) else 1)
         return ((base + pct * self.base_cps(True)) * self.buff_mult() * self.season_mult()
-                * self.hands_bonus * cf)
+                * self.hands_bonus * cf * self.bed_mult())
 
     # ---------- actions ----------
     def earn(self, n: float) -> None:
@@ -598,6 +787,22 @@ class Economy:
                                "n": self.trial_done(tr["id"]), "t": tr["t"]})
                 self.trial = None
                 self.halt_t = 0.0
+        # the Seed Bed (R23): its own clock; a pending sacrifice counts down
+        bd = self.d.get("bed")
+        if bd:
+            self.bed_t += dt
+            while self.bed_t >= bd["tick"]:
+                self.bed_t -= bd["tick"]
+                events.extend(self.bed_tick())
+            if self.bed["sacrificeLeft"] > 0:
+                self.bed["sacrificeLeft"] -= dt
+                if self.bed["sacrificeLeft"] <= 0:
+                    self.bed["sacrificeLeft"] = 0.0
+                    if self.log_full():
+                        self.honey += int(bd["sacrificeHoney"])
+                        self.sacrifices += 1
+                        self.bed["log"] = {}
+                        events.append({"type": "sacrifice", "honey": int(bd["sacrificeHoney"])})
         # the Scarecrow (R22 perk): every minute, one of the cheapest
         # affordable building among its rows, if ≤ 1% of the bank; it rests
         # during Late Frost. Mirror of core.js.
@@ -657,6 +862,10 @@ class Economy:
             "trial": dict(self.trial) if self.trial else None, "trialsDone": self.trials_done,
             "trialBest": self.trial_best, "runLog": self.run_log, "perks": self.perks,
             "haltT": self.halt_t,
+            "bed": {"soil": self.bed["soil"], "plots": [dict(p) if p else None for p in self.bed["plots"]],
+                    "log": dict(self.bed["log"]), "seed": self.bed["seed"], "n": self.bed["n"],
+                    "soilAt": self.bed["soilAt"], "sacrificeLeft": self.bed["sacrificeLeft"]},
+            "bedT": self.bed_t, "sacrifices": self.sacrifices,
             "season": self.season, "seasonStart": self.season_start,
             "saved": time.time(),
         }
@@ -746,6 +955,35 @@ class Economy:
         raw_h = s.get("haltT", 0)
         self.halt_t = (min(float(raw_h), 3600.0) if isinstance(raw_h, (int, float))
                        and not isinstance(raw_h, bool) and math.isfinite(raw_h) and raw_h > 0 else 0.0)
+        # the Seed Bed (R23): species must exist, ages are ints, the seed is
+        # a uint32, the log holds counts — a forged plot never grows a None
+
+        def num(v, hi, lo=0.0):
+            return (min(float(v), hi) if isinstance(v, (int, float)) and not isinstance(v, bool)
+                    and math.isfinite(v) and v > lo else lo)
+        bdd = self.d.get("bed") or {"w": 4, "h": 4, "tick": 300}
+        rb = s.get("bed") if isinstance(s.get("bed"), dict) else {}
+        fresh = fresh_bed(self.d)
+        self.bed = fresh
+        if any(x["id"] == rb.get("soil") for x in self.d.get("soils", [])):
+            fresh["soil"] = rb["soil"]
+        plots = rb.get("plots") if isinstance(rb.get("plots"), list) else []
+        for i in range(bdd["w"] * bdd["h"]):
+            pl = plots[i] if i < len(plots) else None
+            p = self.plant_data(pl.get("sp")) if isinstance(pl, dict) else None
+            if p:
+                fresh["plots"][i] = {"sp": p["id"], "age": min(_cnt(pl.get("age", 0)), int(p["life"]))}
+        raw_log = rb.get("log") if isinstance(rb.get("log"), dict) else {}
+        for p in self.d.get("plants", []):
+            n = _cnt(raw_log.get(p["id"], 0))
+            if n > 0:
+                fresh["log"][p["id"]] = min(n, 10 ** 9)
+        fresh["seed"] = (_cnt(rb.get("seed", 1)) & 0xFFFFFFFF) or 1
+        fresh["n"] = _cnt(rb.get("n", 0))
+        fresh["soilAt"] = num(rb.get("soilAt", 0), 1e12)
+        fresh["sacrificeLeft"] = num(rb.get("sacrificeLeft", 0), 3600.0)
+        self.bed_t = num(s.get("bedT", 0), float(bdd.get("tick", 300)))
+        self.sacrifices = _cnt(s.get("sacrifices", 0))
         # known page ids are historical fact and stay latched; junk ids
         # would mint ×1.02 each forever — dropped
         self.almanac = {}
@@ -777,6 +1015,13 @@ class Economy:
             self.trial["t"] += away
         if away > 1:
             self.earn(self.base_cps() * away)
+            # the bed kept growing too (R23): same clock, same rolls
+            bd = self.d.get("bed")
+            if bd:
+                self.bed_t += away
+                while self.bed_t >= bd["tick"]:
+                    self.bed_t -= bd["tick"]
+                    self.bed_tick()
 
     def snapshot(self) -> dict:
         """Wire-format state pushed to every client."""
@@ -791,6 +1036,7 @@ class Economy:
             "honey": self.honey, "handsBonus": self.hands_bonus, "marketHour": self.market_hour,
             "trial": self.trial, "trialsDone": self.trials_done, "trialBest": self.trial_best,
             "runLog": self.run_log, "perks": self.perks, "haltT": self.halt_t,
+            "bed": self.bed, "bedT": self.bed_t, "sacrifices": self.sacrifices,
             "almanac": self.almanac,
             "season": self.season,
             "seasonEnds": (self.season_start + self.d.get("seasonDays", 14) * 86400.0

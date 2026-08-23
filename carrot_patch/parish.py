@@ -28,7 +28,7 @@ from .economy import Economy, market_hour_at
 
 DAY = 86400.0
 NOTABLE = {"prestige", "season", "order_posted", "order_resolved", "order_skipped", "ribbon",
-           "almanac", "quiet", "fallow", "trial"}
+           "almanac", "quiet", "fallow", "trial", "bedFound", "sacrifice"}
 KINDS = {"harvest", "visitors", "stalls", "pages", "springs", "sprouts", "quilt", "trials"}
 
 

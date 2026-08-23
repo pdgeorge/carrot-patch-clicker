@@ -209,6 +209,11 @@ restatement of the value.
 | Trial rules | Late Frost halt 180 s · Short Rows 6 plots · Drought exponent 0.75 (`CC.TRIALS[].rule`) | `src/data.js`; `haltMult`/`rowExists`/`rowRoom`/`globalMult` in both engines | Each rule is ONE line in the engine read at one hook, so a rule can never leak into a normal spring: every hook returns neutral when `trial` is null. Hands Only zeroes the plots but clicks keep their cpsPct share of the raw base — the sanctioned bot spring (P4). |
 | Trial rewards | Scarecrow ≤5, start-tier ≤4, resprout +20/≤100, Sprinkler cap +2/≤10, Long Ears ≤5 (+3 s/level), Click Frenzy ≤5 (×(1+2·lv) during a frenzy), Fog 150 honey (`CC.TRIALS[].reward`) | `applyReward` in both engines | Automation, caps and unlocks, never a production multiplier — zero β. Every ladder is clamped in `applyReward` AND in the save sanitizer, so a forged perk can't climb. Click Frenzy touches clicks only, inside a 30 s buff: time-boxed, free. |
 | Scarecrow | every 60 s, one unit of the cheapest affordable building among the first 2·lv rows, only if ≤ 1% of the bank; rests during Late Frost | `tick` in both engines | A patient hand for humans who aren't running the bot; the 1% rule means it can never out-spend a person's plan or starve a Max buy. Deterministic, so both engines stay in step. Silent on the wire — the snapshot shows it. |
+| The Seed Bed | 4×4 plots; bed tick 300 s; plant cooldown 60 s per connection; soil cooldown 600 s (world); sacrifice 100 honey after a 120 s cancellable wait (`CC.BED`) | `src/data.js`; `bedTick`/`bedPlant`/`bedHarvest` in both engines; `carrot_patch/main.py` intents | The first verb where the world MAKES something, on a clock cps cannot inflate. Five minutes is slow enough that a bot gains nothing by polling and fast enough that a session sees growth. No uproot exists (P1): plants die of age only, so the worst grief is an ugly bed for a few ticks. One seeded 32-bit LCG per bed, mirrored bit-for-bit, so both engines roll the same crosses from the snapshot's seed. The bed keeps ticking through downtime (server: the 24 h catch-up; dev garden: 8 h). |
+| Seed prices | tier-1 seeds: 1–5 minutes of the STEADY cps (floor 10/s); found crosses: 5/15/40/100/200 honey by tier (`CC.PLANTS[].cost`, `CC.BED.honeyTierCost`) | `bedPrice` in both engines | Minutes of harvest mean the same thing at 1e3 and 1e47 cps; honey is the bed's sink and the reason discoveries matter (a found cross can be re-planted — for honey). Weeds are never for sale. |
+| Species & recipes | 24 species in 6 tiers (`CC.PLANTS`): 4 buyable, 2 wild (0.4 % and 0.15 % per empty plot per tick), 18 crosses at 0.5–10 % per empty plot per tick when both parents stand mature and adjacent (8-neighbour); Wood Chips ×3 mutation; Clay ages every 3rd tick at ×1.25 effect | `src/data.js`; `bedTick` | Dependency depth 5 with ~24 species was the proposal's starting point: too easy and the log closes in a week, too hard and the bed is a lawn. Recipes are in the data file on purpose (P7) and hidden in play — the wiki is half the fun. The tree has no loops (tested). |
+| Bed effects | per mature plant: mult ×1.01–1.05, guests ×1.05–1.5, rain ×1.1–2, honey 1–10 on harvest, payout 2–60 cps-minutes; aggregates capped at ×2.2 production (16 × 1.05 = ×2.18), guests ×4, rain ×3; payouts capped at 5 % of the bank + a minute | `bedMult`/`bedRabbit`/`bedWeather` in both engines | Live effects are bounded by plot count — a constant, so zero β; they multiply cps (and clicks) beside the buffs, never inside globalMult (which feeds seeds). Payouts are bank-capped like rabbit bundles so a fresh world cannot be catapulted. |
+| Seed log pages | 8 Almanac pages: one per tier found (6), the full log, the sacrifice (`{logTier}`, `{logFull}`, `{sacrifices}`) | `src/data.js` | Per TIER, not per species — 24 species pages would have been ×1.6 of permanent production from one feature; eight is ×1.17, in line with the other chapters. The species themselves are recognised in the seed log panel, not the book. |
 | The Quilt | 48×48, 16 colours, one stitch per connection per 30 s, costing 1 s of cps (`CC.QUILT`) | `src/data.js`; `carrot_patch/parish.py` `Quilt` | 2304 cells at 2/min/connection is a multi-day project for a handful of people — an artifact, not a minigame. The price is nominal by design (a second of harvest), so the quilt is never an economy sink; the cooldown is per socket, so bots paint at human pace (Knights of the Button: welcome). Diffs ride as `paint` events; `quiltV` in the snapshot lets a client refetch `/api/quilt` after a gap. Survives Go to Seed; framed and cleared at Lie Fallow (R24). |
 
 ## Unlock conditions
@@ -402,6 +407,24 @@ Numbered for reference. R7 and R14 are the active priorities.
   canvas on the noticeboard wall, painted one stitch per connection per
   30 s for a second of harvest; copy-as-image for the share. Two new Order
   kinds (quilt fill, trials won). Next: R23 the Seed Bed.
+- **R23 — The Seed Bed. ✅ Shipped (2026-08).** Third slice of The Fallow
+  Year, and honey's sink. A shared 4×4 bed under the carrot, ticked by the
+  server every 300 s. Four tier-1 seeds are bought with minutes of the
+  steady cps; everything else must be FOUND: two mature parents touching
+  an empty plot roll a hidden recipe each tick (24 species, six tiers,
+  weeds that blow in on their own, soils that change the clock and the
+  odds). Mature plants bless the world while they stand (production,
+  guests, rain, honey on harvest, a bank-capped payout) and die of age —
+  there is no uproot (P1). The first harvest of a species writes the
+  **seed log**, world state that will survive Go to Seed and Lie Fallow; a
+  complete log can be sacrificed for 100 honey after a cancellable
+  countdown, and the bed begins again. The engine pair learns one
+  sub-economy primitive (`bed`, `bedTick` with a mirrored 32-bit LCG —
+  parity-tested event-for-event from a seed). Server intents: plant,
+  harvest, soil, sacrifice, cancelSacrifice; bed crosses and firsts go to
+  the chronicle. UI: a bed canvas with a planting menu and plot tooltips,
+  a soil bar, the seed log panel with ??? chips per tier. Eight Almanac
+  pages. Next: R24 Lie Fallow.
 
 ## Process for changing the game
 

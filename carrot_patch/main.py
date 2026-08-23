@@ -115,6 +115,7 @@ class Patch:
         if self.eco.market_hour:
             rate *= (self.eco.d.get("marketHour") or {}).get("visitorRate", 1)
         rate *= self.orders.visitor_rate(time.time())
+        rate *= self.eco.bed_rabbit()  # the Seed Bed (R23): clover draws rabbits
         return random.uniform(lo, hi) / rate
 
     def weather_wait(self) -> float:
@@ -265,6 +266,11 @@ class Patch:
             if out == "embargo":
                 return "🥀 Parsnip embargo! Production ×0.5 for 45 seconds. He got us this time."
             return None
+        if ev["type"] == "bedSprout":
+            p = next((x for x in d.get("plants", []) if x["id"] == ev["sp"]), None)
+            return f"🌱 Something new sprouted in the bed: {p['name']}." if p else None
+        if ev["type"] == "sacrifice":
+            return f"🍯 The seed log was given up for {ev.get('honey', 0)} honey. The bed begins again."
         if ev["type"] == "trial":
             t = next((x for x in d.get("trials", []) if x["id"] == ev["id"]), None)
             name = t["name"] if t else "the Trial"
@@ -304,7 +310,7 @@ class Patch:
                 if ev["type"] == "scarecrow":
                     continue  # a patient hand, once a minute — the snapshot shows it; no toast
                 self.emit(ev)
-                if ev["type"] in ("ribbon", "almanac", "bumper", "trial"):
+                if ev["type"] in ("ribbon", "almanac", "bumper", "trial", "bedSprout", "sacrifice"):
                     self.chronicle.log(ev)
                 if ev["type"] == "trial":
                     self.save()
@@ -350,8 +356,9 @@ class Patch:
                 ws = self.eco.d.get("weather") or []
                 if ws:
                     w = random.choices(ws, weights=[x.get("weight", 1) for x in ws])[0]
+                    # the Seed Bed (R23): bluebells make the rain last
                     self.eco.buffs.append(
-                        {"name": w["name"], "mult": w["mult"], "left": float(w["dur"])})
+                        {"name": w["name"], "mult": w["mult"], "left": float(w["dur"]) * self.eco.bed_weather()})
                     self.eco.weathers += 1
                     self.eco.mint_honey("rain")  # R21: weather is a deed of the sky
                     self.emit({"type": "weather", "id": w["id"]})
@@ -470,6 +477,49 @@ class Patch:
                 self.chronicle.log({"type": "prestige", "gained": gained,
                                     "trial": eco.trial["id"] if eco.trial else None})
                 self.save()
+
+        elif kind == "plant":
+            # the Seed Bed (R23): one seed per connection per cooldown, into an
+            # empty plot, paid in steady-cps minutes or honey (P1: no uproot)
+            if now - conn.get("last_plant", -1e9) < self.eco.d.get("bed", {}).get("plantCooldown", 60):
+                return None
+            raw_i, sp = msg.get("i"), msg.get("sp")
+            if (isinstance(raw_i, bool) or not isinstance(raw_i, (int, float)) or not math.isfinite(raw_i)
+                    or not isinstance(sp, str) or len(sp) > 24):
+                return None
+            if eco.bed_plant(int(raw_i), sp):
+                conn["last_plant"] = now
+                self.emit({"type": "bedPlant", "i": int(raw_i), "sp": sp, "who": conn.get("name") or ""})
+                self.save_soon()
+
+        elif kind == "harvest":
+            raw_i = msg.get("i")
+            if isinstance(raw_i, bool) or not isinstance(raw_i, (int, float)) or not math.isfinite(raw_i):
+                return None
+            r = eco.bed_harvest(int(raw_i))
+            if r:
+                self.emit({"type": "bedHarvest", "i": int(raw_i), "sp": r["sp"], "gain": r["gain"],
+                           "honey": r["honey"], "first": r["first"], "who": conn.get("name") or ""})
+                if r["first"]:
+                    self.chronicle.log({"type": "bedFound", "sp": r["sp"], "who": conn.get("name") or ""})
+                self.save_soon()
+
+        elif kind == "soil":
+            sid = msg.get("id")
+            if isinstance(sid, str) and eco.bed_soil(sid, time.time()):
+                self.emit({"type": "soil", "id": sid, "who": conn.get("name") or ""})
+                self.chronicle.log({"type": "soil", "id": sid})
+                self.save_soon()
+
+        elif kind == "sacrifice":
+            if eco.bed_sacrifice():
+                self.emit({"type": "sacrificeStart", "left": eco.bed["sacrificeLeft"], "who": conn.get("name") or ""})
+                self.save_soon()
+
+        elif kind == "cancelSacrifice":
+            if eco.bed_cancel():
+                self.emit({"type": "sacrificeCancel", "who": conn.get("name") or ""})
+                self.save_soon()
 
         elif kind == "paint":
             # the Quilt (R22): one stitch per connection per cooldown, for a

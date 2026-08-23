@@ -202,8 +202,8 @@ check(!bad.almanac.fake && bad.almanac.sd0 === true
 
 /* the Almanac (R16): deeds latch forever, once, and compound */
 console.log('\n=== the Almanac ===');
-check(CC.ALMANAC.length === 87, `87 pages in the catalog — 78 + nine Trial pages (got ${CC.ALMANAC.length})`);
-check(new Set(CC.ALMANAC.map(p => p.id)).size === 87, 'page ids unique');
+check(CC.ALMANAC.length === 95, `95 pages in the catalog — 78 + nine Trial + eight Seed Bed pages (got ${CC.ALMANAC.length})`);
+check(new Set(CC.ALMANAC.map(p => p.id)).size === 95, 'page ids unique');
 const al = new CC.Core();
 al.seeds = 100;
 check(al.almanacCount() === 0, 'nothing latches without a tick');
@@ -644,6 +644,95 @@ check(junk.trial === null && junk.trialsDone.frost === T.maxDone && junk.trialsD
   && junk.perks.scarecrow === 5 && junk.perks.cap.l1 === 10 && junk.perks.cap.zz === undefined && junk.runLog.length === 1 && junk.haltT === 3600,
   'forged Trial state is clamped: no infinite goal, no ladder past its top');
 check(!junk.trialAvailable('frost') && junk.trialAvailable('fog'), 'a maxed Trial cannot be entered again');
+
+/* the Seed Bed (R23): a shared bed on a shared clock, recipes by seeded RNG */
+console.log('\n=== the Seed Bed (R23) ===');
+const B = CC.BED;
+check(CC.PLANTS.length === 24 && new Set(CC.PLANTS.map(p => p.id)).size === 24, '24 species, ids unique');
+check(CC.PLANTS.every(p => !p.parents || p.parents.every(q => CC.PLANTS.some(x => x.id === q))), 'every recipe names real parents');
+check(CC.PLANTS.every(p => p.tier === 1 || p.wild || (p.parents && CC.PLANTS.filter(x => p.parents.includes(x.id)).every(x => x.tier < p.tier))),
+  'every cross is born of lower tiers — the tree has no loops');
+const bd = new CC.Core();
+bd.earn(1e6); bd.buy(0, 20);
+const ref = bd.bedCpsRef();
+check(ref >= 10 && bd.bedPrice('sprout').carrots === ref * 60, 'a Carrot Sprout costs one minute of steady cps');
+check(bd.bedPrice('nettle') === null && bd.bedPrice('honeyroot') === null, 'weeds and undiscovered crosses are not for sale');
+check(bd.bedPlant(0, 'sprout') && bd.bedPlant(1, 'clover') && !bd.bedPlant(1, 'thyme'), 'plants go into empty plots only');
+check(bd.bedHarvest(0) === null, 'a seedling cannot be picked — there is no uproot');
+bd.tick(B.tick * 4 + 1);
+check(bd.bed.n === 4 && bd.bed.plots[0].age === 4 && bd.plotMature(bd.bed.plots[0]), 'four bed ticks: the sprout is mature');
+check(Math.abs(bd.bedMult() - 1.01) < 1e-12, 'a mature sprout is ×1.01 while it stands');
+const bankB = bd.bank, h = bd.bedHarvest(0);
+check(h && h.first && h.sp === 'sprout' && bd.bank > bankB && bd.bed.log.sprout === 1 && bd.bed.plots[0] === null,
+  'the harvest pays, writes the log, clears the plot');
+bd.latchPages();
+check(bd.almanac.sb0 === true, 'First Harvest is written');
+/* recipes: deterministic from the seed */
+const cross = new CC.Core();
+cross.bed.seed = 12345;
+cross.bed.plots[5] = { sp: 'sprout', age: 3 }; cross.bed.plots[6] = { sp: 'clover', age: 4 };
+let found = null;
+for (let k = 0; k < 8 && !found; k++) {
+  for (const e of cross.bedTick()) if (e.type === 'bedSprout' && e.sp === 'honeyroot') found = k;
+}
+check(found !== null, `Honeyroot appears between a sprout and a clover (tick ${found})`);
+const cross2 = new CC.Core();
+cross2.bed.seed = 12345;
+cross2.bed.plots[5] = { sp: 'sprout', age: 3 }; cross2.bed.plots[6] = { sp: 'clover', age: 4 };
+let found2 = null;
+for (let k = 0; k < 8 && found2 === null; k++) {
+  for (const e of cross2.bedTick()) if (e.type === 'bedSprout' && e.sp === 'honeyroot') found2 = k;
+}
+check(found2 === found, 'the same seed rolls the same bed');
+const lone = new CC.Core();
+lone.bed.seed = 12345; lone.bed.plots[5] = { sp: 'sprout', age: 3 };
+let wrong = false;
+for (let k = 0; k < 200; k++) for (const e of lone.bedTick()) if (e.type === 'bedSprout' && !CC.PLANTS.find(p => p.id === e.sp).wild) wrong = true;
+check(!wrong, 'no cross without both parents; only weeds blow in');
+/* soils */
+const clay = new CC.Core();
+clay.bed.plots[0] = { sp: 'sprout', age: 0 };
+check(clay.bedSoil('clay', 1000) && !clay.bedSoil('chips', 1200) && clay.bedSoil('chips', 1000 + B.soilCooldown), 'soil switches honour the world cooldown');
+clay.bed.soil = 'clay';
+clay.bedTick(); clay.bedTick();
+check(clay.bed.plots[0].age === 0, 'clay ages a plant every third tick');
+clay.bedTick();
+check(clay.bed.plots[0].age === 1, '…and then it does');
+clay.bed.plots[0].age = 99;
+check(Math.abs(clay.bedMult() - 1.0125) < 1e-12, 'clay gives a quarter more heart (×1.0125 from a sprout)');
+/* caps */
+const capB = new CC.Core();
+for (let i = 0; i < capB.bed.plots.length; i++) capB.bed.plots[i] = { sp: 'fairyring', age: 99 };
+check(Math.abs(capB.bedMult() - Math.min(B.multCap, Math.pow(1.05, 16))) < 1e-9 && capB.bedRabbit() === B.rabbitCap && capB.bedWeather() === B.weatherCap,
+  `sixteen Fairy Rings are a bounded blessing (×${capB.bedMult().toFixed(2)} production, guests ×${B.rabbitCap}, rain ×${B.weatherCap})`);
+/* honey seeds and the sacrifice */
+const hs = new CC.Core();
+hs.honey = 4;
+hs.bed.log.honeyroot = 1;
+check(hs.bedPrice('honeyroot').honey === B.honeyTierCost[2] && !hs.bedPlant(0, 'honeyroot'), 'a found cross costs honey, and five is not enough');
+hs.honey = 5;
+check(hs.bedPlant(0, 'honeyroot') && hs.honey === 0, 'five honey plants it');
+for (const p of CC.PLANTS) hs.bed.log[p.id] = 1;
+hs.latchPages();
+check(hs.logFull() && hs.bedSacrifice() && hs.bed.sacrificeLeft === B.sacrificeWait, 'a full log can be given up — after a wait');
+check(hs.bedCancel() && hs.bed.sacrificeLeft === 0 && hs.logFull(), 'anyone can cancel the wait');
+hs.bedSacrifice(); hs.tick(B.sacrificeWait + 1);
+check(hs.honey === B.sacrificeHoney && hs.sacrifices === 1 && !hs.logFull(), 'the sacrifice pays 100 honey and opens the log again');
+hs.latchPages();
+check(hs.almanac.sb6 === true && hs.almanac.sb5 === true, 'Seedless to Nay and The Whole Catalogue are written');
+/* save / load */
+const sv3 = new CC.Core();
+sv3.bed.plots[3] = { sp: 'thyme', age: 2 }; sv3.bed.log.sprout = 4; sv3.bed.seed = 777; sv3.bed.soil = 'chips'; sv3.bedT = 42;
+const sv4 = new CC.Core();
+sv4.deserialize(JSON.parse(JSON.stringify(sv3.serialize())));
+check(sv4.bed.plots[3].sp === 'thyme' && sv4.bed.plots[3].age === 2 && sv4.bed.log.sprout === 4 && sv4.bed.seed === 777
+  && sv4.bed.soil === 'chips' && sv4.bedT === 42, 'the bed survives a save');
+const junkB = new CC.Core();
+junkB.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0, owned: [], bought: {}, seeds: 0, sprouts: 0, shed: {},
+  bed: { soil: 'lava', plots: [{ sp: 'bogus', age: 1 }, { sp: 'sprout', age: 1e9 }, 'x'], log: { bogus: 3, clover: -1, sprout: 2.7 }, seed: -5, sacrificeLeft: 1e9 } });
+check(junkB.bed.soil === 'dirt' && junkB.bed.plots[0] === null && junkB.bed.plots[1].age === 12 && junkB.bed.plots[2] === null
+  && junkB.bed.log.bogus === undefined && junkB.bed.log.clover === undefined && junkB.bed.log.sprout === 2 && junkB.bed.seed > 0 && junkB.bed.sacrificeLeft === 3600,
+  'a forged bed is pruned to known species and sane ages');
 
 console.log(fails ? `\n${fails} FAILURE(S)` : '\nALL CHECKS PASSED');
 process.exit(fails ? 1 : 0);

@@ -179,6 +179,12 @@ CC.Patch = class {
       c.runLog = s.runLog || [];
       c.perks = s.perks ? { cap: {}, ...s.perks } : CC.Core.freshPerks();
       c.haltT = s.haltT || 0;
+      /* the Seed Bed (R23): the server's bed is the bed */
+      if (s.bed) {
+        c.bed = { ...s.bed, plots: (s.bed.plots || []).map(p => p && { ...p }), log: { ...(s.bed.log || {}) } };
+        c.bedT = s.bedT || 0;
+        c.sacrifices = s.sacrifices || 0;
+      }
       /* the Quilt (R22): diffs ride as events; a version gap means a refetch */
       if (msg.quiltV !== undefined && msg.quiltV > ui.quilt.v) ui.fetchQuilt();
       this.order = msg.order || null;

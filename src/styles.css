@@ -814,3 +814,48 @@
   border: 1px solid rgba(0, 0, 0, 0.4); background: rgba(255, 245, 220, 0.85); color: #3b2b16;
 }
 @media (max-width: 900px) { #noticeboard { flex-direction: column; } .board-half + .board-half { border-left: 0; border-top: 8px solid var(--board2); margin-top: 12px; padding-top: 12px; } }
+
+/* ---------- the Seed Bed (R23) ---------- */
+#bed-wrap { position: relative; margin: 2px auto 6px; width: 100%; max-width: 320px; }
+#bed {
+  display: block; width: 100%; height: auto; aspect-ratio: 1;
+  border: 6px solid var(--hero-edge); border-radius: 6px; cursor: pointer;
+  box-shadow: inset 0 1px 0 var(--wood-lit), 0 3px 10px rgba(0, 0, 0, 0.4);
+  image-rendering: auto;
+}
+#bed-bar { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 5px; font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+#soil-btns { display: flex; gap: 4px; }
+#soil-btns button {
+  font: inherit; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 3px; cursor: pointer;
+  background: linear-gradient(180deg, var(--btn1), var(--btn2)); color: var(--text); border: 1px solid var(--hero-edge);
+}
+#soil-btns button.on { border-color: var(--carrot); box-shadow: 0 0 6px rgba(255, 146, 50, 0.35); }
+#soil-btns button:disabled { opacity: 0.5; cursor: default; }
+#bed-menu {
+  position: absolute; z-index: 12; min-width: 200px; max-width: 260px; text-align: left;
+  background: linear-gradient(180deg, var(--paper-2), var(--paper)); color: var(--ink);
+  border: 1px solid var(--paper-edge); border-radius: 4px; padding: 8px 10px; font-size: 12px;
+  box-shadow: inset 0 0 0 1px var(--paper-lit), 0 10px 30px rgba(0, 0, 0, 0.55);
+}
+#bed-menu .bm-head { font-family: var(--serif); letter-spacing: 0.12em; font-size: 10.5px; color: var(--ink-dim); margin-bottom: 5px; }
+#bed-menu .bm-row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 4px; border-radius: 3px; cursor: pointer; }
+#bed-menu .bm-row:hover { background: rgba(120, 90, 50, 0.12); }
+#bed-menu .bm-row.cant { opacity: 0.5; cursor: default; }
+#bed-menu .bm-row b { font-family: var(--serif); }
+#bed-menu .bm-row span:last-child { white-space: nowrap; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+#bed-menu .bm-sub { font-size: 11px; color: var(--ink-dim); font-style: italic; margin: 2px 4px 4px; }
+#bed-menu .bm-close { text-align: right; font-size: 11px; color: var(--ink-dim); cursor: pointer; margin-top: 4px; }
+#seedlog-line { font-size: 12px; color: var(--ink-dim); margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+#seedlog { display: flex; flex-wrap: wrap; gap: 5px; }
+#seedlog .sl {
+  font-size: 11px; padding: 2px 7px; border-radius: 10px; border: 1px solid var(--paper-edge);
+  background: var(--paper-2); color: var(--ink); cursor: default; font-variant-numeric: tabular-nums;
+}
+#seedlog .sl.unknown { opacity: 0.55; border-style: dashed; }
+#seedlog .sl.t2 { border-color: #8fb86a; } #seedlog .sl.t3 { border-color: #6f8fd0; } #seedlog .sl.t4 { border-color: #c58ad0; }
+#seedlog .sl.t5 { border-color: #e0a33a; } #seedlog .sl.t6 { border-color: #d0533a; box-shadow: 0 0 6px rgba(255, 146, 50, 0.4); }
+#sacrifice-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 12px; color: var(--ink-dim); }
+#sacrifice-btn {
+  font: inherit; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 3px; cursor: pointer;
+  border: 1px solid var(--paper-edge); background: var(--paper-2); color: var(--ink-carrot);
+}

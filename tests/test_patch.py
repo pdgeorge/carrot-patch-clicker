@@ -625,6 +625,65 @@ check(p22b.trial is None and p22b.trials_done == {"frost": 5} and p22b.perks["sc
       and p22b.perks["cap"] == {"l1": 10} and p22b.run_log == [1.0] and p22b.halt_t == 3600.0,
       "forged Trial state clamps identically (py)")
 
+# ---------- 1i. the Seed Bed (R23): the same seed grows the same garden in both engines ----------
+print("\n=== R23 Seed Bed parity ===")
+JS_R23 = r"""
+const fs = require('fs'), path = require('path'), vm = require('vm');
+for (const f of ['data.js', 'core.js']) {
+  vm.runInThisContext(fs.readFileSync(path.join(process.argv[1], 'src', f), 'utf8'));
+}
+const c = new CC.Core();
+c.earn(1e7); c.buy(0, 25); c.buy(1, 10); c.honey = 50;
+c.bed.seed = 424242;
+const r = { plant: [c.bedPlant(0, 'sprout'), c.bedPlant(1, 'clover'), c.bedPlant(5, 'thyme'), c.bedPlant(4, 'bluebell'), c.bedPlant(0, 'thyme'), c.bedPlant(2, 'nettle')] };
+r.bankAfterPlant = c.bank;
+c.bed.plots[10] = { sp: 'sprout', age: 3 }; c.bed.plots[11] = { sp: 'clover', age: 4 }; c.bed.plots[14] = { sp: 'clover', age: 4 };
+c.bed.plots[15] = { sp: 'thyme', age: 6 }; c.bed.plots[9] = { sp: 'bluebell', age: 5 };
+c.bedSoil('chips', 5000);
+const evs = [];
+for (let k = 0; k < 9; k++) evs.push(...c.bedTick());
+r.events = evs; r.plots = c.bed.plots.map(pl => pl && { ...pl }); r.seed = c.bed.seed; r.n = c.bed.n;
+r.mult = c.bedMult(); r.rabbit = c.bedRabbit(); r.weather = c.bedWeather(); r.cps = c.cps(); r.click = c.clickPower();
+const mi = c.bed.plots.findIndex(pl => pl && c.plotMature(pl));
+r.harvestIdx = mi; r.harvest = mi >= 0 ? c.bedHarvest(mi) : null; r.bank = c.bank; r.honey = c.honey; r.log = c.bed.log;
+r.priceHoney = c.bedPrice(r.harvest ? r.harvest.sp : 'sprout');
+c.tick(CC.BED.tick * 2 + 7); r.bedT = c.bedT; r.n2 = c.bed.n;
+r.snap = c.serialize();
+console.log(JSON.stringify(r));
+"""
+js23 = json.loads(subprocess.run(
+    ["node", "-e", JS_R23, str(ROOT)], capture_output=True, text=True, check=True).stdout)
+p23 = Economy(load_data())
+p23.earn(1e7); p23.buy(0, 25); p23.buy(1, 10); p23.honey = 50
+p23.bed["seed"] = 424242
+plant = [p23.bed_plant(0, "sprout"), p23.bed_plant(1, "clover"), p23.bed_plant(5, "thyme"), p23.bed_plant(4, "bluebell"),
+         p23.bed_plant(0, "thyme"), p23.bed_plant(2, "nettle")]
+check(plant == js23["plant"] and near(p23.bank, js23["bankAfterPlant"]), f"planting agrees, bank agrees ({plant})")
+p23.bed["plots"][10] = {"sp": "sprout", "age": 3}; p23.bed["plots"][11] = {"sp": "clover", "age": 4}; p23.bed["plots"][14] = {"sp": "clover", "age": 4}
+p23.bed["plots"][15] = {"sp": "thyme", "age": 6}; p23.bed["plots"][9] = {"sp": "bluebell", "age": 5}
+p23.bed_soil("chips", 5000)
+evs = []
+for _ in range(9):
+    evs.extend(p23.bed_tick())
+check(evs == js23["events"], f"nine bed ticks roll the same {len(evs)} events from the same seed")
+check(p23.bed["plots"] == js23["plots"] and p23.bed["seed"] == js23["seed"] and p23.bed["n"] == js23["n"], "the same garden stands")
+check(near(p23.bed_mult(), js23["mult"]) and near(p23.bed_rabbit(), js23["rabbit"]) and near(p23.bed_weather(), js23["weather"]),
+      f"live effects agree (×{p23.bed_mult():.4f}, guests ×{p23.bed_rabbit():.3f}, rain ×{p23.bed_weather():.3f})")
+check(near(p23.cps(), js23["cps"]) and near(p23.click_power(), js23["click"]), "cps and clicks carry the bed")
+mi = next((i for i, pl in enumerate(p23.bed["plots"]) if pl and p23.plot_mature(pl)), -1)
+h = p23.bed_harvest(mi) if mi >= 0 else None
+check(mi == js23["harvestIdx"] and (h == js23["harvest"] or (h and js23["harvest"] and h["sp"] == js23["harvest"]["sp"]
+      and near(h["gain"], js23["harvest"]["gain"]) and h["honey"] == js23["harvest"]["honey"] and h["first"] == js23["harvest"]["first"])),
+      f"the harvest pays the same ({h and h['sp']})")
+check(near(p23.bank, js23["bank"]) and p23.honey == js23["honey"] and p23.bed["log"] == js23["log"], "bank, honey and the log agree")
+check(p23.bed_price(h["sp"] if h else "sprout") == js23["priceHoney"] or near(p23.bed_price(h["sp"] if h else "sprout").get("carrots", 0), (js23["priceHoney"] or {}).get("carrots", 0)),
+      "prices agree after the log is written")
+p23.tick(p23.d["bed"]["tick"] * 2 + 7)
+check(near(p23.bed_t, js23["bedT"]) and p23.bed["n"] == js23["n2"], "the bed clock ticks in step with the world")
+p23b = Economy(load_data()); p23b.deserialize(js23["snap"])
+check(p23b.bed["plots"] == p23.bed["plots"] and p23b.bed["log"] == p23.bed["log"] and p23b.bed["seed"] == p23.bed["seed"]
+      and p23b.bed["soil"] == "chips", "a JS save's bed loads into Python intact")
+
 # ---------- 2. live protocol over a real websocket ----------
 print("\n=== protocol (in-process server) ===")
 import os  # noqa: E402
@@ -636,7 +695,7 @@ from carrot_patch import main as patch_main  # noqa: E402
 state_path = Path("/tmp/carrot_patch_test_state.json")
 os.environ["CARROT_PATCH_STATE"] = str(state_path)
 state_path.unlink(missing_ok=True)
-for suffix in ("_tenders.db", "_parish.json", "_events.jsonl"):
+for suffix in ("_tenders.db", "_parish.json", "_events.jsonl", "_quilt.json"):
     Path("/tmp/carrot_patch_test_state" + suffix).unlink(missing_ok=True)
 Path("/tmp/orders_override.json").unlink(missing_ok=True)
 
@@ -1063,6 +1122,101 @@ with TestClient(app) as client:
     check("presence" in r.json() and "hands_today" in r.json()["presence"], "GET /api/board carries presence")
     check(patch.eco.hands_bonus >= 1.0, "Many Hands is set by the server")
 
+    # the Quilt (R22) over the wire
+    with client.websocket_connect("/ws") as ws:
+        ws.receive_json()
+        patch.eco.bank = 1000.0
+        cps0 = patch.eco.cps()
+        ws.send_json({"type": "paint", "i": 5, "c": 3})
+        time.sleep(0.05)
+        check(patch.quilt.cells[5] == 3 and patch.quilt.version == 1 and abs(patch.eco.bank - (1000 - cps0)) < 1e-9,
+              "a stitch lands and costs a second of harvest")
+        ws.send_json({"type": "paint", "i": 6, "c": 3})
+        time.sleep(0.05)
+        check(patch.quilt.cells[6] == 0, "a second stitch inside the cooldown is ignored")
+        for junk in ({"i": "5", "c": 3}, {"i": True, "c": 1}, {"i": 1e999, "c": 1}, {"i": -1, "c": 1}, {"i": 7, "c": 99}, {}):
+            ws.send_json({"type": "paint", **junk})
+        time.sleep(1.1)
+        check(patch.quilt.version == 1, "garbage stitches change nothing and kill no socket")
+        r = client.get("/api/quilt")
+        check(r.json()["v"] == 1 and r.json()["cells"][10:12] == "03", "GET /api/quilt serves the cloth")
+        # Trials over the wire: go to seed into Late Frost
+        patch.eco.total_run = 1e15; patch.eco._lifetime_base = 2e7  # a goal no tick can reach by accident
+        ws.send_json({"type": "prestige", "trial": "frost"})
+        time.sleep(0.05)
+        check(patch.eco.trial is not None and patch.eco.trial["id"] == "frost", "the world goes to seed into a Trial")
+        for junk in ("nope", True, ["frost"], "x" * 1000):
+            ws.send_json({"type": "prestige", "trial": junk})
+        time.sleep(0.05)
+        check(patch.eco.trial["id"] == "frost", "junk trial ids and a seedless prestige change nothing")
+        snap = None
+        time.sleep(1.2)  # the socket buffers older snapshots; read until one taken after the prestige
+        for _ in range(400):
+            m = ws.receive_json()
+            if m["type"] == "snapshot" and m["state"].get("trial"):
+                snap = m
+                break
+        check(snap and snap["state"]["trial"]["id"] == "frost" and "perks" in snap["state"] and "quiltV" in snap,
+              "the snapshot carries the Trial, the perks and the quilt version")
+        patch.eco.trial = None
+
+    # the Seed Bed (R23) over the wire
+    with client.websocket_connect("/ws") as ws:
+        ws.receive_json()
+        patch.eco.bank = 1e9; patch.eco.honey = 0
+        ws.send_json({"type": "plant", "i": 0, "sp": "sprout"})
+        time.sleep(0.05)
+        check(patch.eco.bed["plots"][0] == {"sp": "sprout", "age": 0} and patch.eco.bank < 1e9, "a seed goes into the bed and is paid for")
+        ws.send_json({"type": "plant", "i": 1, "sp": "clover"})
+        time.sleep(0.05)
+        check(patch.eco.bed["plots"][1] is None, "a second seed inside the trowel cooldown is ignored")
+        for junk in ({"i": "0", "sp": "sprout"}, {"i": 2, "sp": 5}, {"i": 1e999, "sp": "sprout"}, {"i": 2, "sp": "nettle"},
+                     {"i": 2, "sp": "honeyroot"}, {"i": -1, "sp": "sprout"}, {"i": 2, "sp": "x" * 100}, {}):
+            ws.send_json({"type": "plant", **junk})
+        time.sleep(1.1)  # the flood guard allows 10 messages a second; let it breathe
+        check(sum(1 for pl in patch.eco.bed["plots"] if pl) == 1, "garbage, weeds and undiscovered crosses never plant")
+        ws.send_json({"type": "harvest", "i": 0})
+        time.sleep(0.05)
+        check(patch.eco.bed["plots"][0] is not None, "a seedling cannot be picked")
+        patch.eco.bed["plots"][0]["age"] = 5
+        patch._pending.clear()
+        ws.send_json({"type": "harvest", "i": 0})
+        time.sleep(0.05)
+        check(patch.eco.bed["plots"][0] is None and patch.eco.bed["log"].get("sprout") == 1
+              and any(m.get("type") == "event" and m["ev"]["type"] == "bedHarvest" and m["ev"]["first"] for m in patch._pending),
+              "a mature plant is picked, logged, and announced as a first")
+        for junk in ({"i": True}, {"i": "0"}, {"i": 1e999}, {}):
+            ws.send_json({"type": "harvest", **junk})
+        time.sleep(1.1)
+        ws.send_json({"type": "soil", "id": "clay"})
+        time.sleep(0.05)
+        check(patch.eco.bed["soil"] == "clay", "the soil turns to clay")
+        ws.send_json({"type": "soil", "id": "chips"})
+        ws.send_json({"type": "soil", "id": ["x"]})
+        time.sleep(0.05)
+        check(patch.eco.bed["soil"] == "clay", "…and not again inside the cooldown, and never to garbage")
+        ws.send_json({"type": "sacrifice"})
+        time.sleep(0.05)
+        check(patch.eco.bed["sacrificeLeft"] == 0, "no sacrifice without a full log")
+        for pl in patch.eco.d["plants"]:
+            patch.eco.bed["log"][pl["id"]] = 1
+        ws.send_json({"type": "sacrifice"})
+        time.sleep(0.05)
+        check(patch.eco.bed["sacrificeLeft"] > 0, "a full log starts the countdown")
+        ws.send_json({"type": "cancelSacrifice"})
+        time.sleep(0.05)
+        check(patch.eco.bed["sacrificeLeft"] == 0 and patch.eco.log_full(), "anyone cancels it; the log stays")
+        patch.eco.bed["log"] = {}
+        snap = None
+        time.sleep(1.2)
+        for _ in range(400):
+            m = ws.receive_json()
+            if m["type"] == "snapshot" and m["state"].get("bed", {}).get("soil") == "clay":
+                snap = m
+                break
+        check(snap and "bed" in snap["state"] and snap["state"]["bed"]["soil"] == "clay" and "bedT" in snap["state"],
+              "the snapshot carries the bed")
+
 # ---------- 3. mounted inside a parent site (lifespan never reaches sub-apps) ----------
 print("\n=== mounted under a parent FastAPI site ===")
 from fastapi import FastAPI  # noqa: E402
@@ -1070,7 +1224,7 @@ from fastapi import FastAPI  # noqa: E402
 mount_state = Path("/tmp/carrot_patch_mount_test.json")
 os.environ["CARROT_PATCH_STATE"] = str(mount_state)
 mount_state.unlink(missing_ok=True)
-for suffix in ("_tenders.db", "_parish.json", "_events.jsonl"):
+for suffix in ("_tenders.db", "_parish.json", "_events.jsonl", "_quilt.json"):
     Path("/tmp/carrot_patch_mount_test" + suffix).unlink(missing_ok=True)
 
 site = FastAPI()

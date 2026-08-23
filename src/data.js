@@ -341,6 +341,15 @@ CC.ALMANAC = [];
     { trial: 'frost' }, { trial: 'rotation' }, { trial: 'rows' }, { trial: 'hands' },
     { trial: 'drought' }, { trial: 'fog' }, { trial: 'hedge' });
   page('tr8', 'Old Hand', 'Five completions of one Trial. The rule is a friend now.', { trialMax: 1 });
+  /* the Seed Bed (R23): one page per tier found, the full log, the sacrifice */
+  page('sb0', 'First Harvest', 'Something grew in the bed and somebody picked it.', { logTier: 1 });
+  page('sb1', 'A Cross in the Bed', 'Two plants touched and a third appeared. The wiki is born.', { logTier: 2 });
+  page('sb2', 'Deeper Colours', 'Purple, moon, rain: the second generation of the bed.', { logTier: 3 });
+  page('sb3', 'The King and the Glass', 'Rare things, found on purpose.', { logTier: 4 });
+  page('sb4', 'Everlasting', 'The capstones. A bed that remembers.', { logTier: 5 });
+  page('sb7', 'The Ring', 'Step inside. The bed is finished, and it is not.', { logTier: 6 });
+  page('sb5', 'The Whole Catalogue', 'Every species, once. The seed log closes its cover.', { logFull: 1 });
+  page('sb6', 'Seedless to Nay', 'The log was given up for honey. The bed begins again, wiser.', { sacrifices: 1 });
 })();
 
 /* Trials (R22): a spring replayed under ONE rule. The goal is "get back to
@@ -377,6 +386,76 @@ CC.TRIALS = [
 CC.QUILT = { w: 48, h: 48, cooldown: 30, costSeconds: 1,
   palette: ['#f4ecd8', '#2f2414', '#d9741f', '#f2b33d', '#4c7a3a', '#8fc174', '#6d4c2a', '#b08a5a',
     '#c9473a', '#e89cb0', '#3f5f9e', '#8fb8de', '#6a4d8c', '#b9a0d6', '#8c8c86', '#f7f2e8'] };
+
+/* The Seed Bed (R23): a shared bed under the carrot, ticked by the server
+   every BED.tick seconds. Species are data; recipes are HIDDEN in play (the
+   wiki is half the fun, P7) — two mature parents touching an empty plot
+   roll `chance` × the soil's mutation each tick. Costs are MINUTES of the
+   world's steady cps (base species) or honey (discovered species), so the
+   bed never inflates with the economy. Live effects apply only while a
+   plant is mature; aggregates are capped (see Tunables). */
+CC.BED = { w: 4, h: 4, tick: 300, plantCooldown: 60, soilCooldown: 600, sacrificeHoney: 100, sacrificeWait: 120,
+  payoutCapPct: 0.05, multCap: 2.2, rabbitCap: 4, weatherCap: 3, honeyTierCost: [0, 0, 5, 15, 40, 100, 200] };
+CC.SOILS = [
+  { id: 'dirt', name: 'Dirt', every: 1, effect: 1, mutation: 1, line: 'Honest ground. Things happen on time.' },
+  { id: 'clay', name: 'Clay', every: 3, effect: 1.25, mutation: 1, line: 'Slow and rich: a third the pace, a quarter more heart.' },
+  { id: 'chips', name: 'Wood Chips', every: 1, effect: 1, mutation: 3, line: 'Warm and strange. Things cross that should not.' },
+];
+/* tier 1 is bought with carrots; every other species must be FOUND before
+   it can be bought with honey. `wild` spawns on its own (weeds are never
+   for sale — P1 griefing rule). Effects: mult (production while mature),
+   rabbit (visitor rate), weather (rain duration), honey (on harvest),
+   payout (cps-minutes on harvest, bank-capped). Ages are in bed ticks. */
+CC.PLANTS = [
+  { id: 'sprout', name: 'Carrot Sprout', tier: 1, cost: 1, mature: 3, life: 12, mult: 1.01, payout: 2,
+    flavor: 'The first thing anyone plants. It knows.' },
+  { id: 'clover', name: 'Clover', tier: 1, cost: 2, mature: 4, life: 16, rabbit: 1.05,
+    flavor: 'Rabbits can smell it from the next county.' },
+  { id: 'bluebell', name: 'Bluebell', tier: 1, cost: 3, mature: 5, life: 20, weather: 1.1,
+    flavor: 'Rings when it rains. Nobody has caught it at it.' },
+  { id: 'thyme', name: 'Thyme', tier: 1, cost: 5, mature: 6, life: 24, mult: 1.02, payout: 5,
+    flavor: 'Takes its thyme. Sorry.' },
+  { id: 'nettle', name: 'Nettle', tier: 1, wild: 0.004, mature: 2, life: 6, mult: 0.99,
+    flavor: 'Nobody planted it. Nobody ever does.' },
+  { id: 'honeyroot', name: 'Honeyroot', tier: 2, parents: ['sprout', 'clover'], chance: 0.10, mature: 5, life: 18, mult: 1.02, honey: 1,
+    flavor: 'Sweet at the root. The bees found it first.' },
+  { id: 'whitecarrot', name: 'White Carrot', tier: 2, parents: ['sprout', 'thyme'], chance: 0.08, mature: 6, life: 20, mult: 1.03, payout: 10,
+    flavor: 'A carrot that forgot its colour and kept its pride.' },
+  { id: 'rabbitear', name: "Rabbit's Ear", tier: 2, parents: ['clover', 'bluebell'], chance: 0.08, mature: 5, life: 20, rabbit: 1.15,
+    flavor: 'Soft, grey, and listening.' },
+  { id: 'stormflower', name: 'Stormflower', tier: 2, parents: ['bluebell', 'thyme'], chance: 0.06, mature: 7, life: 24, weather: 1.25,
+    flavor: 'Opens for thunder. Closes for small talk.' },
+  { id: 'goldenclover', name: 'Golden Clover', tier: 2, parents: ['clover', 'clover'], chance: 0.03, mature: 6, life: 16, rabbit: 1.1, payout: 8,
+    flavor: 'Four leaves, all of them lucky.' },
+  { id: 'purplecarrot', name: 'Purple Carrot', tier: 3, parents: ['whitecarrot', 'honeyroot'], chance: 0.05, mature: 8, life: 24, mult: 1.04, payout: 20,
+    flavor: 'The original colour, returned from exile.' },
+  { id: 'moonclover', name: 'Moon Clover', tier: 3, parents: ['goldenclover', 'rabbitear'], chance: 0.03, mature: 8, life: 24, rabbit: 1.25,
+    flavor: 'Glows faintly. The rabbits navigate by it.' },
+  { id: 'rainlily', name: 'Rain Lily', tier: 3, parents: ['stormflower', 'bluebell'], chance: 0.04, mature: 8, life: 28, weather: 1.5,
+    flavor: 'Drinks a whole shower and asks for the next.' },
+  { id: 'beebalm', name: 'Bee Balm', tier: 3, parents: ['honeyroot', 'rabbitear'], chance: 0.04, mature: 7, life: 22, mult: 1.02, honey: 2,
+    flavor: 'The cooperative sends its regards.' },
+  { id: 'ironroot', name: 'Ironroot', tier: 3, parents: ['thyme', 'nettle'], chance: 0.05, mature: 10, life: 48, mult: 1.03,
+    flavor: 'Grows from a weed and a grudge. Lasts for ages.' },
+  { id: 'feralparsnip', name: 'Feral Parsnip', tier: 3, parents: ['whitecarrot', 'nettle'], chance: 0.04, mature: 7, life: 20, mult: 1.03, payout: 15,
+    flavor: 'Escaped from a stall. Wants nothing to do with the Parsnip Man.' },
+  { id: 'kingcarrot', name: 'King Carrot', tier: 4, parents: ['purplecarrot', 'ironroot'], chance: 0.02, mature: 12, life: 36, mult: 1.05, payout: 60,
+    flavor: 'Crowned by acclamation. Mostly by rabbits.' },
+  { id: 'queensbalm', name: "Queen's Balm", tier: 4, parents: ['beebalm', 'moonclover'], chance: 0.02, mature: 10, life: 30, rabbit: 1.1, honey: 5,
+    flavor: 'One hive, one queen, one jar a season.' },
+  { id: 'thunderroot', name: 'Thunderroot', tier: 4, parents: ['rainlily', 'ironroot'], chance: 0.02, mature: 12, life: 40, mult: 1.02, weather: 2,
+    flavor: 'You can hear it growing during storms.' },
+  { id: 'glassflower', name: 'Glass Flower', tier: 4, parents: ['rainlily', 'moonclover'], chance: 0.015, mature: 6, life: 8, mult: 1.04,
+    flavor: 'Perfect, brief, and clear all the way through.' },
+  { id: 'everlasting', name: 'Everlasting', tier: 5, parents: ['kingcarrot', 'glassflower'], chance: 0.01, mature: 14, life: 9999, mult: 1.05,
+    flavor: 'It does not die. Springs come and go around it.' },
+  { id: 'heartwood', name: 'Heartwood', tier: 5, parents: ['thunderroot', 'queensbalm'], chance: 0.01, mature: 16, life: 60, mult: 1.03, weather: 1.5, honey: 10,
+    flavor: 'A tree in a flower bed. The bed does not mind.' },
+  { id: 'wildcarrot', name: 'Wild Carrot', tier: 2, wild: 0.0015, mature: 4, life: 10, mult: 1.01, payout: 3,
+    flavor: 'Blew in from somewhere. Stayed for the company.' },
+  { id: 'fairyring', name: 'Fairy Ring', tier: 6, parents: ['everlasting', 'heartwood'], chance: 0.005, mature: 20, life: 80, mult: 1.05, rabbit: 1.5, weather: 2,
+    flavor: 'The last page. Step inside and the bed is finished.' },
+];
 
 /* Ribbons: permanent multipliers at lifetime-harvest milestones (your trophy shelf). */
 CC.RIBBONS = [
