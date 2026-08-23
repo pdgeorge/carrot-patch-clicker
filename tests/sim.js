@@ -534,6 +534,9 @@ check(CC.fmt(1234) === '1.23 thousand' && CC.fmt(1.8e41) === '180 duodecillion' 
   'long numbers speak in words');
 CC.fmtLong = false;
 check(CC.fmt(1234) === '1.23k', 'short numbers are the default');
+CC.fmtSci = true;
+check(CC.fmt(1234) === '1.23e3' && CC.fmt(5.4e43) === '5.40e43' && CC.fmt(999) === '999', 'powers of ten on request');
+CC.fmtSci = false;
 check(CC.fmtDur(45) === '45s' && CC.fmtDur(3661) === '1h 1m' && CC.fmtDur(90061) === '1d 1h' && CC.fmtDur(-5) === '0s',
   'durations: s, m s, h m, d h');
 /* sanitizer: honey and the bee clock never go bad */

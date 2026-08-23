@@ -122,6 +122,7 @@ CC.UI = class {
     this.dayNight = this.pref('carrot-daynight') || 'auto'; /* ☀/🌙 is a display preference */
     this.autoClick = this.pref('carrot-autoclick') === '1'; /* RSI-friendly steady clicker */
     CC.fmtLong = this.pref('carrot-numbers') === 'long'; /* R21: readable numbers, a display preference */
+    CC.fmtSci = this.pref('carrot-numbers') === 'sci';
     this.applyTheme();
     this.$('build-tag').textContent = `build ${CC.BUILD || 'dev'}`;
     this.tenure = this.pref('carrot-tenure') || 'new';
@@ -490,7 +491,6 @@ CC.UI = class {
   renderChronicle(days) {
     const box = this.$('chronicle-days');
     box.innerHTML = '';
-    this.$('chronicle-days-modal').innerHTML = '';
     if (!days.length) { box.innerHTML = '<div class="board-empty">Nothing written yet — the first page is today.</div>'; return; }
     const labels = { catch: 'guests caught', weather: 'rains', shed: 'sprouts planted', upgrade: 'upgrades', bumper: 'bumper crops', ribbon: 'ribbons', almanac: 'pages', prestige: 'springs' };
     for (const d of days) {
@@ -503,7 +503,6 @@ CC.UI = class {
         const n = document.createElement('div'); n.className = 'c-note'; n.textContent = t; el.appendChild(n);
       }
       box.appendChild(el);
-      this.$('chronicle-days-modal').appendChild(el.cloneNode(true));
     }
     this._chronicleDays = days;
   }
@@ -1231,26 +1230,23 @@ CC.UI = class {
         : '🖱 Auto-click off.');
     });
     const nb = this.$('num-btn');
-    nb.classList.toggle('on', CC.fmtLong);
+    nb.classList.toggle('on', CC.fmtLong || CC.fmtSci);
     nb.addEventListener('click', () => {
-      CC.fmtLong = !CC.fmtLong;
-      nb.classList.toggle('on', CC.fmtLong);
-      this.setPref('carrot-numbers', CC.fmtLong ? 'long' : 'short');
-      this._shopSig = this._upgSig = this._shedSig = this._statHtml = this._almanacSeen = null; /* repaint every number */
-      this.toast(CC.fmtLong ? '🔢 Numbers in words — "tredecillion" it is.' : '🔢 Short numbers.');
+      /* three notations: short (1.23Td) → words (tredecillion) → sci (1.23e42) */
+      const mode = CC.fmtSci ? 'short' : CC.fmtLong ? 'sci' : 'long';
+      CC.fmtLong = mode === 'long'; CC.fmtSci = mode === 'sci';
+      nb.classList.toggle('on', mode !== 'short');
+      this.setPref('carrot-numbers', mode);
+      this._shopSig = this._upgSig = this._shedSig = this._statHtml = this._almanacSeen = this._bankHtml = this._cpsHtml = null; /* repaint every number */
+      this.toast(mode === 'long' ? 'Numbers in words — "tredecillion" it is.' : mode === 'sci' ? 'Numbers in powers of ten.' : 'Short numbers.', { icon: 'numbers' });
     });
     this.$('chronicle-btn').addEventListener('click', () => this.openChronicle());
-    this.$('chronicle-close').addEventListener('click', () => this.$('chronicle').classList.add('hidden'));
     this.$('chronicle-copy').addEventListener('click', () => this.shareCard());
-    this.$('chronicle-copy-modal').addEventListener('click', () => this.shareCard());
-    this.$('chronicle').addEventListener('click', e => {
-      if (e.target === this.$('chronicle')) this.$('chronicle').classList.add('hidden');
-    });
     /* modals (brief P7): Escape closes, the backdrop closes, focus stays inside */
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') for (const id of ['modal', 'shed', 'chronicle', 'ceremony']) this.$(id).classList.add('hidden');
+      if (e.key === 'Escape') for (const id of ['modal', 'shed', 'ceremony']) this.$(id).classList.add('hidden');
       if (e.key === 'Tab') {
-        const open = ['modal', 'shed', 'chronicle', 'ceremony'].map(id => this.$(id)).find(el => !el.classList.contains('hidden'));
+        const open = ['modal', 'shed', 'ceremony'].map(id => this.$(id)).find(el => !el.classList.contains('hidden'));
         if (!open) return;
         const f = [...open.querySelectorAll('button, input, [tabindex="0"], details summary')].filter(el => el.offsetParent !== null);
         if (!f.length) return;
@@ -1495,9 +1491,17 @@ CC.UI = class {
   applyTheme() {
     const t = this.themeId();
     if (t === this._themeId) return;
+    const first = !this._themeId;
     this._themeId = t;
     this.$('cc-root').dataset.theme = t;
     this._pal = CC.THEMES[t] || CC.THEMES['homestead-day'];
+    /* season crossfade (brief P26): keep the old backdrop and fade 1.2 s */
+    if (!first && CC.motion === 'full') {
+      this.bgOld = this.bgOld || document.createElement('canvas');
+      this.bgOld.width = this.bg.width; this.bgOld.height = this.bg.height;
+      this.bgOld.getContext('2d').drawImage(this.bg, 0, 0);
+      this.crossT = 1.2;
+    }
     this.paintBackdrop(this._pal);
   }
 
@@ -1996,6 +2000,9 @@ CC.UI = class {
     this.ripples = (this.ripples || []).filter(r => r.t < 0.45);
     if (this.squash > 0) this.squash = Math.max(0, this.squash - dt * 6);
     if (this.glow > 0) this.glow = Math.max(0, this.glow - dt);
+    if (this.crossT > 0) this.crossT -= dt;
+    /* the wet band fades six seconds after the rain (brief P12) */
+    if (this.core.buffs.some(b => CC.WEATHER.some(w => w.name === b.name))) this.wetUntil = this.t + 6;
     if (this.leanX) this.leanX *= Math.max(0, 1 - dt * 3);
 
     this.tickerT += dt;
@@ -2448,6 +2455,7 @@ CC.UI = class {
     this.drawBed();
     const x = this.ctx, W = this.W, H = this.H;
     x.drawImage(this.bg, 0, 0, W, H);
+    if (this.crossT > 0 && this.bgOld) { x.globalAlpha = Math.min(1, this.crossT / 1.2); x.drawImage(this.bgOld, 0, 0, W, H); x.globalAlpha = 1; }
     const c = this.core;
     const pal = this._pal || CC.THEMES['homestead-day'];
 
@@ -2670,8 +2678,9 @@ CC.UI = class {
         x.beginPath(); x.moveTo(rx, ry); x.lineTo(rx + 2.5, ry + 9); x.stroke();
         if (ry > this.soilY - 6) { x.beginPath(); x.arc(rx + 3, this.soilY + 4, 2, Math.PI, 0); x.stroke(); }
       }
-      /* the wet band on the soil */
-      x.fillStyle = 'rgba(60,40,20,0.25)'; x.fillRect(0, this.soilY, W, 10);
+    }
+    if (this.wetUntil > this.t) { /* the wet band on the soil, fading after the rain */
+      x.fillStyle = `rgba(60,40,20,${0.25 * Math.min(1, (this.wetUntil - this.t) / 6)})`; x.fillRect(0, this.soilY, W, 10);
     }
 
     /* particles */

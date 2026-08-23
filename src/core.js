@@ -11,6 +11,7 @@ CC.fmt = function (n) {
      these units must exist before the numbers they format do */
   const units = ['k', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc',
     'Ud', 'Dd', 'Td', 'Qad', 'Qid', 'Sxd', 'Spd', 'Ocd', 'Nod', 'Vg'];
+  if (CC.fmtSci) return n.toExponential(2).replace('+', ''); /* powers of ten, for the spreadsheet-minded */
   let u = -1;
   while (n >= 1000 && u < units.length - 1) { n /= 1000; u++; }
   /* repeated /1000 drifts: 1e45 lands at 999.999…, which would print
