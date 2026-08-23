@@ -130,6 +130,7 @@ CC.UI = class {
     this.deeds = { clicks: 0, box: 0, rabbit: 0 }; /* what this browser has done, for the Gate */
     try { Object.assign(this.deeds, JSON.parse(this.pref('carrot-deeds') || '{}')); } catch (e) { /* fresh */ }
     this.queue = []; /* the Clothesline */
+    this.bedHover = -1;
     this.load();
     this.bind();
     this.setTicker();
@@ -723,7 +724,7 @@ CC.UI = class {
       this.$('modal').classList.add('hidden');
       if (this.worldMode) this.patch.send({ type: 'sacrifice' }); else if (c.bedSacrifice()) this.toast('🍯 The countdown begins.');
     };
-    this.$('modal').classList.remove('hidden');
+    this.openModal();
   }
   bedTip() {
     const i = this.bedHover, c = this.core;
@@ -852,7 +853,7 @@ CC.UI = class {
       const yes = this.$('modal-yes');
       yes.textContent = 'Add my voice for quiet';
       yes.onclick = () => { this.$('modal').classList.add('hidden'); this.patch.send({ type: 'silence' }); };
-      this.$('modal').classList.remove('hidden');
+      this.openModal();
       return;
     }
     if (!c.fallowAvailable()) return;
@@ -876,7 +877,7 @@ CC.UI = class {
       const got = c.fallow();
       if (got) this.ceremony({ type: 'fallow', loam: got, fallows: c.fallows, quilt: '' });
     };
-    this.$('modal').classList.remove('hidden');
+    this.openModal();
   }
   /* one ceremony runner, two scripts (brief P25): steps are data — the
      canvas is drawn by time, the card follows, anything skips it. Reduced
@@ -1193,7 +1194,7 @@ CC.UI = class {
       el.type = 'button';
       const shape = i < 6 ? 'rosette' : i < 15 ? 'medal' : i < 30 ? 'cordon' : 'star';
       el.className = 'ribbon locked';
-      el.style.setProperty('--rib', r.color);
+      el.style.setProperty('--rib-own', r.color); /* the locked rule can still blank --rib */
       el.innerHTML = CC.icon(shape);
       el.setAttribute('aria-label', r.name);
       el.addEventListener('mouseenter', () => this.tooltip({ kind: 'ribbon', r }, el));
@@ -1283,7 +1284,12 @@ CC.UI = class {
     this.$('chronicle-copy').addEventListener('click', () => this.shareCard());
     /* modals (brief P7): Escape closes, the backdrop closes, focus stays inside */
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') { if (this.skipCeremony) this.skipCeremony(); this.closeBedMenu(); for (const id of ['modal', 'shed', 'ceremony']) this.$(id).classList.add('hidden'); }
+      if (e.key === 'Escape') {
+        if (this.skipCeremony) this.skipCeremony();
+        this.closeBedMenu();
+        for (const id of ['modal', 'shed', 'ceremony']) this.$(id).classList.add('hidden');
+        if (this._dlgReturn && this._dlgReturn.focus) { this._dlgReturn.focus(); this._dlgReturn = null; }
+      }
       if (e.key === 'Tab') {
         const open = ['modal', 'shed', 'ceremony'].map(id => this.$(id)).find(el => !el.classList.contains('hidden'));
         if (!open) return;
@@ -1316,7 +1322,7 @@ CC.UI = class {
         this.toast('Click 🗑 again within 3s to wipe your save.');
       }
     });
-    this.$('modal-no').addEventListener('click', () => this.$('modal').classList.add('hidden'));
+    this.$('modal-no').addEventListener('click', () => { this.$('modal').classList.add('hidden'); if (this._dlgReturn && this._dlgReturn.focus) this._dlgReturn.focus(); });
     setInterval(() => this.save(), 15000);
     addEventListener('beforeunload', () => this.save());
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.save(); });
@@ -1524,7 +1530,13 @@ CC.UI = class {
         : `seed bonus now ${this.fmtX(this.core.seedMult())}.`));
       this.save();
     };
-    this.$('modal').classList.remove('hidden');
+    this.openModal();
+  }
+  /* open the paper modal with focus inside; closing restores it (brief P7) */
+  openModal() {
+    this._dlgReturn = document.activeElement;
+    this.openModal();
+    this.$('modal-yes').focus();
   }
 
   /* ---------------- theme (R18) ---------------- */
@@ -1842,7 +1854,7 @@ CC.UI = class {
     if (queued) { queued.count = (queued.count || 1) + 1; return; }
     if (pri === 'ambient' && (live.length + this.queue.length) > 5) return;
     this.queue.push({ key, pri, text, icon: n.icon, ttl: n.ttl || (pri === 'world' ? 6000 : 4200), at: now, count: 1 });
-    if (this.queue.length > 8) { const i = this.queue.findLastIndex(e => e.pri !== 'world'); if (i >= 0) this.queue.splice(i, 1); else this.queue.pop(); }
+    if (this.queue.length > 8) { const i = this.queue.findIndex(e => e.pri !== 'world'); if (i >= 0) this.queue.splice(i, 1); else this.queue.shift(); }
     this.queue.sort((a, b) => ({ world: 0, you: 1, ambient: 2 })[a.pri] - ({ world: 0, you: 1, ambient: 2 })[b.pri]);
     this.drainToasts();
     /* the screen reader hears it once */
@@ -1966,6 +1978,7 @@ CC.UI = class {
         this._acT -= 0.125;
         const g = this.core.click();
         if (this.patchOn()) this.patch.pending++;
+        this.deeds.clicks++;
         this._acN = (this._acN || 0) + 1;
         if (this._acN % 8 === 0) {
           /* one visible pull per second — a distinct squash synced with the
@@ -2242,8 +2255,8 @@ CC.UI = class {
       this.setText(sl, sd ? `${sd.name} — ${days} day${days === 1 ? '' : 's'} left · ${sd.bonus}` : 'A new season is on — refresh the page to join it!');
     }
 
-    this.$('seed-line').textContent = c.seeds > 0
-      ? `🌸 ${CC.fmt(c.seeds)} seeds — ${this.fmtX(c.seedMult())} production, forever` : '';
+    this.setText(this.$('seed-line'), c.seeds > 0
+      ? `${CC.fmt(c.seeds)} seeds — ${this.fmtX(c.seedMult())} production, forever` : '');
 
     /* the Potting Shed (R13): balance always on the main screen, catalog
        behind its own screen; the button glows when the world can afford
@@ -2348,7 +2361,8 @@ CC.UI = class {
           el.title = ch.title || '';
           el.innerHTML = `${CC.icon(ch.icon)}${ch.name ? `<span>${ch.name}</span>` : ''}<b>${ch.time}</b>`;
         });
-        this.$('strip-chips').innerHTML = chips.slice(0, 5).map(ch => `<span title="${ch.name} ${ch.time}">${CC.icon(ch.icon)}</span>`).join('');
+        const urgent = ch => (ch.cls === 'bell' || ch.cls === 'hot' || ch.cls === 'market' || ch.cls === 'frost') ? 0 : 1;
+        this.$('strip-chips').innerHTML = chips.slice().sort((a, b) => urgent(a) - urgent(b)).slice(0, 5).map(ch => `<span title="${ch.name} ${ch.time}">${CC.icon(ch.icon)}</span>`).join('');
       }
     }
     const pending = c.pendingSeeds();
@@ -2384,13 +2398,16 @@ CC.UI = class {
            never display cheaper than they charge. The plank's right-hand
            label is the price in the world's own time (brief P2). */
         const cps = c.cps();
-        row.querySelector('.b-cost').innerHTML = isNextMystery ? ''
+        const costHtml = isNextMystery ? ''
           : `${CC.fmtHtml(Math.ceil(cost))} ${CC.icon('carrot')}${bn > 1 ? ` ×${bn}` : ''}` +
             (c.owned[i] > 0 && next ? `<span>${CC.icon('wheat')} ${c.owned[i]}/${next}</span>` : '');
-        row.querySelector('.b-time').textContent = isNextMystery ? '' : (c.bank >= cost ? 'now' : CC.fmtTime((cost - c.bank) / Math.max(cps, 1e-9)));
-        row.querySelector('.b-count').textContent = c.owned[i] || '';
-        row.style.setProperty('--p', isNextMystery ? 0 : Math.min(1, c.bank / cost));
-        row.setAttribute('aria-label', isNextMystery ? 'a plot not yet known' : `${b.name}, ${CC.fmt(Math.ceil(cost))} carrots${c.owned[i] ? `, ${c.owned[i]} owned` : ''}`);
+        if (row._cost !== costHtml) { row._cost = costHtml; row.querySelector('.b-cost').innerHTML = costHtml; }
+        this.setText(row.querySelector('.b-time'), isNextMystery ? '' : (c.bank >= cost ? 'now' : CC.fmtTime((cost - c.bank) / Math.max(cps, 1e-9))));
+        this.setText(row.querySelector('.b-count'), String(c.owned[i] || ''));
+        const pf = (isNextMystery ? 0 : Math.min(1, c.bank / cost)).toFixed(3);
+        if (row._p !== pf) { row._p = pf; row.style.setProperty('--p', pf); }
+        const label = isNextMystery ? 'a plot not yet known' : `${b.name}, ${CC.fmt(Math.ceil(cost))} carrots${c.owned[i] ? `, ${c.owned[i]} owned` : ''}`;
+        if (row._label !== label) { row._label = label; row.setAttribute('aria-label', label); }
       });
     }
 
