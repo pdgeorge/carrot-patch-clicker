@@ -127,6 +127,8 @@ CC.UI = class {
     this.$('build-tag').textContent = `build ${CC.BUILD || 'dev'}`;
     this.tenure = this.pref('carrot-tenure') || 'new';
     this.$('cc-root').dataset.tenure = this.tenure;
+    this.deeds = { clicks: 0, box: 0, rabbit: 0 }; /* what this browser has done, for the Gate */
+    try { Object.assign(this.deeds, JSON.parse(this.pref('carrot-deeds') || '{}')); } catch (e) { /* fresh */ }
     this.queue = []; /* the Clothesline */
     this.load();
     this.bind();
@@ -168,7 +170,9 @@ CC.UI = class {
     /* the Book's tabs, the mobile tab bar, the Gate */
     const book = this.$('book');
     book.dataset.tab = this.pref('carrot-book-tab') || 'ledger';
+    if (!book.querySelector(`input[value="${book.dataset.tab}"]`)) book.dataset.tab = 'ledger';
     book.querySelector(`input[value="${book.dataset.tab}"]`).checked = true;
+    if (book.dataset.tab === 'chronicle') { if (this.worldMode) setTimeout(() => this.loadChronicle(), 0); else book.dataset.tab = 'ledger'; }
     book.addEventListener('change', e => {
       if (e.target.name === 'book-tab') { book.dataset.tab = e.target.value; this.setPref('carrot-book-tab', e.target.value); if (e.target.value === 'chronicle') this.loadChronicle(); }
     });
@@ -195,10 +199,10 @@ CC.UI = class {
       pal.appendChild(b);
     });
     this.$('quilt').addEventListener('pointerdown', e => {
-      /* map against the CONTENT box: the patchwork border is 6 px of frame, not cloth */
-      const el = e.currentTarget, r = el.getBoundingClientRect();
-      const x = Math.floor((e.clientX - r.left - el.clientLeft) / el.clientWidth * this.quilt.w);
-      const y = Math.floor((e.clientY - r.top - el.clientTop) / el.clientHeight * this.quilt.h);
+      /* offsetX/Y are in the canvas's own (un-rotated) space — the binding is tilted 1.5° */
+      const el = e.currentTarget;
+      const x = Math.floor(e.offsetX / el.clientWidth * this.quilt.w);
+      const y = Math.floor(e.offsetY / el.clientHeight * this.quilt.h);
       if (x >= 0 && y >= 0 && x < this.quilt.w && y < this.quilt.h) this.paintCell(y * this.quilt.w + x, this.quiltColor);
     });
     this.$('quilt-copy').addEventListener('click', () => this.copyQuilt());
@@ -244,8 +248,9 @@ CC.UI = class {
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
       this.t += dt;
-      this.update(dt);
-      this.render();
+      /* one bad draw must never stop the world: the loop re-arms regardless */
+      try { this.update(dt); this.render(); }
+      catch (e) { if (!this._loopErr) { this._loopErr = true; console.error('frame failed', e); } }
       requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);
@@ -279,6 +284,8 @@ CC.UI = class {
       this.$('hands-sentence').textContent = line + '.';
     }
   }
+  /* write textContent only when it changed: updateDOM runs every frame */
+  setText(el, str) { if (el._txt !== str) { el._txt = str; el.textContent = str; } }
   /* the mobile shell (brief P17): one attribute, four tabs */
   setTab(tab) {
     this.$('cc-root').dataset.tab = tab;
@@ -628,9 +635,11 @@ CC.UI = class {
       const price = c.bedPrice(p.id);
       if (!price) continue;
       any = true;
-      const row = document.createElement('div');
+      const row = document.createElement('button');
+      row.type = 'button';
       const can = price.carrots !== undefined ? c.bank >= price.carrots : c.honey >= price.honey;
       row.className = 'bm-row' + (can ? '' : ' cant');
+      row.disabled = !can;
       const nm = document.createElement('b'); nm.textContent = p.name;
       const cost = document.createElement('span');
       cost.textContent = price.carrots !== undefined ? `${CC.fmt(Math.ceil(price.carrots))} 🥕` : `${price.honey} 🍯`;
@@ -643,7 +652,7 @@ CC.UI = class {
     const sub = document.createElement('div'); sub.className = 'bm-sub';
     sub.textContent = 'Tier-1 seeds cost minutes of harvest; anything found costs honey. Two mature neighbours may cross.';
     m.appendChild(sub);
-    const cl = document.createElement('div'); cl.className = 'bm-close'; cl.textContent = 'close ✕';
+    const cl = document.createElement('button'); cl.type = 'button'; cl.className = 'bm-close'; cl.textContent = 'close ✕';
     cl.addEventListener('click', () => this.closeBedMenu());
     m.appendChild(cl);
     const W = this.core.bedW(), H = this.core.bedH(), x = i % W, y = Math.floor(i / W);
@@ -652,6 +661,8 @@ CC.UI = class {
     m.style.right = rightHalf ? '0' : 'auto';
     m.style.top = `${Math.min(55, (y + 1) * (100 / H))}%`;
     m.classList.remove('hidden');
+    const firstRow = m.querySelector('.bm-row:not([disabled])') || m.querySelector('.bm-close');
+    if (firstRow) firstRow.focus();
   }
   closeBedMenu() { this.$('bed-menu').classList.add('hidden'); this.bedMenuPlot = -1; }
   plantAt(i, sp) {
@@ -732,6 +743,11 @@ CC.UI = class {
     const pal = this._pal || CC.THEMES['homestead-day'];
     const art = CC.ART.palette(pal, !!pal.stars);
     const still = CC.motion !== 'full';
+    if (still) { /* nothing moves: repaint only when the bed changed */
+      const key = [this._themeId, soil.id, W, H, this.bedHover, c.bed.sacrificeLeft > 0, c.bed.plots.map(pl => pl ? pl.sp + ':' + pl.age : '-').join(',')].join('|');
+      if (key === this._bedKey) return;
+      this._bedKey = key;
+    } else this._bedKey = null;
     /* the bed shares the hero's soil: same palette, a tile pattern per soil */
     const ground = { dirt: [pal.soil[0], pal.soil[1]], clay: ['#7a5540', '#5e4030'], chips: ['#8a6a3a', '#6b5028'] }[soil.id] || [pal.soil[0], pal.soil[1]];
     const tileId = 'soil-' + (soil.id === 'chips' ? 'chips' : soil.id);
@@ -784,6 +800,10 @@ CC.UI = class {
 
   renderOrder(card, o, first) {
     const q = sel => card.querySelector(sel);
+    const leftS = CC.fmtDur(o.deadline - this.now());
+    const sig = [o.id, o.name, o.value, o.tier, (o.targets || []).join(','), !!o.authored, first ? JSON.stringify(o.last || null) : '', leftS].join('|');
+    if (card.dataset.sig === sig) return;
+    card.dataset.sig = sig;
     const unit = { harvest: 'carrots', sprouts: 'sprouts planted', visitors: 'guests caught', stalls: 'stall gambles',
       pages: 'pages written', springs: 'springs', quilt: 'of the quilt', trials: 'trials won' }[o.kind] || '';
     const t = o.targets || [], v = o.value || 0, tier = o.tier || 0;
@@ -872,8 +892,10 @@ CC.UI = class {
     this.holdToasts = true;
     const t0 = performance.now();
     let over = false;
-    const finish = () => { if (over) return; over = true; x.clearRect(0, 0, innerWidth, innerHeight); box.removeEventListener('click', finish); card.classList.remove('hidden'); this.holdToasts = false; this.drainToasts(); done(); };
+    const finish = () => { if (over) return; over = true; cv.width = 0; cv.height = 0; box.removeEventListener('click', finish); this.skipCeremony = null; card.classList.remove('hidden'); this.holdToasts = false; this.drainToasts(); done(); };
     box.addEventListener('click', finish);
+    this.skipCeremony = finish;
+    box.tabIndex = -1; box.focus();
     const frame = () => {
       if (over) return;
       const t = (performance.now() - t0) / 1000;
@@ -1148,6 +1170,22 @@ CC.UI = class {
       return el;
     });
 
+    /* roving tabindex (brief, a11y): one tab stop per grid, arrows move inside */
+    const roving = (container, items) => {
+      items.forEach((el, i) => { el.tabIndex = i === 0 ? 0 : -1; el.setAttribute('role', 'gridcell'); });
+      container.addEventListener('keydown', e => {
+        const i = items.indexOf(document.activeElement);
+        if (i < 0) return;
+        const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 6, ArrowUp: -6, Home: -i, End: items.length - 1 - i }[e.key];
+        if (step === undefined) return;
+        e.preventDefault();
+        const j = Math.max(0, Math.min(items.length - 1, i + step));
+        items[i].tabIndex = -1; items[j].tabIndex = 0; items[j].focus();
+      });
+    };
+    roving(abox, this.almanacEls);
+    abox.setAttribute('role', 'grid'); abox.setAttribute('aria-label', 'Almanac pages');
+    for (const r of abox.children) r.setAttribute('role', 'row');
     /* the trophy shelf (brief P13): four silhouettes for four tiers */
     const shelf = this.$('ribbons');
     this.ribbonEls = CC.RIBBONS.map((r, i) => {
@@ -1155,7 +1193,7 @@ CC.UI = class {
       el.type = 'button';
       const shape = i < 6 ? 'rosette' : i < 15 ? 'medal' : i < 30 ? 'cordon' : 'star';
       el.className = 'ribbon locked';
-      el.style.color = r.color;
+      el.style.setProperty('--rib', r.color);
       el.innerHTML = CC.icon(shape);
       el.setAttribute('aria-label', r.name);
       el.addEventListener('mouseenter', () => this.tooltip({ kind: 'ribbon', r }, el));
@@ -1164,6 +1202,7 @@ CC.UI = class {
       shelf.appendChild(el);
       return el;
     });
+    roving(shelf, this.ribbonEls);
   }
 
   bind() {
@@ -1185,7 +1224,7 @@ CC.UI = class {
       this.buyN = v === 'max' ? 'max' : +v; /* ×1 · ×5 · ×10 · Max (R20) */
       for (const b of this.$('buy-amount').children) b.classList.toggle('on', b.dataset.n === v);
     });
-    this.$('shed-btn').addEventListener('click', () => this.$('shed').classList.remove('hidden'));
+    this.$('shed-btn').addEventListener('click', () => { this.$('shed').classList.remove('hidden'); this.$('shed-close').focus(); });
     this.$('shed-close').addEventListener('click', () => this.$('shed').classList.add('hidden'));
     this.$('shed').addEventListener('click', e => {
       if (e.target === this.$('shed')) this.$('shed').classList.add('hidden');
@@ -1244,12 +1283,12 @@ CC.UI = class {
     this.$('chronicle-copy').addEventListener('click', () => this.shareCard());
     /* modals (brief P7): Escape closes, the backdrop closes, focus stays inside */
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') for (const id of ['modal', 'shed', 'ceremony']) this.$(id).classList.add('hidden');
+      if (e.key === 'Escape') { if (this.skipCeremony) this.skipCeremony(); this.closeBedMenu(); for (const id of ['modal', 'shed', 'ceremony']) this.$(id).classList.add('hidden'); }
       if (e.key === 'Tab') {
         const open = ['modal', 'shed', 'ceremony'].map(id => this.$(id)).find(el => !el.classList.contains('hidden'));
         if (!open) return;
         const f = [...open.querySelectorAll('button, input, [tabindex="0"], details summary')].filter(el => el.offsetParent !== null);
-        if (!f.length) return;
+        if (!f.length) { e.preventDefault(); return; }
         if (e.shiftKey && document.activeElement === f[0]) { f[f.length - 1].focus(); e.preventDefault(); }
         else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { f[0].focus(); e.preventDefault(); }
         else if (!open.contains(document.activeElement)) { f[0].focus(); e.preventDefault(); }
@@ -1260,6 +1299,13 @@ CC.UI = class {
     this.canvas.addEventListener('keydown', e => {
       if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); CC.audio.ensure(); this.doClick(this.W / 2, this.soilY); }
       if ((e.key === 'v' || e.key === 'V') && this.visitor && !this.visitor.gone) this.catchVisitor();
+    });
+    this.$('bed').addEventListener('keydown', e => {
+      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); const i = this.bedHover >= 0 ? this.bedHover : this.core.bed.plots.findIndex(pl => !pl); if (i >= 0) this.bedClick(i); }
+      if (e.key === 'Escape') this.closeBedMenu();
+      const W = this.core.bedW(), n = this.core.bed.plots.length;
+      const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: W, ArrowUp: -W }[e.key];
+      if (step) { e.preventDefault(); this.bedHover = Math.max(0, Math.min(n - 1, (this.bedHover < 0 ? 0 : this.bedHover) + step)); this.bedTip(); }
     });
     this.$('wipe-btn').addEventListener('click', () => {
       if (this.t - this._wipeArm < 3) {
@@ -1281,6 +1327,7 @@ CC.UI = class {
     if (this.awaitingWorld()) return;
     const g = this.core.click();
     if (this.patchOn()) this.patch.pending++;
+    this.deeds.clicks++;
     this.squash = 1;
     CC.audio.pop();
     /* streak: clicks per second over the last second, for sway and the lean */
@@ -1320,6 +1367,7 @@ CC.UI = class {
     const count = n === 'max' ? this.core.maxAffordable(i) : n;
     const row = this.rows[i];
     const pulse = cls => { row.classList.remove(cls); void row.offsetWidth; row.classList.add(cls); setTimeout(() => row.classList.remove(cls), 400); };
+    if (i === 0 && count >= 1) this.deeds.box++;
     if (this.worldMode) {
       if (count >= 1) { CC.audio.thunk(); pulse('bought'); row.classList.add('pending'); setTimeout(() => row.classList.remove('pending'), 1500); } /* prediction; the snapshot settles it */
       else pulse('shake');
@@ -1385,6 +1433,7 @@ CC.UI = class {
      announced with the golden line — the joke is the clank (R19) */
   spawnVisitor(kind, ttl, quiet) {
     this.visitor = { kind, x: -30, y: this.soilY - 14, dir: 1, born: this.t, patchTtl: ttl };
+    this.badge('patch');
     if (quiet) return;
     this.toast(kind === 'parsnip'
       ? '🥕⁉ The Parsnip Man has set up a stall in the patch — first click decides for everyone…'
@@ -1409,6 +1458,7 @@ CC.UI = class {
   }
 
   catchVisitor() {
+    if (this.visitor && this.visitor.kind !== 'parsnip') this.deeds.rabbit++;
     if (this.worldMode) {
       /* worldMode, not patchOn: during a re-sync gap the solo reward path
          must never run against predicted world state */
@@ -1691,6 +1741,7 @@ CC.UI = class {
         this.toast('🏪 The stalls close. Same time next week.');
       }
     } else if (ev.type === 'order') {
+      this.badge('parish');
       if (ev.phase === 'posted') {
         CC.audio.upgrade();
         this.toast(`📜 The Parish posts an Order: ${ev.name}. Due in ${CC.fmtDur((ev.deadline || 0) - this.now())}.`);
@@ -1787,8 +1838,11 @@ CC.UI = class {
       same.dataset.at = now;
       return;
     }
+    const queued = this.queue.find(e => e.key === key && now - e.at < 10000);
+    if (queued) { queued.count = (queued.count || 1) + 1; return; }
     if (pri === 'ambient' && (live.length + this.queue.length) > 5) return;
-    this.queue.push({ key, pri, text, icon: n.icon, ttl: n.ttl || (pri === 'world' ? 6000 : 4200), at: now });
+    this.queue.push({ key, pri, text, icon: n.icon, ttl: n.ttl || (pri === 'world' ? 6000 : 4200), at: now, count: 1 });
+    if (this.queue.length > 8) { const i = this.queue.findLastIndex(e => e.pri !== 'world'); if (i >= 0) this.queue.splice(i, 1); else this.queue.pop(); }
     this.queue.sort((a, b) => ({ world: 0, you: 1, ambient: 2 })[a.pri] - ({ world: 0, you: 1, ambient: 2 })[b.pri]);
     this.drainToasts();
     /* the screen reader hears it once */
@@ -1800,6 +1854,7 @@ CC.UI = class {
     if (this.holdToasts) return; /* a ceremony is playing: tags wait on the line */
     while (lane.children.length < 3 && this.queue.length) {
       const n = this.queue.shift();
+      if (n.pri !== 'world' && performance.now() - n.at > 10000) continue; /* stale news is not news */
       const el = document.createElement('div');
       el.className = 'toast ' + n.pri;
       el.dataset.key = n.key; el.dataset.at = performance.now();
@@ -1807,7 +1862,7 @@ CC.UI = class {
       body.textContent = n.text;
       if (n.icon) el.insertAdjacentHTML('afterbegin', CC.icon(n.icon));
       el.appendChild(body);
-      const cnt = document.createElement('span'); cnt.className = 't-count'; cnt.dataset.n = '1';
+      const cnt = document.createElement('span'); cnt.className = 't-count'; cnt.dataset.n = String(n.count || 1); if (n.count > 1) cnt.textContent = `×${n.count}`;
       el.appendChild(cnt);
       lane.appendChild(el);
       const ttl = CC.motion === 'reduced' ? n.ttl + 1500 : n.ttl;
@@ -2053,10 +2108,10 @@ CC.UI = class {
         const halt = c.rule('haltOnBuy') && c.haltT > 0;
         tl.classList.toggle('halt', !!halt);
         sash.classList.toggle('halt', !!halt);
-        sash.textContent = `${td.name.toUpperCase()} · ${CC.fmtDur(left)}`;
-        tl.textContent = halt
+        this.setText(sash, `${td.name.toUpperCase()} · ${CC.fmtDur(left)}`);
+        this.setText(tl, halt
           ? `${td.name}: stilled — thaws in ${CC.fmtDur(c.haltT)} · ${CC.fmtDur(left)} left`
-          : `${td.name}: ${CC.fmt(c.totalRun)} / ${CC.fmt(tr.goal)} · ${CC.fmtDur(left)} left`;
+          : `${td.name}: ${CC.fmt(c.totalRun)} / ${CC.fmt(tr.goal)} · ${CC.fmtDur(left)} left`);
         sash.title = td.line;
         chips.push({ icon: halt ? 'frost' : 'trial', cls: halt ? 'frost' : 'hot', name: halt ? 'thaw' : td.name, time: halt ? CC.fmtDur(c.haltT) : `${CC.fmt(c.totalRun)}/${CC.fmt(tr.goal)}`, p: halt ? 1 - c.haltT / c.rule('haltOnBuy') : Math.min(1, c.totalRun / tr.goal) });
       }
@@ -2068,8 +2123,8 @@ CC.UI = class {
 
     /* every buff, not just the first: a Bumper Week and a passing rain
        stack, and both deserve a clock (R21) */
-    this.$('buff-line').textContent = c.buffs.map(b =>
-      `${b.name} ×${b.mult} — ${b.left >= 60 ? CC.fmtDur(b.left) : Math.ceil(b.left) + 's'}`).join(' · ');
+    this.setText(this.$('buff-line'), c.buffs.map(b =>
+      `${b.name} ×${b.mult} — ${b.left >= 60 ? CC.fmtDur(b.left) : Math.ceil(b.left) + 's'}`).join(' · '));
     for (const b of c.buffs) {
       const w = CC.WEATHER.find(x => x.name === b.name);
       const frenzy = b.mult >= 7, bad = b.mult < 1;
@@ -2089,7 +2144,7 @@ CC.UI = class {
         chips.push({ icon: 'market', cls: 'market', name: 'Market Hour', time: CC.fmtDur(m.end - this.now()), p: 1 - (m.end - this.now()) / ((mh.hours || 3) * 3600) }); }
       else if (m && m.next) { parts.push(`Market Hour opens in ${CC.fmtDur(m.next - this.now())}`); chips.push({ icon: 'market', cls: 'quiet', name: 'market', time: CC.fmtDur(m.next - this.now()) }); }
       gl.classList.toggle('hidden', !parts.length);
-      gl.textContent = parts.join(' · ');
+      this.setText(gl, parts.join(' · '));
       /* the season clock joins the chips */
       if (this.worldMode && this.patch && this.patch.everSynced && this.patch.seasonEnds > 0) {
         const sd = c.seasonData();
@@ -2097,6 +2152,8 @@ CC.UI = class {
         chips.push({ icon: 'tent', cls: 'cool', name: sd ? sd.name.replace(/^the /, '') : 'a new season', time: CC.fmtDur(left), p: 1 - Math.min(1, left / (CC.SEASON_DAYS * 86400)), title: sd ? sd.bonus : 'refresh to join it' });
       }
       if (this.patchOn()) chips.push({ icon: 'hands', cls: 'quiet', name: `${this.patch.online}`, time: c.handsBonus > 1 ? `+${Math.round((c.handsBonus - 1) * 100)}%` : 'tending', title: this.$('patch-line').textContent });
+      else if (this.worldMode && this.patch && this.patch.everSynced) chips.push({ icon: 'globe', cls: 'hot', name: 're-syncing', time: '…', title: 'the patch is out of reach — pulls wait' });
+      else if (this.awaitingWorld()) chips.push({ icon: 'globe', cls: 'hot', name: 'reaching the patch', time: '…' });
       if (CC.BED) chips.push({ icon: 'pl-sprout', cls: 'quiet', name: 'bed tick', time: CC.fmtDur(CC.BED.tick - c.bedT), p: c.bedT / CC.BED.tick });
     }
 
@@ -2110,9 +2167,9 @@ CC.UI = class {
         b.style.setProperty('--p', b.dataset.id === c.bed.soil ? 0 : left > 0 ? 1 - left / CC.BED.soilCooldown : 0);
       }
       const alive = c.bed.plots.filter(Boolean).length;
-      this.$('bed-clock').textContent =
+      this.setText(this.$('bed-clock'),
         `${soil.every > 1 ? `grows every ${soil.every}th tick · ` : ''}${alive}/${c.bed.plots.length} plots` +
-        (left > 0 ? ` · soil in ${CC.fmtDur(left)}` : '') + (c.bedMult() !== 1 ? ` · ${this.fmtX(c.bedMult())}` : '');
+        (left > 0 ? ` · soil in ${CC.fmtDur(left)}` : '') + (c.bedMult() !== 1 ? ` · ${this.fmtX(c.bedMult())}` : ''));
       const logSig = CC.PLANTS.map(p => (c.bed.log[p.id] || 0)).join(',') + '|' + Math.round(c.bed.sacrificeLeft) + '|' + c.sacrifices;
       if (logSig !== this._logSig) {
         this._logSig = logSig;
@@ -2135,7 +2192,7 @@ CC.UI = class {
         this.$('sacrifice-btn').textContent = pending ? 'Cancel the sacrifice' : `Give up the log for ${CC.BED.sacrificeHoney} 🍯`;
         this.$('sacrifice-text').textContent = pending ? '' : 'Every species is written. The bed could begin again.';
       }
-      if (c.bed.sacrificeLeft > 0) this.$('sacrifice-text').textContent = `the log is given up in ${CC.fmtDur(c.bed.sacrificeLeft)} — anyone may cancel`;
+      if (c.bed.sacrificeLeft > 0) this.setText(this.$('sacrifice-text'), `the log is given up in ${CC.fmtDur(c.bed.sacrificeLeft)} — anyone may cancel`);
     }
 
     /* Parish Orders (R21) — every card on the board (Wider Orders, R24) */
@@ -2156,31 +2213,15 @@ CC.UI = class {
       }
       list.forEach((o, k) => this.renderOrder(bar.children[k], o, k === 0));
     }
-    /* the clock chips (brief P3): one wrap row under cps */
-    {
-      const sig = chips.map(ch => `${ch.icon}|${ch.name}|${ch.time}|${(ch.p || 0).toFixed(2)}`).join(';');
-      if (sig !== this._chipSig) {
-        this._chipSig = sig;
-        const box = this.$('chips');
-        while (box.children.length > chips.length) box.lastChild.remove();
-        while (box.children.length < chips.length) { const el = document.createElement('span'); box.appendChild(el); }
-        chips.forEach((ch, i) => {
-          const el = box.children[i];
-          el.className = `chip ${ch.cls || ''}${ch.p !== undefined ? ' fill' : ''}`;
-          el.style.setProperty('--p', ch.p || 0);
-          el.title = ch.title || '';
-          el.innerHTML = `${CC.icon(ch.icon)}${ch.name ? `<span>${ch.name}</span>` : ''}<b>${ch.time}</b>`;
-        });
-        this.$('strip-chips').innerHTML = chips.slice(0, 5).map(ch => `<span title="${ch.name} ${ch.time}">${CC.icon(ch.icon)}</span>`).join('');
-      }
-    }
     /* the Gate (brief P20): three live deeds for a newcomer */
     if (this.tenure === 'new') {
+      const d = this.deeds;
       const deeds = [
-        { icon: 'hand', text: 'Pull a carrot', p: Math.min(1, c.clicks / 10), done: c.clicks >= 10 },
-        { icon: 'b0', text: 'Buy a Window Box', p: Math.min(1, c.owned[0] / 1), done: c.owned[0] >= 1 },
-        { icon: 'rabbit', text: 'Greet the rabbit when it comes', p: Math.min(1, c.rabbits), done: c.rabbits >= 1 || !this.worldMode },
+        { icon: 'hand', text: 'Pull a carrot', p: Math.min(1, d.clicks / 10), done: d.clicks >= 10 },
+        { icon: 'b0', text: 'Buy a Window Box', p: Math.min(1, d.box), done: d.box >= 1 },
+        { icon: 'rabbit', text: 'Greet the rabbit when it comes', p: Math.min(1, d.rabbit), done: d.rabbit >= 1 },
       ];
+      if (this.t - (this._deedsSaved || 0) > 5) { this._deedsSaved = this.t; this.setPref('carrot-deeds', JSON.stringify(d)); }
       const gsig = deeds.map(d => `${d.done}${d.p.toFixed(2)}`).join();
       if (gsig !== this._gateSig) {
         this._gateSig = gsig;
@@ -2198,7 +2239,7 @@ CC.UI = class {
       const sl = this.$('season-line');
       sl.classList.remove('hidden');
       const days = Math.max(0, Math.min(CC.SEASON_DAYS, Math.ceil((this.patch.seasonEnds - Date.now() / 1000) / 86400)));
-      sl.textContent = sd ? `${sd.name} — ${days} day${days === 1 ? '' : 's'} left · ${sd.bonus}` : 'A new season is on — refresh the page to join it!';
+      this.setText(sl, sd ? `${sd.name} — ${days} day${days === 1 ? '' : 's'} left · ${sd.bonus}` : 'A new season is on — refresh the page to join it!');
     }
 
     this.$('seed-line').textContent = c.seeds > 0
@@ -2266,9 +2307,9 @@ CC.UI = class {
         const votes = bell.votes || 0;
         bbHtml = `${CC.icon('mute')} ${votes ? `Ask for quiet (${votes} so far)` : 'Ask for quiet'}`;
         bl.classList.remove('hidden');
-        bl.textContent = `ring ${bell.rung} of ${F.rings}${bell.rehearsal ? ' (rehearsal)' : ''} · ` +
+        this.setText(bl, `ring ${bell.rung} of ${F.rings}${bell.rehearsal ? ' (rehearsal)' : ''} · ` +
           (bell.rung < F.rings ? `next in ${CC.fmtDur(nextAt - this.now())}` : 'ringing out…') +
-          ` · ${bell.rehearsal ? 'nothing resets this time' : `the world lies fallow at the ${F.rings}th`}`;
+          ` · ${bell.rehearsal ? 'nothing resets this time' : `the world lies fallow at the ${F.rings}th`}`);
         chips.push({ icon: 'bell', cls: 'bell', name: `ring ${bell.rung}/${F.rings}${bell.rehearsal ? ' ·rehearsal' : ''}`,
           time: bell.rung < F.rings ? CC.fmtDur(nextAt - this.now()) : 'ringing out', p: (bell.rung - 1 + Math.min(1, 1 - (nextAt - this.now()) / F.ringGap)) / F.rings, title: bl.textContent });
       } else {
@@ -2292,6 +2333,24 @@ CC.UI = class {
       }
     }
 
+    /* the clock chips (brief P3): one wrap row under cps */
+    {
+      const sig = chips.map(ch => `${ch.icon}|${ch.name}|${ch.time}|${(ch.p || 0).toFixed(2)}`).join(';');
+      if (sig !== this._chipSig) {
+        this._chipSig = sig;
+        const box = this.$('chips');
+        while (box.children.length > chips.length) box.lastChild.remove();
+        while (box.children.length < chips.length) { const el = document.createElement('span'); box.appendChild(el); }
+        chips.forEach((ch, i) => {
+          const el = box.children[i];
+          el.className = `chip ${ch.cls || ''}${ch.p !== undefined ? ' fill' : ''}`;
+          el.style.setProperty('--p', ch.p || 0);
+          el.title = ch.title || '';
+          el.innerHTML = `${CC.icon(ch.icon)}${ch.name ? `<span>${ch.name}</span>` : ''}<b>${ch.time}</b>`;
+        });
+        this.$('strip-chips').innerHTML = chips.slice(0, 5).map(ch => `<span title="${ch.name} ${ch.time}">${CC.icon(ch.icon)}</span>`).join('');
+      }
+    }
     const pending = c.pendingSeeds();
     const pb = this.$('prestige-btn');
     pb.classList.toggle('hidden', pending < 1);
@@ -2317,7 +2376,7 @@ CC.UI = class {
         /* Crop Rotation (R22): a row with no room in the chain is greyed */
         const cant = isNextMystery || c.bank < cost || c.rowRoom(i) < bn;
         /* .ripe: a plank that just became affordable glows once (brief P14) */
-        if (!cant && row.classList.contains('cant') && !isNextMystery && this.t > 2) { row.classList.add('ripe'); setTimeout(() => row.classList.remove('ripe'), 1200); }
+        if (!cant && row.classList.contains('cant') && !isNextMystery && this.t > 2) { row.classList.add('ripe'); setTimeout(() => row.classList.remove('ripe'), 1200); this.badge('shop'); }
         row.classList.toggle('cant', cant);
         const next = c.nextBumperAt(i);
         row.querySelector('.b-name').textContent = isNextMystery ? '???' : b.name;
@@ -2437,7 +2496,7 @@ CC.UI = class {
             (bits.length ? `<div class="stat-sub">${bits.join(' · ')}</div>` : '');
         })() +
         `<div class="stat-h">NEXT</div>` +
-        `<div>Next seed in <b>${CC.fmtHtml(Math.max(0, c.nextSeedAt() - c.totalAllTime))} ${CC.icon('carrot')}</b></div>` +
+        (() => { const rem = c.nextSeedAt() - c.totalAllTime; return `<div>Next seed in <b>${rem > 4 * c.totalAllTime * Number.EPSILON ? CC.fmtHtml(rem) : 'now'} ${CC.icon('carrot')}</b></div>`; })() +
         (() => { /* the tail must never fade into fog: name the next rung */
           const r = CC.RIBBONS.find(r => r.at > c.totalAllTime);
           return r ? `<div>Next ribbon in <b>${CC.fmtHtml(r.at - c.totalAllTime)} ${CC.icon('carrot')}</b></div>`
@@ -2583,9 +2642,9 @@ CC.UI = class {
       if (a.kind === 'firefly') { x.fillStyle = `rgba(255,240,150,${0.4 + Math.sin(this.t * 4 + a.ph) * 0.4})`; x.beginPath(); x.arc(a.x, a.y, 1.8, 0, Math.PI * 2); x.fill(); }
       else if (a.kind === 'bird') { x.strokeStyle = 'rgba(40,26,12,0.6)'; x.lineWidth = 1.5; const f = Math.sin(this.t * 10) * 3; x.beginPath(); x.moveTo(a.x - 6, a.y + f); x.lineTo(a.x, a.y); x.lineTo(a.x + 6, a.y + f); x.stroke(); }
       else {
-        const bee = a.kind === 'bee', w = Math.sin(this.t * 18 + a.ph) * 3;
+        const bee = a.kind === 'bee', wr = 2 + Math.abs(Math.sin(this.t * 18 + a.ph)) * 2.5; /* a flap from 2 to 4.5 — never a negative radius */
         x.fillStyle = bee ? '#e7b23a' : (a.ph % 2 > 1 ? '#f2b33d' : '#e89cb0'); x.strokeStyle = 'rgba(40,26,12,0.6)'; x.lineWidth = 1;
-        x.beginPath(); x.ellipse(a.x - 3, a.y, 4, 2 + w, -0.4, 0, Math.PI * 2); x.ellipse(a.x + 3, a.y, 4, 2 + w, 0.4, 0, Math.PI * 2); x.fill(); x.stroke();
+        x.beginPath(); x.ellipse(a.x - 3, a.y, 4, wr, -0.4, 0, Math.PI * 2); x.ellipse(a.x + 3, a.y, 4, wr, 0.4, 0, Math.PI * 2); x.fill(); x.stroke();
         if (bee) { x.fillStyle = '#2a2218'; x.fillRect(a.x - 1, a.y - 1, 2, 2); }
       }
     }
