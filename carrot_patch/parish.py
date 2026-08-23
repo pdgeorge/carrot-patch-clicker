@@ -181,6 +181,7 @@ class OrderBook:
         self.history: list[dict] = []     # last outcomes, newest last
         self.bell: dict | None = None     # Lie Fallow's bell: {at, rehearsal, rung, who, silences}
         self.bell_rest = 0.0              # epoch of the last silence: the bell rests a while after
+        self.hold_springs: int | None = None  # after a Fallow: no Orders until the cycle's first spring
         self.rotation = 0                 # next table index — its own counter, not len(history)
         self.override_used = 0
         self.last_intent = 0.0
@@ -207,6 +208,8 @@ class OrderBook:
             self.live = [o for o in live if isinstance(o, dict) and "deadline" in o][:3]
             self.bell = s.get("bell") if isinstance(s.get("bell"), dict) and "at" in s.get("bell") else None
             self.bell_rest = float(s.get("bellRest", 0) or 0)
+            hs = s.get("holdSprings")
+            self.hold_springs = int(hs) if isinstance(hs, (int, float)) and not isinstance(hs, bool) else None
             self.history = [h for h in (s.get("history") or []) if isinstance(h, dict)][-20:]
             self.rotation = int(s.get("rotation", len(self.history)) or 0)
             self.override_used = int(s.get("overrideUsed", 0) or 0)
@@ -218,6 +221,7 @@ class OrderBook:
         try:
             tmp.write_text(json.dumps({
                 "order": self.order, "orders": self.live, "bell": self.bell, "bellRest": self.bell_rest,
+                "holdSprings": self.hold_springs,
                 "history": self.history[-20:], "rotation": self.rotation,
                 "overrideUsed": self.override_used, "lastIntent": self.last_intent,
                 "effects": self.effects,
@@ -321,6 +325,17 @@ class OrderBook:
     def slots(self, eco: Economy) -> int:
         """Wider Orders (R24): one more order on the board per Cellar level."""
         return 1 + eco.cellar_level("orders")
+
+    def held(self, eco: Economy) -> bool:
+        """After a Fallow the board waits for the cycle's first Go to Seed: an
+        Order baselined on a bare world is won in minutes (R24 review)."""
+        if self.hold_springs is None:
+            return False
+        if eco.prestiges > self.hold_springs:
+            self.hold_springs = None
+            self.save()
+            return False
+        return True
 
     def post(self, eco: Economy, now: float) -> dict:
         fallback = {"id": "harvest", "name": "The Parish Harvest", "kind": "harvest", "tiers": [1, 2, 4]}
@@ -506,13 +521,15 @@ class OrderBook:
                 for o in self.live:
                     self.chronicle.log({"type": "order_skipped", "id": o["id"], "reason": "fallow"})
                 self.live = []
+                self.hold_springs = eco.prestiges  # no new Orders until this cycle's first spring
                 # the quilt is framed by the CALLER after the world is saved, so
                 # a crash between the two files can never lose the cloth
                 events.append({"type": "fallow", "loam": gain, "fallows": eco.fallows, "quilt": ""})
             else:  # the loam drained away while the bell rang (a Fallow elsewhere): nothing to do
                 events.append({"type": "silence", "who": "the ground", "reason": "nothing to retire", "pending": pending})
         self.bell = None
-        self.save()
+        # NOT saved here: the caller writes the world first, then this file —
+        # so no crash can leave the parish ahead of the world (R24 review)
         return events
 
     def frame_quilt(self, ev: dict, quilt: Quilt | None = None) -> None:

@@ -826,7 +826,7 @@ html, body { margin: 0; padding: 0; }
 /* ---------- the Seed Bed (R23) ---------- */
 #bed-wrap { position: relative; margin: 2px auto 6px; width: 100%; max-width: 320px; }
 #bed {
-  display: block; width: 100%; height: auto; aspect-ratio: 1;
+  display: block; width: 100%; height: auto; aspect-ratio: 1; box-sizing: border-box;
   border: 6px solid var(--hero-edge); border-radius: 6px; cursor: pointer;
   box-shadow: inset 0 1px 0 var(--wood-lit), 0 3px 10px rgba(0, 0, 0, 0.4);
   image-rendering: auto;
@@ -840,7 +840,7 @@ html, body { margin: 0; padding: 0; }
 #soil-btns button.on { border-color: var(--carrot); box-shadow: 0 0 6px rgba(255, 146, 50, 0.35); }
 #soil-btns button:disabled { opacity: 0.5; cursor: default; }
 #bed-menu {
-  position: absolute; z-index: 12; min-width: 200px; max-width: 260px; text-align: left;
+  position: absolute; z-index: 12; min-width: 200px; max-width: min(260px, 100%); box-sizing: border-box; max-height: 60vh; overflow-y: auto; text-align: left;
   background: linear-gradient(180deg, var(--paper-2), var(--paper)); color: var(--ink);
   border: 1px solid var(--paper-edge); border-radius: 4px; padding: 8px 10px; font-size: 12px;
   box-shadow: inset 0 0 0 1px var(--paper-lit), 0 10px 30px rgba(0, 0, 0, 0.55);
@@ -879,6 +879,7 @@ html, body { margin: 0; padding: 0; }
   letter-spacing: 0.02em;
 }
 #bell-btn.ringing { animation: bell-glow 1.2s ease-in-out infinite; }
+#bell-btn:disabled { opacity: 0.6; cursor: default; animation: none; }
 @keyframes bell-glow { 0%, 100% { box-shadow: inset 0 1px 0 rgba(255, 235, 200, 0.35), 0 3px 0 #3e2c0e, 0 0 8px rgba(240, 180, 60, 0.3); } 50% { box-shadow: inset 0 1px 0 rgba(255, 235, 200, 0.35), 0 3px 0 #3e2c0e, 0 0 26px rgba(240, 180, 60, 0.8); } }
 #bell-line { font-size: 11.5px; font-weight: 800; color: #f0c060; margin-top: 4px; min-height: 16px; font-variant-numeric: tabular-nums; }
 #shed-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
@@ -1073,7 +1074,7 @@ html, body { margin: 0; padding: 0; }
 </div>
 
 <script>
-globalThis.CC = globalThis.CC || {}; CC.BUILD = '911393e'; CC.GARDENERS = ["pdgeorge","Claude Fable 5","T_B0N3"];
+globalThis.CC = globalThis.CC || {}; CC.BUILD = 'c4483a1'; CC.GARDENERS = ["pdgeorge","Claude Fable 5","T_B0N3"];
 /* ==== data.js ==== */
 /* Carrot Clicker — content: buildings, upgrades, ribbons, news. */
 globalThis.CC = globalThis.CC || {};
@@ -1481,8 +1482,9 @@ CC.QUILT = { w: 48, h: 48, cooldown: 30, costSeconds: 1,
    world's steady cps (base species) or honey (discovered species), so the
    bed never inflates with the economy. Live effects apply only while a
    plant is mature; aggregates are capped (see Tunables). */
-CC.BED = { w: 4, h: 4, tick: 300, plantCooldown: 60, soilCooldown: 600, sacrificeHoney: 100, sacrificeWait: 120,
-  payoutCapPct: 0.05, multCap: 2.2, rabbitCap: 4, weatherCap: 3, honeyTierCost: [0, 0, 5, 15, 40, 100, 200] };
+CC.BED = { w: 4, h: 4, tick: 300, plantCooldown: 60, harvestCooldown: 15, immatureShare: 0.25, soilCooldown: 600,
+  sacrificeHoney: 100, sacrificeWait: 21600, sacrificeRest: 600,
+  payoutCapPct: 0.05, multCap: 2.2, rabbitCap: 4, weatherCap: 3, honeyTierCost: [0, 0, 10, 30, 80, 200, 400] };
 CC.SOILS = [
   { id: 'dirt', name: 'Dirt', every: 1, effect: 1, mutation: 1, line: 'Honest ground. Things happen on time.' },
   { id: 'clay', name: 'Clay', every: 3, effect: 1.25, mutation: 1, line: 'Slow and rich: a third the pace, a quarter more heart.' },
@@ -1532,7 +1534,7 @@ CC.PLANTS = [
     flavor: 'One hive, one queen, one jar a season.' },
   { id: 'thunderroot', name: 'Thunderroot', tier: 4, parents: ['rainlily', 'ironroot'], chance: 0.02, mature: 12, life: 40, mult: 1.02, weather: 2,
     flavor: 'You can hear it growing during storms.' },
-  { id: 'glassflower', name: 'Glass Flower', tier: 4, parents: ['rainlily', 'moonclover'], chance: 0.015, mature: 6, life: 8, mult: 1.04,
+  { id: 'glassflower', name: 'Glass Flower', tier: 4, parents: ['rainlily', 'moonclover'], chance: 0.015, mature: 6, life: 12, mult: 1.04,
     flavor: 'Perfect, brief, and clear all the way through.' },
   { id: 'everlasting', name: 'Everlasting', tier: 5, parents: ['kingcarrot', 'glassflower'], chance: 0.01, mature: 14, life: 9999, mult: 1.05,
     flavor: 'It does not die. Springs come and go around it.' },
@@ -1549,9 +1551,10 @@ CC.PLANTS = [
    world's first; 400 at 1e20, 576 at 1e24) and "one more Fallow" never
    stales. The bell rings four times, two hours apart; anyone may ring it,
    anyone may silence it; the first Fallow is rehearsed first. */
-CC.FALLOW = { minLoam: 400, rings: 4, ringGap: 7200, ringRest: 600, tilthPerFallow: 0.05, tilthCap: 25 };
+CC.FALLOW = { minLoam: 400, rings: 4, ringGap: 7200, ringRest: 600, tilthPerFallow: 0.05, tilthCap: 25, cellarStep: 8 };
 /* the Root Cellar: Loam buys RULE CHANGES — automation, caps, head starts —
-   at triangular prices (level n costs n Loam). Never a production multiplier. */
+   at triangular prices (level n costs cellarStep·n Loam; a full cellar ≈ one
+   Fallow and a half). Never a production multiplier. */
 CC.CELLAR = [
   { id: 'quick', name: 'Quick Spring', cap: 5, per: 10,
     effect: 'every spring starts with 10 of each plot per level',
@@ -1885,7 +1888,7 @@ CC.Core = class {
   static freshBed(w, h) {
     const B = CC.BED || { w: 4, h: 4 };
     return { soil: 'dirt', plots: Array((w || B.w) * (h || B.h)).fill(null), log: {}, seed: 1, n: 0,
-      soilAt: 0, sacrificeLeft: 0 };
+      soilAt: 0, sacrificeLeft: 0, sacrificeRest: 0 };
   }
   /* the bed's size: Deeper Beds (Cellar) adds a row and a column per level */
   bedW() { return (CC.BED ? CC.BED.w : 4) + this.cellarLevel('beds'); }
@@ -1902,7 +1905,7 @@ CC.Core = class {
   /* ---------- Lie Fallow & the Root Cellar (R24) ---------- */
   cellarData(id) { return (CC.CELLAR || []).find(c => c.id === id) || null; }
   cellarLevel(id) { return (this.cellar && this.cellar[id]) || 0; }
-  cellarCost(id) { return this.cellarLevel(id) + 1; } /* triangular: level n costs n Loam */
+  cellarCost(id) { return ((CC.FALLOW && CC.FALLOW.cellarStep) || 8) * (this.cellarLevel(id) + 1); } /* triangular: level n costs step·n Loam */
   cellarMaxed(c) { return this.cellarLevel(c.id) >= c.cap; }
   buyCellar(id) {
     const c = this.cellarData(id);
@@ -1917,7 +1920,9 @@ CC.Core = class {
   loamPending() { return this.seeds >= 10 ? Math.floor(Math.pow(Math.log10(this.seeds), 2)) : 0; }
   fallowAvailable() { return !!CC.FALLOW && this.loamPending() >= CC.FALLOW.minLoam; }
   /* Tilth: each Fallow sweetens the sprout mint a little, to a cap */
-  tilthMult() { return CC.FALLOW ? 1 + CC.FALLOW.tilthPerFallow * Math.min(this.fallows, CC.FALLOW.tilthCap) : 1; }
+  tilthMult() { return this.tilthPct() / 100; }
+  /* integer percent, so gain × mint × tilth is exact before the floor (binary 1.05·k is not) */
+  tilthPct() { return CC.FALLOW ? 100 + Math.round(CC.FALLOW.tilthPerFallow * 100) * Math.min(this.fallows, CC.FALLOW.tilthCap) : 100; }
   scarecrowEvery() { return Math.max(10, CC.TRIAL.scarecrowEvery - (this.cellarData('pace') || { per: 10 }).per * this.cellarLevel('pace')); }
   gateRate() { return 1 + (this.cellarData('gate') || { per: 0.05 }).per * this.cellarLevel('gate'); }
   /* the world lies fallow: seeds → loam; bank, plots, upgrades, lifetime
@@ -2020,11 +2025,17 @@ CC.Core = class {
   logTier(n) { return (CC.PLANTS || []).some(p => p.tier === n && this.bed.log[p.id]); }
   /* a complete log may be given up for honey — after a cancellable wait */
   bedSacrifice() {
-    if (!this.logFull() || this.bed.sacrificeLeft > 0) return false;
-    this.bed.sacrificeLeft = CC.BED.sacrificeWait || 120;
+    if (!this.logFull() || this.bed.sacrificeLeft > 0 || this.bed.sacrificeRest > 0) return false;
+    this.bed.sacrificeLeft = CC.BED.sacrificeWait || 21600;
     return true;
   }
-  bedCancel() { const was = this.bed.sacrificeLeft > 0; this.bed.sacrificeLeft = 0; return was; }
+  /* a cancelled sacrifice rests a while: cancel/re-fire cannot ping-pong */
+  bedCancel() {
+    const was = this.bed.sacrificeLeft > 0;
+    this.bed.sacrificeLeft = 0;
+    if (was) this.bed.sacrificeRest = CC.BED.sacrificeRest || 600;
+    return was;
+  }
   /* aggregates while mature — each capped, so 16 Fairy Rings are a bounded blessing */
   bedMult() {
     const e = this.soilData().effect;
@@ -2503,7 +2514,7 @@ CC.Core = class {
     this.trial = goal > 0 ? { id: trialId, goal, t: 0 } : null;
     this.haltT = 0;
     this.seeds += gain;
-    this.sprouts += Math.floor(gain * this.mintMult() * this.tilthMult()); /* every seed sprouts (R13); doublers stack (R15); Tilth (R24) */
+    this.sprouts += Math.floor(gain * this.mintMult() * this.tilthPct() / 100); /* every seed sprouts (R13); doublers stack (R15); Tilth (R24) */
     this.prestiges++;
     this.mintHoney('spring');
     this.bank = 0;
@@ -2561,6 +2572,7 @@ CC.Core = class {
     if (CC.BED && this.bed) {
       this.bedT += dt;
       while (this.bedT >= CC.BED.tick) { this.bedT -= CC.BED.tick; if (!this.mirror) events.push(...this.bedTick()); }
+      if (this.bed.sacrificeRest > 0) this.bed.sacrificeRest = Math.max(0, this.bed.sacrificeRest - dt);
       if (!this.mirror && this.bed.sacrificeLeft > 0) {
         this.bed.sacrificeLeft -= dt;
         if (this.bed.sacrificeLeft <= 0) {
@@ -2634,7 +2646,8 @@ CC.Core = class {
       trial: this.trial ? { ...this.trial } : null, trialsDone: this.trialsDone, trialBest: this.trialBest,
       runBest: this.runBest, runT: this.runT, perks: this.perks, haltT: this.haltT,
       bed: { soil: this.bed.soil, plots: this.bed.plots.map(p => p && { ...p }), log: { ...this.bed.log },
-        seed: this.bed.seed, n: this.bed.n, soilAt: this.bed.soilAt, sacrificeLeft: this.bed.sacrificeLeft },
+        seed: this.bed.seed, n: this.bed.n, soilAt: this.bed.soilAt, sacrificeLeft: this.bed.sacrificeLeft,
+        sacrificeRest: this.bed.sacrificeRest },
       bedT: this.bedT, sacrifices: this.sacrifices,
       loam: this.loam, cellar: this.cellar, fallows: this.fallows, rehearsed: this.rehearsed,
       almanac: this.almanac,
@@ -2726,8 +2739,9 @@ CC.Core = class {
     fresh.seed = (Math.floor(+rb.seed) >>> 0) || 1;
     fresh.n = Math.max(0, Math.floor(+rb.n) || 0);
     fresh.soilAt = Math.max(0, +rb.soilAt || 0);
-    fresh.sacrificeLeft = Math.max(0, Math.min(+rb.sacrificeLeft || 0, 3600));
-    this.bedT = Math.max(0, Math.min(+s.bedT || 0, (B.tick || 300)));
+    fresh.sacrificeLeft = Math.max(0, Math.min(+rb.sacrificeLeft || 0, CC.BED.sacrificeWait || 21600));
+    fresh.sacrificeRest = Math.max(0, Math.min(+rb.sacrificeRest || 0, 3600));
+    this.bedT = Math.max(0, Math.min(+s.bedT || 0, CC.BED.tick));
     this.sacrifices = Math.max(0, Math.floor(s.sacrifices) || 0);
     /* known page ids are historical fact and stay latched; junk ids would
        mint ×1.02 each forever — dropped */
@@ -2954,6 +2968,7 @@ CC.Patch = class {
       c.rehearsed = !!s.rehearsed;
       this.orders = msg.orders || (msg.order ? [msg.order] : []);
       this.bell = msg.bell || null;
+      this.bellRest = msg.bellRest || 0;
       /* the Seed Bed (R23): the server's bed is the bed */
       if (s.bed) {
         c.bed = { ...s.bed, plots: (s.bed.plots || []).map(p => p && { ...p }), log: { ...(s.bed.log || {}) } };
@@ -2972,6 +2987,8 @@ CC.Patch = class {
       ui.patchEvent(msg.ev || {});
     } else if (msg.type === 'name') {
       ui.nameResult(msg);
+    } else if (msg.type === 'plant') {
+      ui.plantResult(msg); /* the trowel locks only on a seed that landed (R24 review) */
     } else if (msg.type === 'toast') {
       /* legacy prose for pre-F1 clients — this client renders 'event'
          instead; ignoring avoids double toasts during the transition */
@@ -3526,8 +3543,13 @@ CC.UI = class {
       if (r) this.bedHarvested({ ...r, i, who: '' });
       return;
     }
-    const p = c.plantData(pl.sp);
-    this.toast(`🌱 ${p ? p.name : 'Something'} at ${this.plotName(i)} needs ${p ? p.mature - pl.age : '?'} more bed tick${p && p.mature - pl.age === 1 ? '' : 's'} (${CC.fmtDur(CC.BED.tick - c.bedT + Math.max(0, (p ? p.mature - pl.age : 1) - 1) * CC.BED.tick)}).`);
+    const p = c.plantData(pl.sp), soil = c.soilData();
+    const rem = p ? p.mature - pl.age : 1;
+    const first = soil.every - (c.bed.n % soil.every);          /* bed ticks until the next growth tick */
+    const ticks = first + Math.max(0, rem - 1) * soil.every;
+    const secs = CC.BED.tick - c.bedT + (ticks - 1) * CC.BED.tick;
+    this.toast(`🌱 ${p ? p.name : 'Something'} at ${this.plotName(i)} needs ${rem} more growth tick${rem === 1 ? '' : 's'}` +
+      `${soil.every > 1 ? ` (${soil.name} grows every ${soil.every}th bed tick)` : ''} — about ${CC.fmtDur(secs)}.`);
   }
   openBedMenu(i) {
     const c = this.core, m = this.$('bed-menu');
@@ -3560,7 +3582,9 @@ CC.UI = class {
     cl.addEventListener('click', () => this.closeBedMenu());
     m.appendChild(cl);
     const W = this.core.bedW(), H = this.core.bedH(), x = i % W, y = Math.floor(i / W);
-    m.style.left = `${Math.min(60, x * (100 / W))}%`;
+    const rightHalf = x >= W / 2;               /* anchor right-half plots to the right edge: never off-screen */
+    m.style.left = rightHalf ? 'auto' : `${x * (100 / W)}%`;
+    m.style.right = rightHalf ? '0' : 'auto';
     m.style.top = `${Math.min(55, (y + 1) * (100 / H))}%`;
     m.classList.remove('hidden');
   }
@@ -3569,9 +3593,16 @@ CC.UI = class {
     this.closeBedMenu();
     const wait = CC.BED.plantCooldown - (this.t - (this.lastPlant === undefined ? -1e9 : this.lastPlant));
     if (wait > 0) { this.toast(`🌱 Your trowel rests — ${Math.ceil(wait)}s before the next seed.`); return; }
-    this.lastPlant = this.t;
+    if (this.core.bed.plots[i]) { this.toast(`🌱 Someone got to ${this.plotName(i)} first.`); return; }
     if (this.worldMode) { this.patch.send({ type: 'plant', i, sp }); return; }
+    this.lastPlant = this.t;
     if (this.core.bedPlant(i, sp)) { CC.audio.upgrade(); this.toast(`🌱 ${this.core.plantData(sp).name} planted at ${this.plotName(i)}.`); }
+  }
+  plantResult(msg) {
+    if (msg.ok) { this.lastPlant = this.t; return; }
+    const why = { trowel: 'your trowel is still resting', share: `one gardener may hold at most ${msg.cap || 'a quarter of the'} plots immature — pick something first`,
+      garbage: 'that seed made no sense', refused: 'the plot was taken or the price was not there' }[msg.why] || 'the seed did not land';
+    this.toast(`🌱 Not planted — ${why}.`);
   }
   bedHarvested(r) {
     const p = this.core.plantData(r.sp);
@@ -3604,10 +3635,11 @@ CC.UI = class {
       return;
     }
     if (!c.logFull()) return;
+    if (c.bed.sacrificeRest > 0) { this.toast(`🍯 A cancelled sacrifice rests — ${CC.fmtDur(c.bed.sacrificeRest)} more.`); return; }
     this.$('modal-title').textContent = '🍯 Give up the seed log?';
     this.$('modal-body').innerHTML = `Every species is written. Giving the log up pays <b>${CC.BED.sacrificeHoney} honey</b> and a permanent Almanac page — ` +
       `and clears the log, so every cross must be found again (found seeds cost honey until they are). ` +
-      `A <b>${CC.fmtDur(CC.BED.sacrificeWait)}</b> countdown runs first; anyone can cancel it.`;
+      `A <b>${CC.fmtDur(CC.BED.sacrificeWait)}</b> countdown runs first — long enough for every tender to see it — and anyone can cancel it (after which it rests ${CC.fmtDur(CC.BED.sacrificeRest || 600)}).`;
     this.$('trial-pick').classList.add('hidden');
     const yes = this.$('modal-yes');
     yes.textContent = 'Start the countdown';
@@ -3709,7 +3741,7 @@ CC.UI = class {
     if (this.awaitingWorld()) return;
     const c = this.core, bell = this.worldMode ? this.patch.bell : null;
     if (bell) { /* a voice for quiet — confirmed, never a misclick (R24 review) */
-      const votes = Object.keys(bell.silences || {}).length;
+      const votes = bell.votes || 0;
       this.$('modal-title').textContent = '🔕 Ask for quiet?';
       this.$('modal-body').innerHTML = `The bell is ringing (${bell.rung} of ${CC.FALLOW.rings}${bell.rehearsal ? ', a rehearsal' : ''}). ` +
         `Silencing it takes <b>half the tenders online</b> agreeing — ${votes} voice${votes === 1 ? '' : 's'} so far. ` +
@@ -3722,6 +3754,7 @@ CC.UI = class {
       return;
     }
     if (!c.fallowAvailable()) return;
+    if (this.worldMode && this.patch && (this.patch.bellRest || 0) + (CC.FALLOW.ringRest || 600) > this.now()) return; /* resting */
     const loam = c.loamPending(), F = CC.FALLOW, rehearsal = !c.rehearsed && this.worldMode;
     this.$('modal-title').textContent = rehearsal ? '🔔 Ring the bell — a rehearsal' : '🔔 Ring the bell — Lie Fallow';
     this.$('modal-body').innerHTML =
@@ -4753,11 +4786,17 @@ CC.UI = class {
       const bell = this.worldMode && this.patch ? this.patch.bell : null;
       const bb = this.$('bell-btn'), bl = this.$('bell-line');
       const avail = c.fallowAvailable();
+      const restUntil = this.worldMode && this.patch ? (this.patch.bellRest || 0) + ((CC.FALLOW && CC.FALLOW.ringRest) || 600) : 0;
+      const resting = !bell && restUntil > this.now();
       bb.classList.toggle('hidden', !(avail || bell));
       bb.classList.toggle('ringing', !!bell);
-      if (bell) {
+      bb.disabled = resting;
+      if (resting) {
+        bb.textContent = `🔕 The bell rests — ${CC.fmtDur(restUntil - this.now())}`;
+        bl.classList.add('hidden');
+      } else if (bell) {
         const F = CC.FALLOW, nextAt = bell.at + bell.rung * F.ringGap;
-        const votes = Object.keys(bell.silences || {}).length;
+        const votes = bell.votes || 0;
         bb.textContent = votes ? `🔕 Ask for quiet (${votes} so far)` : '🔕 Ask for quiet';
         bl.classList.remove('hidden');
         bl.textContent = `🔔 ring ${bell.rung} of ${F.rings}${bell.rehearsal ? ' (rehearsal)' : ''} · ` +

@@ -655,9 +655,11 @@ for (let k = 0; k < 9; k++) evs.push(...c.bedTick());
 r.events = evs; r.plots = c.bed.plots.map(pl => pl && { ...pl }); r.seed = c.bed.seed; r.n = c.bed.n;
 r.mult = c.bedMult(); r.rabbit = c.bedRabbit(); r.weather = c.bedWeather(); r.cps = c.cps(); r.click = c.clickPower();
 const mi = c.bed.plots.findIndex(pl => pl && c.plotMature(pl));
-r.harvestIdx = mi; r.harvest = mi >= 0 ? c.bedHarvest(mi) : null; r.bank = c.bank; r.honey = c.honey; r.log = c.bed.log;
+r.harvestIdx = mi; r.harvest = mi >= 0 ? c.bedHarvest(mi) : null; r.bank = c.bank; r.honey = c.honey; r.log = { ...c.bed.log };
 r.priceHoney = c.bedPrice(r.harvest ? r.harvest.sp : 'sprout');
 c.tick(CC.BED.tick * 2 + 7); r.bedT = c.bedT; r.n2 = c.bed.n;
+c.bed.soil = 'clay'; c.bed.plots[2] = { sp: 'beebalm', age: 7 }; c.bed.plots[3] = { sp: 'heartwood', age: 16 };
+r.clayHoney = [c.bedHarvest(2).honey, c.bedHarvest(3).honey];
 r.snap = c.serialize();
 console.log(JSON.stringify(r));
 """
@@ -690,9 +692,12 @@ check(p23.bed_price(h["sp"] if h else "sprout") == js23["priceHoney"] or near(p2
       "prices agree after the log is written")
 p23.tick(p23.d["bed"]["tick"] * 2 + 7)
 check(near(p23.bed_t, js23["bedT"]) and p23.bed["n"] == js23["n2"], "the bed clock ticks in step with the world")
+p23.bed["soil"] = "clay"; p23.bed["plots"][2] = {"sp": "beebalm", "age": 7}; p23.bed["plots"][3] = {"sp": "heartwood", "age": 16}
+clay_h = [p23.bed_harvest(2)["honey"], p23.bed_harvest(3)["honey"]]
+check(clay_h == js23["clayHoney"] == [3, 13], f"honey on Clay rounds half UP in both engines ({clay_h})")
 p23b = Economy(load_data()); p23b.deserialize(js23["snap"])
 check(p23b.bed["plots"] == p23.bed["plots"] and p23b.bed["log"] == p23.bed["log"] and p23b.bed["seed"] == p23.bed["seed"]
-      and p23b.bed["soil"] == "chips", "a JS save's bed loads into Python intact")
+      and p23b.bed["soil"] == "clay", "a JS save's bed loads into Python intact")
 
 # ---------- 1j. Lie Fallow (R24): the same retirement in both engines ----------
 print("\n=== R24 Lie Fallow parity ===")
@@ -1206,9 +1211,14 @@ check(fal["quilt"][:2] == "05" and book_b.quilt.cells[0] == 0 and book_b.quilt.v
 check(any(e["type"] == "fallow" for e in chron.read(0)), "the chronicle records the Fallow Year")
 book_b.ring(fb, t0)
 check(book_b.bell is None, "after the Fallow the loam is gone: the bell is silent again")
+book_b.save()  # the caller persists after the fourth ring; do it here
 book_c = OrderBook(load_data(), pdir / "w9_parish.json", chron)
 fb.seeds = 1e22
-book_c.ring(fb, t0)
+check(book_c.hold_springs == fb.prestiges, "after a Fallow the board is held until the cycle's first spring")
+check(book_c.held(fb), "…held now")
+fb.prestiges += 1
+check(not book_c.held(fb) and book_c.hold_springs is None, "…and released by the first Go to Seed")
+book_c.ring(fb, t0 + 86400)
 book_d = OrderBook(load_data(), pdir / "w9_parish.json", chron)
 check(book_d.bell and book_d.bell["rung"] == 1, "a ringing bell survives a restart")
 
@@ -1330,8 +1340,33 @@ with TestClient(app) as client:
         time.sleep(0.05)
         check(patch.eco.bed["plots"][0] == {"sp": "sprout", "age": 0} and patch.eco.bank < 1e9, "a seed goes into the bed and is paid for")
         ws.send_json({"type": "plant", "i": 1, "sp": "clover"})
-        time.sleep(0.05)
-        check(patch.eco.bed["plots"][1] is None, "a second seed inside the trowel cooldown is ignored")
+        replies = []
+        for _ in range(200):  # the first seed's ok reply is queued behind snapshots/events; read until the refusal
+            m = ws.receive_json()
+            if m.get("type") == "plant":
+                replies.append(m)
+                if not m["ok"]:
+                    break
+        check(patch.eco.bed["plots"][1] is None and replies and replies[0]["ok"] is True and replies[-1]["ok"] is False
+              and replies[-1]["why"] == "trowel",
+              "a second seed inside the trowel cooldown is refused — and the sender is told (after the first's ok)")
+        with client.websocket_connect("/ws") as ws2:  # same address, fresh socket: same trowel
+            ws2.receive_json()
+            ws2.send_json({"type": "plant", "i": 1, "sp": "clover"})
+            time.sleep(0.05)
+            check(patch.eco.bed["plots"][1] is None, "reconnecting does not reset the trowel (per address)")
+        # the share cap: one address may hold a quarter of the bed immature
+        patch._plant_at.clear()
+        cap = max(1, -(-len(patch.eco.bed["plots"]) // 4))
+        for k in range(1, cap + 2):
+            patch._plant_at.clear()
+            ws.send_json({"type": "plant", "i": k, "sp": "sprout"})
+            time.sleep(0.05)
+        held = sum(1 for pl in patch.eco.bed["plots"] if pl)
+        check(held == cap, f"one address holds at most {cap} immature plots ({held})")
+        for k in range(1, cap + 1):
+            patch.eco.bed["plots"][k] = None
+        patch._plant_at.clear()
         for junk in ({"i": "0", "sp": "sprout"}, {"i": 2, "sp": 5}, {"i": 1e999, "sp": "sprout"}, {"i": 2, "sp": "nettle"},
                      {"i": 2, "sp": "honeyroot"}, {"i": -1, "sp": "sprout"}, {"i": 2, "sp": "x" * 100}, {}):
             ws.send_json({"type": "plant", **junk})
@@ -1341,6 +1376,7 @@ with TestClient(app) as client:
         time.sleep(0.05)
         check(patch.eco.bed["plots"][0] is not None, "a seedling cannot be picked")
         patch.eco.bed["plots"][0]["age"] = 5
+        patch._harvest_at.clear()
         patch._pending.clear()
         ws.send_json({"type": "harvest", "i": 0})
         time.sleep(0.05)
@@ -1353,6 +1389,11 @@ with TestClient(app) as client:
         ws.send_json({"type": "soil", "id": "clay"})
         time.sleep(0.05)
         check(patch.eco.bed["soil"] == "clay", "the soil turns to clay")
+        patch.eco.bed["plots"][5] = {"sp": "sprout", "age": 9}
+        ws.send_json({"type": "harvest", "i": 5})
+        time.sleep(0.05)
+        check(patch.eco.bed["plots"][5] is not None, "the basket rests between harvests (per address)")
+        patch.eco.bed["plots"][5] = None
         ws.send_json({"type": "soil", "id": "chips"})
         ws.send_json({"type": "soil", "id": ["x"]})
         time.sleep(0.05)
@@ -1382,10 +1423,14 @@ with TestClient(app) as client:
     # Lie Fallow (R24) over the wire: the bell, the Cellar
     with client.websocket_connect("/ws") as ws:
         ws.receive_json()
-        patch.eco.seeds = 1.96e22; patch.eco._lifetime_base = 4.5e50; patch.eco.loam = 5
+        step = patch.eco.d["fallow"]["cellarStep"]
+        patch.eco.seeds = 1.96e22; patch.eco._lifetime_base = 4.5e50; patch.eco.loam = step + 4
         ws.send_json({"type": "ring"})
         time.sleep(0.05)
         check(patch.orders.bell and patch.orders.bell["rehearsal"] and patch.orders.bell["rung"] == 1, "the bell rings over the wire — a rehearsal first")
+        snap_b = patch.snapshot_msg(time.monotonic())
+        check(snap_b["bell"] and "silences" not in snap_b["bell"] and snap_b["bell"]["votes"] == 0 and "bellRest" in snap_b,
+              "the snapshot carries the bell as a vote COUNT, never the voters' addresses")
         ws.send_json({"type": "silence"})
         time.sleep(0.05)
         check(patch.orders.bell is None, "…and is silenced over the wire")
@@ -1393,7 +1438,7 @@ with TestClient(app) as client:
         ws.send_json({"type": "cellar", "id": "bogus"})
         ws.send_json({"type": "cellar", "id": ["x"]})
         time.sleep(0.05)
-        check(patch.eco.cellar.get("quick") == 1 and patch.eco.loam == 4, "loam buys a Cellar level; junk ids buy nothing")
+        check(patch.eco.cellar.get("quick") == 1 and patch.eco.loam == 4, "loam buys a Cellar level (step loam); junk ids buy nothing")
         # the bell rings out for real when the clock says so
         patch.eco.rehearsed = True
         patch.orders.bell_rest = 0.0  # skip the rest after the silence

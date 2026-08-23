@@ -189,6 +189,7 @@ CC.Patch = class {
       c.rehearsed = !!s.rehearsed;
       this.orders = msg.orders || (msg.order ? [msg.order] : []);
       this.bell = msg.bell || null;
+      this.bellRest = msg.bellRest || 0;
       /* the Seed Bed (R23): the server's bed is the bed */
       if (s.bed) {
         c.bed = { ...s.bed, plots: (s.bed.plots || []).map(p => p && { ...p }), log: { ...(s.bed.log || {}) } };
@@ -207,6 +208,8 @@ CC.Patch = class {
       ui.patchEvent(msg.ev || {});
     } else if (msg.type === 'name') {
       ui.nameResult(msg);
+    } else if (msg.type === 'plant') {
+      ui.plantResult(msg); /* the trowel locks only on a seed that landed (R24 review) */
     } else if (msg.type === 'toast') {
       /* legacy prose for pre-F1 clients — this client renders 'event'
          instead; ignoring avoids double toasts during the transition */

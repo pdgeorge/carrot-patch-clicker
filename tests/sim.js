@@ -740,16 +740,18 @@ check(Math.abs(capB.bedMult() - Math.min(B.multCap, Math.pow(1.05, 16))) < 1e-9 
   `sixteen Fairy Rings are a bounded blessing (×${capB.bedMult().toFixed(2)} production, guests ×${B.rabbitCap}, rain ×${B.weatherCap})`);
 /* honey seeds and the sacrifice */
 const hs = new CC.Core();
-hs.honey = 4;
+hs.honey = B.honeyTierCost[2] - 1;
 hs.bed.log.honeyroot = 1;
-check(hs.bedPrice('honeyroot').honey === B.honeyTierCost[2] && !hs.bedPlant(0, 'honeyroot'), 'a found cross costs honey, and five is not enough');
-hs.honey = 5;
-check(hs.bedPlant(0, 'honeyroot') && hs.honey === 0, 'five honey plants it');
+check(hs.bedPrice('honeyroot').honey === B.honeyTierCost[2] && !hs.bedPlant(0, 'honeyroot'), 'a found cross costs honey, and one short is not enough');
+hs.honey = B.honeyTierCost[2];
+check(hs.bedPlant(0, 'honeyroot') && hs.honey === 0, `${B.honeyTierCost[2]} honey plants it`);
 for (const p of CC.PLANTS) hs.bed.log[p.id] = 1;
 hs.latchPages();
 check(hs.logFull() && hs.bedSacrifice() && hs.bed.sacrificeLeft === B.sacrificeWait, 'a full log can be given up — after a wait');
-check(hs.bedCancel() && hs.bed.sacrificeLeft === 0 && hs.logFull(), 'anyone can cancel the wait');
-hs.bedSacrifice(); hs.tick(B.sacrificeWait + 1);
+check(hs.bedCancel() && hs.bed.sacrificeLeft === 0 && hs.logFull() && hs.bed.sacrificeRest === B.sacrificeRest, 'anyone can cancel the wait — and then it rests');
+check(!hs.bedSacrifice(), 'no re-fire while it rests (cancel/fire cannot ping-pong)');
+hs.tick(B.sacrificeRest + 1);
+check(hs.bedSacrifice(), 'the rest over, the sacrifice may start again'); hs.tick(B.sacrificeWait + 1);
 check(hs.honey === B.sacrificeHoney && hs.sacrifices === 1 && !hs.logFull(), 'the sacrifice pays 100 honey and opens the log again');
 hs.latchPages();
 check(hs.almanac.sb6 === true && hs.almanac.sb5 === true, 'Seedless to Nay and The Whole Catalogue are written');
@@ -764,7 +766,7 @@ const junkB = new CC.Core();
 junkB.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0, owned: [], bought: {}, seeds: 0, sprouts: 0, shed: {},
   bed: { soil: 'lava', plots: [{ sp: 'bogus', age: 1 }, { sp: 'sprout', age: 1e9 }, 'x'], log: { bogus: 3, clover: -1, sprout: 2.7 }, seed: -5, sacrificeLeft: 1e9 } });
 check(junkB.bed.soil === 'dirt' && junkB.bed.plots[0] === null && junkB.bed.plots[1].age === 12 && junkB.bed.plots[2] === null
-  && junkB.bed.log.bogus === undefined && junkB.bed.log.clover === undefined && junkB.bed.log.sprout === 2 && junkB.bed.seed > 0 && junkB.bed.sacrificeLeft === 3600,
+  && junkB.bed.log.bogus === undefined && junkB.bed.log.clover === undefined && junkB.bed.log.sprout === 2 && junkB.bed.seed > 0 && junkB.bed.sacrificeLeft === B.sacrificeWait,
   'a forged bed is pruned to known species and sane ages');
 
 /* Lie Fallow (R24): seeds retire into loam; loam buys rules */
@@ -791,9 +793,12 @@ check(fw.buffs.length === 1 && fw.buffs[0].name === 'Bumper Week', 'the weather 
 fw.latchPages();
 check(fw.almanac.fy0 === true && fw.almanac.fy3 === undefined, 'Fallow Year I is written');
 /* the Root Cellar */
-check(fw.cellarCost('quick') === 1 && fw.buyCellar('quick') && fw.cellarCost('quick') === 2 && fw.loam === 495, 'level 1 costs 1 loam, level 2 costs 2');
+const ST = F.cellarStep;
+check(fw.cellarCost('quick') === ST && fw.buyCellar('quick') && fw.cellarCost('quick') === 2 * ST && fw.loam === 496 - ST, `level 1 costs ${ST} loam, level 2 costs ${2 * ST}`);
 for (let k = 0; k < 10; k++) fw.buyCellar('quick');
-check(fw.cellarLevel('quick') === 5 && fw.loam === 496 - 15, 'Quick Spring caps at 5 (1+2+3+4+5 = 15 loam)');
+check(fw.cellarLevel('quick') === 5 && fw.loam === 496 - 15 * ST, `Quick Spring caps at 5 (15 × ${ST} = ${15 * ST} loam)`);
+check(CC.CELLAR.reduce((a, c) => a + ST * c.cap * (c.cap + 1) / 2, 0) > 496 && CC.CELLAR.reduce((a, c) => a + ST * c.cap * (c.cap + 1) / 2, 0) < 2 * 496,
+  `a full cellar costs ${CC.CELLAR.reduce((a, c) => a + ST * c.cap * (c.cap + 1) / 2, 0)} loam — between one and two Fallows`);
 check(!fw.buyCellar('quick') && !fw.buyCellar('bogus'), 'a capped perk and a bogus id buy nothing');
 fw.totalRun = 1e8; fw.lifetimeBase = 1e8; fw.bank = 1e6; fw.prestige();
 check(fw.owned.every(n => n === 50), 'Quick Spring 5: every spring starts with 50 of each plot');

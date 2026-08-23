@@ -526,8 +526,13 @@ CC.UI = class {
       if (r) this.bedHarvested({ ...r, i, who: '' });
       return;
     }
-    const p = c.plantData(pl.sp);
-    this.toast(`🌱 ${p ? p.name : 'Something'} at ${this.plotName(i)} needs ${p ? p.mature - pl.age : '?'} more bed tick${p && p.mature - pl.age === 1 ? '' : 's'} (${CC.fmtDur(CC.BED.tick - c.bedT + Math.max(0, (p ? p.mature - pl.age : 1) - 1) * CC.BED.tick)}).`);
+    const p = c.plantData(pl.sp), soil = c.soilData();
+    const rem = p ? p.mature - pl.age : 1;
+    const first = soil.every - (c.bed.n % soil.every);          /* bed ticks until the next growth tick */
+    const ticks = first + Math.max(0, rem - 1) * soil.every;
+    const secs = CC.BED.tick - c.bedT + (ticks - 1) * CC.BED.tick;
+    this.toast(`🌱 ${p ? p.name : 'Something'} at ${this.plotName(i)} needs ${rem} more growth tick${rem === 1 ? '' : 's'}` +
+      `${soil.every > 1 ? ` (${soil.name} grows every ${soil.every}th bed tick)` : ''} — about ${CC.fmtDur(secs)}.`);
   }
   openBedMenu(i) {
     const c = this.core, m = this.$('bed-menu');
@@ -560,7 +565,9 @@ CC.UI = class {
     cl.addEventListener('click', () => this.closeBedMenu());
     m.appendChild(cl);
     const W = this.core.bedW(), H = this.core.bedH(), x = i % W, y = Math.floor(i / W);
-    m.style.left = `${Math.min(60, x * (100 / W))}%`;
+    const rightHalf = x >= W / 2;               /* anchor right-half plots to the right edge: never off-screen */
+    m.style.left = rightHalf ? 'auto' : `${x * (100 / W)}%`;
+    m.style.right = rightHalf ? '0' : 'auto';
     m.style.top = `${Math.min(55, (y + 1) * (100 / H))}%`;
     m.classList.remove('hidden');
   }
@@ -569,9 +576,16 @@ CC.UI = class {
     this.closeBedMenu();
     const wait = CC.BED.plantCooldown - (this.t - (this.lastPlant === undefined ? -1e9 : this.lastPlant));
     if (wait > 0) { this.toast(`🌱 Your trowel rests — ${Math.ceil(wait)}s before the next seed.`); return; }
-    this.lastPlant = this.t;
+    if (this.core.bed.plots[i]) { this.toast(`🌱 Someone got to ${this.plotName(i)} first.`); return; }
     if (this.worldMode) { this.patch.send({ type: 'plant', i, sp }); return; }
+    this.lastPlant = this.t;
     if (this.core.bedPlant(i, sp)) { CC.audio.upgrade(); this.toast(`🌱 ${this.core.plantData(sp).name} planted at ${this.plotName(i)}.`); }
+  }
+  plantResult(msg) {
+    if (msg.ok) { this.lastPlant = this.t; return; }
+    const why = { trowel: 'your trowel is still resting', share: `one gardener may hold at most ${msg.cap || 'a quarter of the'} plots immature — pick something first`,
+      garbage: 'that seed made no sense', refused: 'the plot was taken or the price was not there' }[msg.why] || 'the seed did not land';
+    this.toast(`🌱 Not planted — ${why}.`);
   }
   bedHarvested(r) {
     const p = this.core.plantData(r.sp);
@@ -604,10 +618,11 @@ CC.UI = class {
       return;
     }
     if (!c.logFull()) return;
+    if (c.bed.sacrificeRest > 0) { this.toast(`🍯 A cancelled sacrifice rests — ${CC.fmtDur(c.bed.sacrificeRest)} more.`); return; }
     this.$('modal-title').textContent = '🍯 Give up the seed log?';
     this.$('modal-body').innerHTML = `Every species is written. Giving the log up pays <b>${CC.BED.sacrificeHoney} honey</b> and a permanent Almanac page — ` +
       `and clears the log, so every cross must be found again (found seeds cost honey until they are). ` +
-      `A <b>${CC.fmtDur(CC.BED.sacrificeWait)}</b> countdown runs first; anyone can cancel it.`;
+      `A <b>${CC.fmtDur(CC.BED.sacrificeWait)}</b> countdown runs first — long enough for every tender to see it — and anyone can cancel it (after which it rests ${CC.fmtDur(CC.BED.sacrificeRest || 600)}).`;
     this.$('trial-pick').classList.add('hidden');
     const yes = this.$('modal-yes');
     yes.textContent = 'Start the countdown';
@@ -709,7 +724,7 @@ CC.UI = class {
     if (this.awaitingWorld()) return;
     const c = this.core, bell = this.worldMode ? this.patch.bell : null;
     if (bell) { /* a voice for quiet — confirmed, never a misclick (R24 review) */
-      const votes = Object.keys(bell.silences || {}).length;
+      const votes = bell.votes || 0;
       this.$('modal-title').textContent = '🔕 Ask for quiet?';
       this.$('modal-body').innerHTML = `The bell is ringing (${bell.rung} of ${CC.FALLOW.rings}${bell.rehearsal ? ', a rehearsal' : ''}). ` +
         `Silencing it takes <b>half the tenders online</b> agreeing — ${votes} voice${votes === 1 ? '' : 's'} so far. ` +
@@ -722,6 +737,7 @@ CC.UI = class {
       return;
     }
     if (!c.fallowAvailable()) return;
+    if (this.worldMode && this.patch && (this.patch.bellRest || 0) + (CC.FALLOW.ringRest || 600) > this.now()) return; /* resting */
     const loam = c.loamPending(), F = CC.FALLOW, rehearsal = !c.rehearsed && this.worldMode;
     this.$('modal-title').textContent = rehearsal ? '🔔 Ring the bell — a rehearsal' : '🔔 Ring the bell — Lie Fallow';
     this.$('modal-body').innerHTML =
@@ -1753,11 +1769,17 @@ CC.UI = class {
       const bell = this.worldMode && this.patch ? this.patch.bell : null;
       const bb = this.$('bell-btn'), bl = this.$('bell-line');
       const avail = c.fallowAvailable();
+      const restUntil = this.worldMode && this.patch ? (this.patch.bellRest || 0) + ((CC.FALLOW && CC.FALLOW.ringRest) || 600) : 0;
+      const resting = !bell && restUntil > this.now();
       bb.classList.toggle('hidden', !(avail || bell));
       bb.classList.toggle('ringing', !!bell);
-      if (bell) {
+      bb.disabled = resting;
+      if (resting) {
+        bb.textContent = `🔕 The bell rests — ${CC.fmtDur(restUntil - this.now())}`;
+        bl.classList.add('hidden');
+      } else if (bell) {
         const F = CC.FALLOW, nextAt = bell.at + bell.rung * F.ringGap;
-        const votes = Object.keys(bell.silences || {}).length;
+        const votes = bell.votes || 0;
         bb.textContent = votes ? `🔕 Ask for quiet (${votes} so far)` : '🔕 Ask for quiet';
         bl.classList.remove('hidden');
         bl.textContent = `🔔 ring ${bell.rung} of ${F.rings}${bell.rehearsal ? ' (rehearsal)' : ''} · ` +

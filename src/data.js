@@ -404,8 +404,9 @@ CC.QUILT = { w: 48, h: 48, cooldown: 30, costSeconds: 1,
    world's steady cps (base species) or honey (discovered species), so the
    bed never inflates with the economy. Live effects apply only while a
    plant is mature; aggregates are capped (see Tunables). */
-CC.BED = { w: 4, h: 4, tick: 300, plantCooldown: 60, soilCooldown: 600, sacrificeHoney: 100, sacrificeWait: 120,
-  payoutCapPct: 0.05, multCap: 2.2, rabbitCap: 4, weatherCap: 3, honeyTierCost: [0, 0, 5, 15, 40, 100, 200] };
+CC.BED = { w: 4, h: 4, tick: 300, plantCooldown: 60, harvestCooldown: 15, immatureShare: 0.25, soilCooldown: 600,
+  sacrificeHoney: 100, sacrificeWait: 21600, sacrificeRest: 600,
+  payoutCapPct: 0.05, multCap: 2.2, rabbitCap: 4, weatherCap: 3, honeyTierCost: [0, 0, 10, 30, 80, 200, 400] };
 CC.SOILS = [
   { id: 'dirt', name: 'Dirt', every: 1, effect: 1, mutation: 1, line: 'Honest ground. Things happen on time.' },
   { id: 'clay', name: 'Clay', every: 3, effect: 1.25, mutation: 1, line: 'Slow and rich: a third the pace, a quarter more heart.' },
@@ -455,7 +456,7 @@ CC.PLANTS = [
     flavor: 'One hive, one queen, one jar a season.' },
   { id: 'thunderroot', name: 'Thunderroot', tier: 4, parents: ['rainlily', 'ironroot'], chance: 0.02, mature: 12, life: 40, mult: 1.02, weather: 2,
     flavor: 'You can hear it growing during storms.' },
-  { id: 'glassflower', name: 'Glass Flower', tier: 4, parents: ['rainlily', 'moonclover'], chance: 0.015, mature: 6, life: 8, mult: 1.04,
+  { id: 'glassflower', name: 'Glass Flower', tier: 4, parents: ['rainlily', 'moonclover'], chance: 0.015, mature: 6, life: 12, mult: 1.04,
     flavor: 'Perfect, brief, and clear all the way through.' },
   { id: 'everlasting', name: 'Everlasting', tier: 5, parents: ['kingcarrot', 'glassflower'], chance: 0.01, mature: 14, life: 9999, mult: 1.05,
     flavor: 'It does not die. Springs come and go around it.' },
@@ -472,9 +473,10 @@ CC.PLANTS = [
    world's first; 400 at 1e20, 576 at 1e24) and "one more Fallow" never
    stales. The bell rings four times, two hours apart; anyone may ring it,
    anyone may silence it; the first Fallow is rehearsed first. */
-CC.FALLOW = { minLoam: 400, rings: 4, ringGap: 7200, ringRest: 600, tilthPerFallow: 0.05, tilthCap: 25 };
+CC.FALLOW = { minLoam: 400, rings: 4, ringGap: 7200, ringRest: 600, tilthPerFallow: 0.05, tilthCap: 25, cellarStep: 8 };
 /* the Root Cellar: Loam buys RULE CHANGES — automation, caps, head starts —
-   at triangular prices (level n costs n Loam). Never a production multiplier. */
+   at triangular prices (level n costs cellarStep·n Loam; a full cellar ≈ one
+   Fallow and a half). Never a production multiplier. */
 CC.CELLAR = [
   { id: 'quick', name: 'Quick Spring', cap: 5, per: 10,
     effect: 'every spring starts with 10 of each plot per level',

@@ -114,7 +114,7 @@ CC.Core = class {
   static freshBed(w, h) {
     const B = CC.BED || { w: 4, h: 4 };
     return { soil: 'dirt', plots: Array((w || B.w) * (h || B.h)).fill(null), log: {}, seed: 1, n: 0,
-      soilAt: 0, sacrificeLeft: 0 };
+      soilAt: 0, sacrificeLeft: 0, sacrificeRest: 0 };
   }
   /* the bed's size: Deeper Beds (Cellar) adds a row and a column per level */
   bedW() { return (CC.BED ? CC.BED.w : 4) + this.cellarLevel('beds'); }
@@ -131,7 +131,7 @@ CC.Core = class {
   /* ---------- Lie Fallow & the Root Cellar (R24) ---------- */
   cellarData(id) { return (CC.CELLAR || []).find(c => c.id === id) || null; }
   cellarLevel(id) { return (this.cellar && this.cellar[id]) || 0; }
-  cellarCost(id) { return this.cellarLevel(id) + 1; } /* triangular: level n costs n Loam */
+  cellarCost(id) { return ((CC.FALLOW && CC.FALLOW.cellarStep) || 8) * (this.cellarLevel(id) + 1); } /* triangular: level n costs step·n Loam */
   cellarMaxed(c) { return this.cellarLevel(c.id) >= c.cap; }
   buyCellar(id) {
     const c = this.cellarData(id);
@@ -146,7 +146,9 @@ CC.Core = class {
   loamPending() { return this.seeds >= 10 ? Math.floor(Math.pow(Math.log10(this.seeds), 2)) : 0; }
   fallowAvailable() { return !!CC.FALLOW && this.loamPending() >= CC.FALLOW.minLoam; }
   /* Tilth: each Fallow sweetens the sprout mint a little, to a cap */
-  tilthMult() { return CC.FALLOW ? 1 + CC.FALLOW.tilthPerFallow * Math.min(this.fallows, CC.FALLOW.tilthCap) : 1; }
+  tilthMult() { return this.tilthPct() / 100; }
+  /* integer percent, so gain × mint × tilth is exact before the floor (binary 1.05·k is not) */
+  tilthPct() { return CC.FALLOW ? 100 + Math.round(CC.FALLOW.tilthPerFallow * 100) * Math.min(this.fallows, CC.FALLOW.tilthCap) : 100; }
   scarecrowEvery() { return Math.max(10, CC.TRIAL.scarecrowEvery - (this.cellarData('pace') || { per: 10 }).per * this.cellarLevel('pace')); }
   gateRate() { return 1 + (this.cellarData('gate') || { per: 0.05 }).per * this.cellarLevel('gate'); }
   /* the world lies fallow: seeds → loam; bank, plots, upgrades, lifetime
@@ -249,11 +251,17 @@ CC.Core = class {
   logTier(n) { return (CC.PLANTS || []).some(p => p.tier === n && this.bed.log[p.id]); }
   /* a complete log may be given up for honey — after a cancellable wait */
   bedSacrifice() {
-    if (!this.logFull() || this.bed.sacrificeLeft > 0) return false;
-    this.bed.sacrificeLeft = CC.BED.sacrificeWait || 120;
+    if (!this.logFull() || this.bed.sacrificeLeft > 0 || this.bed.sacrificeRest > 0) return false;
+    this.bed.sacrificeLeft = CC.BED.sacrificeWait || 21600;
     return true;
   }
-  bedCancel() { const was = this.bed.sacrificeLeft > 0; this.bed.sacrificeLeft = 0; return was; }
+  /* a cancelled sacrifice rests a while: cancel/re-fire cannot ping-pong */
+  bedCancel() {
+    const was = this.bed.sacrificeLeft > 0;
+    this.bed.sacrificeLeft = 0;
+    if (was) this.bed.sacrificeRest = CC.BED.sacrificeRest || 600;
+    return was;
+  }
   /* aggregates while mature — each capped, so 16 Fairy Rings are a bounded blessing */
   bedMult() {
     const e = this.soilData().effect;
@@ -732,7 +740,7 @@ CC.Core = class {
     this.trial = goal > 0 ? { id: trialId, goal, t: 0 } : null;
     this.haltT = 0;
     this.seeds += gain;
-    this.sprouts += Math.floor(gain * this.mintMult() * this.tilthMult()); /* every seed sprouts (R13); doublers stack (R15); Tilth (R24) */
+    this.sprouts += Math.floor(gain * this.mintMult() * this.tilthPct() / 100); /* every seed sprouts (R13); doublers stack (R15); Tilth (R24) */
     this.prestiges++;
     this.mintHoney('spring');
     this.bank = 0;
@@ -790,6 +798,7 @@ CC.Core = class {
     if (CC.BED && this.bed) {
       this.bedT += dt;
       while (this.bedT >= CC.BED.tick) { this.bedT -= CC.BED.tick; if (!this.mirror) events.push(...this.bedTick()); }
+      if (this.bed.sacrificeRest > 0) this.bed.sacrificeRest = Math.max(0, this.bed.sacrificeRest - dt);
       if (!this.mirror && this.bed.sacrificeLeft > 0) {
         this.bed.sacrificeLeft -= dt;
         if (this.bed.sacrificeLeft <= 0) {
@@ -863,7 +872,8 @@ CC.Core = class {
       trial: this.trial ? { ...this.trial } : null, trialsDone: this.trialsDone, trialBest: this.trialBest,
       runBest: this.runBest, runT: this.runT, perks: this.perks, haltT: this.haltT,
       bed: { soil: this.bed.soil, plots: this.bed.plots.map(p => p && { ...p }), log: { ...this.bed.log },
-        seed: this.bed.seed, n: this.bed.n, soilAt: this.bed.soilAt, sacrificeLeft: this.bed.sacrificeLeft },
+        seed: this.bed.seed, n: this.bed.n, soilAt: this.bed.soilAt, sacrificeLeft: this.bed.sacrificeLeft,
+        sacrificeRest: this.bed.sacrificeRest },
       bedT: this.bedT, sacrifices: this.sacrifices,
       loam: this.loam, cellar: this.cellar, fallows: this.fallows, rehearsed: this.rehearsed,
       almanac: this.almanac,
@@ -955,8 +965,9 @@ CC.Core = class {
     fresh.seed = (Math.floor(+rb.seed) >>> 0) || 1;
     fresh.n = Math.max(0, Math.floor(+rb.n) || 0);
     fresh.soilAt = Math.max(0, +rb.soilAt || 0);
-    fresh.sacrificeLeft = Math.max(0, Math.min(+rb.sacrificeLeft || 0, 3600));
-    this.bedT = Math.max(0, Math.min(+s.bedT || 0, (B.tick || 300)));
+    fresh.sacrificeLeft = Math.max(0, Math.min(+rb.sacrificeLeft || 0, CC.BED.sacrificeWait || 21600));
+    fresh.sacrificeRest = Math.max(0, Math.min(+rb.sacrificeRest || 0, 3600));
+    this.bedT = Math.max(0, Math.min(+s.bedT || 0, CC.BED.tick));
     this.sacrifices = Math.max(0, Math.floor(s.sacrifices) || 0);
     /* known page ids are historical fact and stay latched; junk ids would
        mint ×1.02 each forever — dropped */

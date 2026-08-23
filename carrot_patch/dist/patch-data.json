@@ -2191,9 +2191,12 @@
   "h": 4,
   "tick": 300,
   "plantCooldown": 60,
+  "harvestCooldown": 15,
+  "immatureShare": 0.25,
   "soilCooldown": 600,
   "sacrificeHoney": 100,
-  "sacrificeWait": 120,
+  "sacrificeWait": 21600,
+  "sacrificeRest": 600,
   "payoutCapPct": 0.05,
   "multCap": 2.2,
   "rabbitCap": 4,
@@ -2201,11 +2204,11 @@
   "honeyTierCost": [
    0,
    0,
-   5,
-   15,
-   40,
-   100,
-   200
+   10,
+   30,
+   80,
+   200,
+   400
   ]
  },
  "soils": [
@@ -2502,7 +2505,7 @@
    ],
    "chance": 0.015,
    "mature": 6,
-   "life": 8,
+   "life": 12,
    "mult": 1.04,
    "flavor": "Perfect, brief, and clear all the way through."
   },
@@ -2570,7 +2573,8 @@
   "ringGap": 7200,
   "ringRest": 600,
   "tilthPerFallow": 0.05,
-  "tilthCap": 25
+  "tilthCap": 25,
+  "cellarStep": 8
  },
  "cellar": [
   {

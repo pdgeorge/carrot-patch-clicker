@@ -66,7 +66,7 @@ def load_data() -> dict:
 def fresh_bed(d: dict, w: int | None = None, h: int | None = None) -> dict:
     b = d.get("bed") or {"w": 4, "h": 4}
     return {"soil": "dirt", "plots": [None] * ((w or b["w"]) * (h or b["h"])), "log": {}, "seed": 1, "n": 0,
-            "soilAt": 0.0, "sacrificeLeft": 0.0}
+            "soilAt": 0.0, "sacrificeLeft": 0.0, "sacrificeRest": 0.0}
 
 
 def fresh_perks() -> dict:
@@ -241,7 +241,7 @@ class Economy:
         return self.cellar.get(cid, 0)
 
     def cellar_cost(self, cid) -> int:
-        return self.cellar_level(cid) + 1
+        return (self.d.get("fallow") or {}).get("cellarStep", 8) * (self.cellar_level(cid) + 1)
 
     def cellar_maxed(self, c: dict) -> bool:
         return self.cellar_level(c["id"]) >= c["cap"]
@@ -265,8 +265,12 @@ class Economy:
         return bool(f) and self.loam_pending() >= f["minLoam"]
 
     def tilth_mult(self) -> float:
+        return self.tilth_pct() / 100
+
+    def tilth_pct(self) -> int:
+        """Integer percent, so gain × mint × tilth is exact before the floor."""
         f = self.d.get("fallow")
-        return 1 + f["tilthPerFallow"] * min(self.fallows, f["tilthCap"]) if f else 1.0
+        return 100 + round(f["tilthPerFallow"] * 100) * min(self.fallows, f["tilthCap"]) if f else 100
 
     def scarecrow_every(self) -> float:
         per = (self.cellar_data("pace") or {"per": 10})["per"]
@@ -377,7 +381,8 @@ class Economy:
             gain = min(self.bed_cps_ref() * p["payout"] * 60 * soil["effect"],
                        self.bank * self.d["bed"]["payoutCapPct"] + self.bed_cps_ref() * 60)
             self.earn(gain)
-        honey = round(p["honey"] * soil["effect"]) if p.get("honey") else 0
+        # floor(x + 0.5), not round(): Python rounds halves to even, JS Math.round up
+        honey = int(math.floor(p["honey"] * soil["effect"] + 0.5)) if p.get("honey") else 0
         self.honey += honey
         first = not self.bed["log"].get(pl["sp"])
         self.bed["log"][pl["sp"]] = self.bed["log"].get(pl["sp"], 0) + 1
@@ -400,14 +405,17 @@ class Economy:
         return any(p["tier"] == n and self.bed["log"].get(p["id"]) for p in self.d.get("plants", []))
 
     def bed_sacrifice(self) -> bool:
-        if not self.log_full() or self.bed["sacrificeLeft"] > 0:
+        if not self.log_full() or self.bed["sacrificeLeft"] > 0 or self.bed.get("sacrificeRest", 0) > 0:
             return False
-        self.bed["sacrificeLeft"] = float(self.d["bed"].get("sacrificeWait", 120))
+        self.bed["sacrificeLeft"] = float(self.d["bed"].get("sacrificeWait", 21600))
         return True
 
     def bed_cancel(self) -> bool:
+        """A cancelled sacrifice rests a while: cancel/re-fire cannot ping-pong."""
         was = self.bed["sacrificeLeft"] > 0
         self.bed["sacrificeLeft"] = 0.0
+        if was:
+            self.bed["sacrificeRest"] = float(self.d["bed"].get("sacrificeRest", 600))
         return was
 
     def _mature_plants(self):
@@ -866,7 +874,7 @@ class Economy:
         self.trial = {"id": trial_id, "goal": goal, "t": 0.0} if goal > 0 else None
         self.halt_t = 0.0
         self.seeds += gain
-        self.sprouts += int(gain * self.mint_mult() * self.tilth_mult())  # every seed sprouts (R13); doublers (R15); Tilth (R24)
+        self.sprouts += int(gain * self.mint_mult() * self.tilth_pct() // 100)  # every seed sprouts (R13); doublers (R15); Tilth (R24)
         self.prestiges += 1
         self.mint_honey("spring")
         self.bank = 0.0
@@ -930,6 +938,8 @@ class Economy:
             while self.bed_t >= bd["tick"]:
                 self.bed_t -= bd["tick"]
                 events.extend(self.bed_tick())
+            if self.bed.get("sacrificeRest", 0) > 0:
+                self.bed["sacrificeRest"] = max(0.0, self.bed["sacrificeRest"] - dt)
             if self.bed["sacrificeLeft"] > 0:
                 self.bed["sacrificeLeft"] -= dt
                 if self.bed["sacrificeLeft"] <= 0:
@@ -1000,7 +1010,8 @@ class Economy:
             "haltT": self.halt_t,
             "bed": {"soil": self.bed["soil"], "plots": [dict(p) if p else None for p in self.bed["plots"]],
                     "log": dict(self.bed["log"]), "seed": self.bed["seed"], "n": self.bed["n"],
-                    "soilAt": self.bed["soilAt"], "sacrificeLeft": self.bed["sacrificeLeft"]},
+                    "soilAt": self.bed["soilAt"], "sacrificeLeft": self.bed["sacrificeLeft"],
+                    "sacrificeRest": self.bed.get("sacrificeRest", 0.0)},
             "bedT": self.bed_t, "sacrifices": self.sacrifices,
             "loam": self.loam, "cellar": self.cellar, "fallows": self.fallows, "rehearsed": self.rehearsed,
             "season": self.season, "seasonStart": self.season_start,
@@ -1136,7 +1147,8 @@ class Economy:
         fresh["seed"] = (_cnt(rb.get("seed", 1)) & 0xFFFFFFFF) or 1
         fresh["n"] = _cnt(rb.get("n", 0))
         fresh["soilAt"] = num(rb.get("soilAt", 0), 1e12)
-        fresh["sacrificeLeft"] = num(rb.get("sacrificeLeft", 0), 3600.0)
+        fresh["sacrificeLeft"] = num(rb.get("sacrificeLeft", 0), float((self.d.get("bed") or {}).get("sacrificeWait", 21600)))
+        fresh["sacrificeRest"] = num(rb.get("sacrificeRest", 0), 3600.0)
         self.bed_t = num(s.get("bedT", 0), float(bdd.get("tick", 300)))
         self.sacrifices = _cnt(s.get("sacrifices", 0))
         # known page ids are historical fact and stay latched; junk ids

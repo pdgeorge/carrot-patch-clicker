@@ -94,6 +94,9 @@ class Patch:
         self._names_7d = 0                              # Many Hands: distinct names, 7 days
         self._names_at = 0.0
         self._paint_at: dict[str, float] = {}           # quilt cooldown per ADDRESS — sockets are free (R22 review)
+        self._plant_at: dict[str, float] = {}           # the trowel, per address (R24 review)
+        self._harvest_at: dict[str, float] = {}         # the basket, per address
+        self._plant_plots: dict[str, set] = {}          # address -> plots it planted that are still immature
         self._quilt_sent_v = 0                          # the quilt version whose diffs every client has seen
         self.clients: set[WebSocket] = set()
         self._conns: list[dict] = []       # the per-connection dicts, for the bell's electorate
@@ -157,7 +160,7 @@ class Patch:
         if done:
             self.emit({"type": "order", "phase": "resolved", **done})
             self.save()
-        if eco.d.get("orders"):
+        if eco.d.get("orders") and not self.orders.held(eco):
             while len(self.orders.live) < self.orders.slots(eco):  # Wider Orders (R24)
                 o = self.orders.post(eco, wall)
                 self.emit({"type": "order", "phase": "posted", "id": o["id"], "name": o["name"],
@@ -167,10 +170,10 @@ class Patch:
         # files can never disagree about whether the Fallow happened
         for ev in self.orders.bell_tick(eco, wall, self.quilt):
             if ev["type"] == "fallow":
-                self.save()
+                self.save()                      # world → parish → quilt
                 self.orders.frame_quilt(ev, self.quilt)
                 self.orders.save()
-            elif ev["type"] == "rehearsed":
+            elif ev["type"] in ("rehearsed", "silence", "bell"):
                 self.save()
             self.emit(ev)
 
@@ -200,7 +203,10 @@ class Patch:
             # the Parish (R21): the order on the board and the market clock
             "order": self.orders.snapshot(self.eco, wall),
             "orders": self.orders.snapshot_all(self.eco),   # Wider Orders (R24): every card on the board
-            "bell": self.orders.bell,                       # Lie Fallow's bell (R24)
+            # Lie Fallow's bell (R24): the votes as a COUNT — never the voters' addresses
+            "bell": ({k: v for k, v in self.orders.bell.items() if k != "silences"}
+                     | {"votes": len(self.orders.bell.get("silences", {}))}) if self.orders.bell else None,
+            "bellRest": self.orders.bell_rest,
             "market": {"active": mh["active"], "next": mh["next"], "end": mh["end"]},
             "now": wall,  # server wall clock so deadlines render without trusting the tab
             "quiltV": self._quilt_sent_v,  # R22: the version whose diffs have been broadcast; a client behind it refetches
@@ -517,25 +523,45 @@ class Patch:
                 self.save()
 
         elif kind == "plant":
-            # the Seed Bed (R23): one seed per connection per cooldown, into an
-            # empty plot, paid in steady-cps minutes or honey (P1: no uproot)
-            if now - conn.get("last_plant", -1e9) < self.eco.d.get("bed", {}).get("plantCooldown", 60):
-                return None
+            # the Seed Bed (R23): one seed per ADDRESS per cooldown, into an
+            # empty plot, paid in steady-cps minutes or honey (P1: no uproot) —
+            # and no address may hold more than a share of the bed immature,
+            # or one trowel could lock every plot forever (R24 review). The
+            # sender always gets an answer, so a refused seed never locks its
+            # trowel for nothing.
+            bd = self.eco.d.get("bed", {})
+            key = conn.get("addr") or "?"
             raw_i, sp = msg.get("i"), msg.get("sp")
             if (isinstance(raw_i, bool) or not isinstance(raw_i, (int, float)) or not math.isfinite(raw_i)
                     or not isinstance(sp, str) or len(sp) > 24):
-                return None
-            if eco.bed_plant(int(raw_i), sp):
-                conn["last_plant"] = now
-                self.emit({"type": "bedPlant", "i": int(raw_i), "sp": sp, "who": conn.get("name") or ""})
+                return {"type": "plant", "ok": False, "why": "garbage"}
+            i = int(raw_i)
+            if now - self._plant_at.get(key, -1e9) < bd.get("plantCooldown", 60):
+                return {"type": "plant", "ok": False, "i": i, "why": "trowel"}
+            mine = self._plant_plots.setdefault(key, set())
+            mine.intersection_update({j for j in mine if 0 <= j < len(eco.bed["plots"])
+                                      and eco.bed["plots"][j] and not eco.plot_mature(eco.bed["plots"][j])})
+            cap = max(1, math.ceil(len(eco.bed["plots"]) * bd.get("immatureShare", 0.25)))
+            if len(mine) >= cap:
+                return {"type": "plant", "ok": False, "i": i, "why": "share", "cap": cap}
+            if eco.bed_plant(i, sp):
+                self._plant_at[key] = now
+                mine.add(i)
+                self.emit({"type": "bedPlant", "i": i, "sp": sp, "who": conn.get("name") or ""})
                 self.save_soon()
+                return {"type": "plant", "ok": True, "i": i}
+            return {"type": "plant", "ok": False, "i": i, "why": "refused"}
 
         elif kind == "harvest":
             raw_i = msg.get("i")
             if isinstance(raw_i, bool) or not isinstance(raw_i, (int, float)) or not math.isfinite(raw_i):
                 return None
+            key = conn.get("addr") or "?"
+            if now - self._harvest_at.get(key, -1e9) < self.eco.d.get("bed", {}).get("harvestCooldown", 15):
+                return None  # the basket, per address: a loop cannot strip every parent at maturity
             r = eco.bed_harvest(int(raw_i))
             if r:
+                self._harvest_at[key] = now
                 self.emit({"type": "bedHarvest", "i": int(raw_i), "sp": r["sp"], "gain": r["gain"],
                            "honey": r["honey"], "first": r["first"], "who": conn.get("name") or ""})
                 if r["first"]:
