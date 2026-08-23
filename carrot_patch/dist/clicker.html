@@ -1073,7 +1073,7 @@ html, body { margin: 0; padding: 0; }
 </div>
 
 <script>
-globalThis.CC = globalThis.CC || {}; CC.BUILD = '6b8083b'; CC.GARDENERS = ["pdgeorge","Claude Fable 5","T_B0N3"];
+globalThis.CC = globalThis.CC || {}; CC.BUILD = '9eec071'; CC.GARDENERS = ["pdgeorge","Claude Fable 5","T_B0N3"];
 /* ==== data.js ==== */
 /* Carrot Clicker — content: buildings, upgrades, ribbons, news. */
 globalThis.CC = globalThis.CC || {};
@@ -1437,14 +1437,17 @@ CC.ALMANAC = [];
 })();
 
 /* Trials (R22): a spring replayed under ONE rule. The goal is "get back to
-   where we were" — the largest run-total of the last five springs, one decade
-   higher per completion — inside 48 h; then the spring simply carries on.
-   Rewards are automation, caps and unlocks, never multipliers (β-free). */
-CC.TRIAL = { hours: 48, maxDone: 5, runLog: 5, scarecrowEvery: 60, scarecrowPct: 0.01,
+   where we were": the best plain spring on record (an hour or longer, so a
+   spam of instant springs cannot lower it), scaled by the rule's HANDICAP
+   measured on the garden being left (so Short Rows or Hands Only ask for
+   what those rules can actually make), doubling per completion — inside
+   48 h; then the spring simply carries on. Rewards are automation, caps and
+   unlocks, never multipliers (β-free). */
+CC.TRIAL = { hours: 48, maxDone: 5, step: 2, minSpringSec: 3600, refClicks: 5, scarecrowEvery: 60, scarecrowPct: 0.01,
   resproutCapBase: 100, longEarsSec: 3 };
 CC.TRIALS = [
   { id: 'frost', name: 'Late Frost', rule: { haltOnBuy: 180 },
-    line: 'Every purchase stills the whole garden; it thaws over three minutes.',
+    line: 'Every purchase stills the whole garden — plots and hands alike; it thaws over three minutes.',
     reward: { scarecrow: 1 }, rewardText: 'Scarecrow +1 (tends two more rows)' },
   { id: 'rotation', name: 'Crop Rotation', rule: { chain: true },
     line: 'No plot may outnumber the plot before it.',
@@ -1454,9 +1457,9 @@ CC.TRIALS = [
     reward: { resproutCap: 20 }, rewardText: 'heirlooms resprout 20 deeper' },
   { id: 'hands', name: 'Hands Only', rule: { buildingsOff: true },
     line: 'The plots sleep. Hands, guests and rain do all the work.',
-    reward: { cap: 'l1', n: 2 }, rewardText: 'Sprinkler Network cap +2 valves' },
-  { id: 'drought', name: 'Drought', rule: { expAll: 0.75 },
-    line: 'Every blessing shrinks to its three-quarter power.',
+    reward: { cap: 'l1', n: 1 }, rewardText: 'Sprinkler Network cap +1 valve' },
+  { id: 'drought', name: 'Drought', rule: { mulAll: 0.25 },
+    line: 'Every blessing shrinks to a quarter.',
     reward: { longEars: 1 }, rewardText: 'Long Ears +1 (guests linger 3 s longer)' },
   { id: 'fog', name: 'Fog', rule: { hidden: true },
     line: 'The numbers are gone. Tend by feel.',
@@ -1836,6 +1839,8 @@ CC.Core = class {
     this.stalls = 0;
     this.weathers = 0;
     this.almanac = {};            /* Almanac page id -> true; latches forever (R16) */
+    this.mirror = false;          /* world mode: this core only mirrors the server — no automation,
+                                     no transitions, the snapshot is the truth (R22 review) */
     this.mirrorBook = false;      /* world mode: the server's almanac is the book —
                                      a mirroring client must never latch its own */
     this.season = 'homestead';    /* R17: server-owned; the dev garden stays homestead */
@@ -1847,7 +1852,8 @@ CC.Core = class {
     this.trial = null;            /* {id, goal, t} while a Trial spring runs */
     this.trialsDone = {};         /* id -> completions (0..CC.TRIAL.maxDone) */
     this.trialBest = {};          /* id -> fastest completion, seconds */
-    this.runLog = [];             /* last five springs' run totals: the goal's memory */
+    this.runBest = 0;             /* the best plain spring on record — the Trial goal's memory */
+    this.runT = 0;                /* seconds since this spring began */
     this.perks = CC.Core.freshPerks(); /* automation, caps, unlocks — never multipliers */
     this.haltT = 0;               /* Late Frost: seconds of stillness left after a purchase */
     this.scT = 0;                 /* Scarecrow clock */
@@ -1934,7 +1940,7 @@ CC.Core = class {
     this.bought = {};
     for (const u of CC.SHED) if (u.repeat) delete this.shed[u.id];
     this.buffs = this.buffs.filter(b => b.keep);
-    this.trial = null; this.haltT = 0; this.runLog = [];
+    this.trial = null; this.haltT = 0; this.runBest = 0; this.runT = 0;
     this.owned = CC.BUILDINGS.map(() => 0);
     this.springStart();
     this._ribbonCount = this.ribbons().length;
@@ -2085,13 +2091,34 @@ CC.Core = class {
   /* the active rule's value for k, else undefined — every hook asks here */
   rule(k) { const t = this.trialData(); return t ? t.rule[k] : undefined; }
   trialDone(id) { return this.trialsDone[id] || 0; }
-  /* "get back to where we were": the largest of the last five springs
-     (including the one ending now), one decade higher per completion */
-  trialGoal(id) {
-    const runs = this.runLog.concat([this.totalRun]);
-    const best = Math.max(1e6, ...runs);
-    return best * Math.pow(10, this.trialDone(id));
+  /* the spring being left counts toward the goal's memory only if it was
+     plain and at least an hour long (a spam of instant springs lowers nothing) */
+  plainRun() { return !this.trial && this.runT >= CC.TRIAL.minSpringSec ? this.totalRun : 0; }
+  /* how much of a plain spring's income the rule leaves, measured on THIS
+     garden: Drought a quarter, Short Rows the first six rows' share, Hands
+     Only a reference hand's clicks (refClicks/s) — rules that cost time,
+     not income, are 1. Clamped so a goal is never zero. */
+  ruleHandicap(id) {
+    const t = this.trialData(id);
+    if (!t) return 1;
+    const saved = this.trial, savedHalt = this.haltT;
+    this.trial = null; this.haltT = 0;
+    const plain = this.cps();
+    this.trial = { id, goal: 0, t: 0 };
+    const under = t.rule.buildingsOff ? this.clickPower() * CC.TRIAL.refClicks : this.cps();
+    this.trial = saved; this.haltT = savedHalt;
+    if (!(plain > 0)) return t.rule.mulAll || 1; /* a bare garden: a flat rule still counts */
+    return Math.max(0.001, Math.min(1, under / plain));
   }
+  /* "get back to where we were": the best plain spring on record (or the
+     one ending now), scaled by the rule's handicap, doubling per completion */
+  trialGoal(id) {
+    const best = Math.max(1e6, this.runBest, this.plainRun());
+    return best * this.ruleHandicap(id) * Math.pow(CC.TRIAL.step, this.trialDone(id));
+  }
+  /* a row that Short Rows has cut holds nothing this spring — for synergies
+     and bumpers too, not just its own output (R22 review) */
+  rowCount(i) { return this.rowExists(i) ? this.owned[i] : 0; }
   trialAvailable(id) {
     const t = this.trialData(id);
     return !!t && this.trialDone(id) < CC.TRIAL.maxDone;
@@ -2217,7 +2244,7 @@ CC.Core = class {
     let m = 1;
     for (let ti = 0; ti < CC.TIERS.length; ti++) if (this.bought[`b${i}t${ti}`]) m *= 2;
     for (const u of CC.SYNERGY_UPGRADES) {
-      if (u.target === i && this.bought[u.id]) m *= 1 + u.pct * this.owned[u.per];
+      if (u.target === i && this.bought[u.id]) m *= 1 + u.pct * this.rowCount(u.per);
     }
     for (const u of CC.SHED) {
       if (u.building === i && u.bmult) m *= Math.pow(u.bmult, this.shedLevel(u.id));
@@ -2228,7 +2255,7 @@ CC.Core = class {
   /* bumper crops: +1% global per owned-count milestone, per building type */
   bumperCount(i) {
     let n = 0;
-    for (const at of CC.MILESTONES) if (this.owned[i] >= at) n++;
+    for (const at of CC.MILESTONES) if (this.rowCount(i) >= at) n++;
     return n;
   }
   bumperTotal() {
@@ -2260,8 +2287,8 @@ CC.Core = class {
     for (const u of CC.SHED) if (u.mult) m *= Math.pow(u.mult, this.shedLevel(u.id));
     m *= this.almanacMult();
     m *= Math.pow(CC.MILESTONE_MULT, this.bumperTotal());
-    const e = this.rule('expAll');  /* Drought: every blessing at three-quarter power */
-    return e ? Math.pow(m, e) : m;
+    const k = this.rule('mulAll');  /* Drought: every blessing shrinks to a quarter (scale-free) */
+    return k ? m * k : m;
   }
 
   buffMult() {
@@ -2315,7 +2342,8 @@ CC.Core = class {
     /* Click Frenzy (R22 perk): a Rabbit Frenzy also multiplies clicks ×(1+2·lv) */
     const cf = this.perks.clickFrenzy && this.buffs.some(b => b.name === 'Rabbit Frenzy')
       ? 1 + 2 * this.perks.clickFrenzy : 1;
-    return (base + pct * this.baseCps(true)) * this.buffMult() * this.seasonMult() * this.handsBonus * cf * this.bedMult();
+    /* Late Frost stills the harvest share of a click too; the bare hand never stills */
+    return (base + pct * this.baseCps(true) * this.haltMult()) * this.buffMult() * this.seasonMult() * this.handsBonus * cf * this.bedMult();
   }
 
   /* ---------- actions ---------- */
@@ -2393,7 +2421,7 @@ CC.Core = class {
 
   shedMaxed(u) {
     const lv = this.shedLevel(u.id);
-    return u.repeat ? (u.max !== undefined && lv >= u.max) : lv >= 1;
+    return u.repeat ? (u.max !== undefined && lv >= this.shedCap(u)) : lv >= 1; /* cap perks count (R22) */
   }
 
   shedVisible(u) {
@@ -2470,7 +2498,8 @@ CC.Core = class {
        under a rule. Going to seed mid-Trial abandons it — a spring is the
        unit, and the goal was this spring's. */
     const goal = trialId && this.trialAvailable(trialId) && !this.trial ? this.trialGoal(trialId) : 0;
-    this.runLog = this.runLog.concat([this.totalRun]).slice(-CC.TRIAL.runLog);
+    this.runBest = Math.max(this.runBest, this.plainRun()); /* only an honest plain spring raises the bar */
+    this.runT = 0;
     this.trial = goal > 0 ? { id: trialId, goal, t: 0 } : null;
     this.haltT = 0;
     this.seeds += gain;
@@ -2498,7 +2527,7 @@ CC.Core = class {
     this.earn(this.cps() * dt);
     for (const b of this.buffs) b.left -= dt;
     /* the Bee Cooperative (p5) produces honey on the clock (R21) */
-    if (CC.HONEY && this.shedLevel('p5') >= 1) {
+    if (!this.mirror && CC.HONEY && this.shedLevel('p5') >= 1) {
       const per = 86400 / CC.HONEY.beePerDay;
       this.beeT += dt;
       while (this.beeT >= per) { this.beeT -= per; this.honey++; }
@@ -2507,11 +2536,13 @@ CC.Core = class {
     this.buffs = this.buffs.filter(b => b.left > 0);
     for (const b of expired) events.push({ type: 'buffEnd', name: b.name });
     /* Trials (R22): the thaw, the clock, the goal */
+    this.runT += dt;
     if (this.haltT > 0) this.haltT = Math.max(0, this.haltT - dt);
     if (this.trial) {
       const tr = this.trial;
       tr.t += dt;
-      if (this.totalRun >= tr.goal) {
+      if (this.mirror) { /* the server decides wins and losses; this core only keeps the clock */
+      } else if (this.totalRun >= tr.goal) {
         const t = this.trialData();
         const n = this.trialDone(tr.id) + 1;
         this.trialsDone[tr.id] = n;
@@ -2529,8 +2560,8 @@ CC.Core = class {
     /* the Seed Bed (R23): ticks on its own clock; a pending sacrifice counts down */
     if (CC.BED && this.bed) {
       this.bedT += dt;
-      while (this.bedT >= CC.BED.tick) { this.bedT -= CC.BED.tick; events.push(...this.bedTick()); }
-      if (this.bed.sacrificeLeft > 0) {
+      while (this.bedT >= CC.BED.tick) { this.bedT -= CC.BED.tick; if (!this.mirror) events.push(...this.bedTick()); }
+      if (!this.mirror && this.bed.sacrificeLeft > 0) {
         this.bed.sacrificeLeft -= dt;
         if (this.bed.sacrificeLeft <= 0) {
           this.bed.sacrificeLeft = 0;
@@ -2547,7 +2578,7 @@ CC.Core = class {
        affordable building among the rows it tends, if that costs no more
        than 1% of the bank — a patient hand, never a multiplier. It rests
        during Late Frost (its purchase would still the garden). */
-    if (this.perks.scarecrow > 0 && !this.rule('haltOnBuy')) {
+    if (!this.mirror && this.perks.scarecrow > 0 && !this.rule('haltOnBuy')) {
       this.scT += dt;
       if (this.scT >= this.scarecrowEvery()) {
         this.scT = 0;
@@ -2601,7 +2632,7 @@ CC.Core = class {
       tins: this.tins, stalls: this.stalls, weathers: this.weathers,
       honey: this.honey, beeT: this.beeT,
       trial: this.trial ? { ...this.trial } : null, trialsDone: this.trialsDone, trialBest: this.trialBest,
-      runLog: this.runLog, perks: this.perks, haltT: this.haltT,
+      runBest: this.runBest, runT: this.runT, perks: this.perks, haltT: this.haltT,
       bed: { soil: this.bed.soil, plots: this.bed.plots.map(p => p && { ...p }), log: { ...this.bed.log },
         seed: this.bed.seed, n: this.bed.n, soilAt: this.bed.soilAt, sacrificeLeft: this.bed.sacrificeLeft },
       bedT: this.bedT, sacrifices: this.sacrifices,
@@ -2630,6 +2661,15 @@ CC.Core = class {
     /* a save is data, not authority (review F1): unknown shed ids are
        dropped, levels forced to sane ints — a forged 1e9 "level" would
        overflow every cost/effect pow */
+    /* Trial perks first: a cap perk raises a ladder's cap, and the shed clamp below must see it (R22 review) */
+    const pk = s.perks || {};
+    const cnt = (v, hi) => Math.min(hi, Math.max(0, Math.floor(v) || 0));
+    this.perks = {
+      scarecrow: cnt(pk.scarecrow, 5), startTier: cnt(pk.startTier, CC.TIERS.length),
+      resproutCap: cnt(pk.resproutCap, 100), longEars: cnt(pk.longEars, 5), clickFrenzy: cnt(pk.clickFrenzy, 5),
+      cap: {},
+    };
+    for (const u of CC.SHED) { const v = cnt((pk.cap || {})[u.id], 10); if (v > 0 && u.max !== undefined) this.perks.cap[u.id] = v; }
     this.shed = {};
     for (const u of CC.SHED) {
       const v = (s.shed || {})[u.id];
@@ -2658,15 +2698,10 @@ CC.Core = class {
     const tr = s.trial;
     this.trial = tr && this.trialData(tr.id) && tr.goal > 0 && isFinite(tr.goal)
       ? { id: tr.id, goal: +tr.goal, t: Math.max(0, Math.min(+tr.t || 0, T.hours * 3600)) } : null;
-    this.runLog = (Array.isArray(s.runLog) ? s.runLog : []).map(x => +x).filter(x => x >= 0 && isFinite(x)).slice(-T.runLog);
-    const pk = s.perks || {};
-    const cnt = (v, hi) => Math.min(hi, Math.max(0, Math.floor(v) || 0));
-    this.perks = {
-      scarecrow: cnt(pk.scarecrow, 5), startTier: cnt(pk.startTier, CC.TIERS.length),
-      resproutCap: cnt(pk.resproutCap, 100), longEars: cnt(pk.longEars, 5), clickFrenzy: cnt(pk.clickFrenzy, 5),
-      cap: {},
-    };
-    for (const u of CC.SHED) { const v = cnt((pk.cap || {})[u.id], 10); if (v > 0 && u.max !== undefined) this.perks.cap[u.id] = v; }
+    /* pre-fix saves carried a five-entry runLog: its best seeds the high-water mark */
+    const oldLog = (Array.isArray(s.runLog) ? s.runLog : []).map(x => +x).filter(x => x >= 0 && isFinite(x));
+    this.runBest = Math.max(0, +s.runBest > 0 && isFinite(+s.runBest) ? +s.runBest : 0, ...oldLog);
+    this.runT = Math.max(0, Math.min(+s.runT || 0, 1e9));
     this.haltT = Math.max(0, Math.min(+s.haltT || 0, 3600));
     /* the Seed Bed (R23): species must exist, ages are ints, the seed is a
        uint32, the log holds counts — a forged plot never grows a null */
@@ -2705,6 +2740,7 @@ CC.Core = class {
       const gone = Math.max(0, (Date.now() - s.last) / 1000);
       for (const b of this.buffs) b.left -= gone;
       this.buffs = this.buffs.filter(b => b.left > 0);
+      if (this.trial) this.trial.t += gone; /* a Trial's 48 h is wall time (mirrors economy.py) */
       /* the bed kept growing too (R23), within the offline cap */
       if (CC.BED) {
         this.bedT += Math.min(gone, 8 * 3600);
@@ -2905,7 +2941,8 @@ CC.Patch = class {
       c.trial = s.trial ? { ...s.trial } : null;
       c.trialsDone = s.trialsDone || {};
       c.trialBest = s.trialBest || {};
-      c.runLog = s.runLog || [];
+      c.runBest = s.runBest || 0;
+      c.runT = s.runT || 0;
       c.perks = s.perks ? { cap: {}, ...s.perks } : CC.Core.freshPerks();
       c.haltT = s.haltT || 0;
       /* Lie Fallow (R24): loam, the Cellar, the bell */
@@ -3048,6 +3085,7 @@ CC.UI = class {
     /* served page = the world game, always; file:// = private dev garden (P6) */
     this.worldMode = location.protocol.startsWith('http');
     this.core.mirrorBook = this.worldMode; /* the server's almanac is the book (R16) */
+    this.core.mirror = this.worldMode;     /* no local automation or transitions: the snapshot is the truth (R22) */
 
     this.buildStatic();
     this.dayNight = this.pref('carrot-daynight') || 'auto'; /* ☀/🌙 is a display preference */
@@ -3109,9 +3147,10 @@ CC.UI = class {
       pal.appendChild(b);
     });
     this.$('quilt').addEventListener('pointerdown', e => {
-      const r = e.currentTarget.getBoundingClientRect();
-      const x = Math.floor((e.clientX - r.left) / r.width * this.quilt.w);
-      const y = Math.floor((e.clientY - r.top) / r.height * this.quilt.h);
+      /* map against the CONTENT box: the patchwork border is 6 px of frame, not cloth */
+      const el = e.currentTarget, r = el.getBoundingClientRect();
+      const x = Math.floor((e.clientX - r.left - el.clientLeft) / el.clientWidth * this.quilt.w);
+      const y = Math.floor((e.clientY - r.top - el.clientTop) / el.clientHeight * this.quilt.h);
       if (x >= 0 && y >= 0 && x < this.quilt.w && y < this.quilt.h) this.paintCell(y * this.quilt.w + x, this.quiltColor);
     });
     this.$('quilt-copy').addEventListener('click', () => this.copyQuilt());
@@ -3121,16 +3160,16 @@ CC.UI = class {
     this.bedCtx = this.$('bed').getContext('2d');
     this.bedMenuPlot = -1;
     this.$('bed').addEventListener('pointerdown', e => {
-      const r = e.currentTarget.getBoundingClientRect();
-      const W = CC.BED.w, H = CC.BED.h;
-      const x = Math.floor((e.clientX - r.left) / r.width * W), y = Math.floor((e.clientY - r.top) / r.height * H);
+      const el = e.currentTarget, r = el.getBoundingClientRect();
+      const W = this.core.bedW(), H = this.core.bedH();
+      const x = Math.floor((e.clientX - r.left - el.clientLeft) / el.clientWidth * W), y = Math.floor((e.clientY - r.top - el.clientTop) / el.clientHeight * H);
       if (x < 0 || y < 0 || x >= W || y >= H) return;
       this.bedClick(y * W + x);
     });
     this.$('bed').addEventListener('mousemove', e => {
-      const r = e.currentTarget.getBoundingClientRect();
-      const W = CC.BED.w, H = CC.BED.h;
-      const x = Math.floor((e.clientX - r.left) / r.width * W), y = Math.floor((e.clientY - r.top) / r.height * H);
+      const el = e.currentTarget, r = el.getBoundingClientRect();
+      const W = this.core.bedW(), H = this.core.bedH();
+      const x = Math.floor((e.clientX - r.left - el.clientLeft) / el.clientWidth * W), y = Math.floor((e.clientY - r.top - el.clientTop) / el.clientHeight * H);
       this.bedHover = (x >= 0 && y >= 0 && x < W && y < H) ? y * W + x : -1;
       this.bedTip();
     });
@@ -3317,6 +3356,12 @@ CC.UI = class {
       add(n('shed') + n('upgrade'), 'thing bought', 'things bought');
       for (const e of evs.filter(e => e.type === 'order_resolved'))
         parts.push(e.won ? `${e.name} met (tier ${e.tier})` : `${e.name} missed`);
+      for (const e of evs.filter(e => e.type === 'trial')) {
+        const t = (CC.TRIALS || []).find(x => x.id === e.id);
+        parts.push(`${t ? t.name : 'a Trial'} ${e.won ? 'won' : e.abandoned ? 'abandoned' : 'lost'}`);
+      }
+      add(n('bedFound'), 'new plant found', 'new plants found');
+      if (n('fallow')) parts.push('THE WORLD LAY FALLOW');
       if (n('market_open')) parts.push('a Market Hour');
       if (parts.length) this.toast(`🌍 While you were away (${CC.fmtDur(gap)}): ${parts.join(', ')}.`);
     }).catch(() => { /* decorative */ });
@@ -3345,6 +3390,17 @@ CC.UI = class {
     if (e.type === 'almanac') { const pg = CC.ALMANAC.find(p => p.id === e.id); return `📖 ${pg ? pg.name : 'a page'} was written`; }
     if (e.type === 'quiet') return `🌙 the garden stirred after ${e.hours}h of quiet`;
     if (e.type === 'market_open') return '🏪 Market Hour';
+    if (e.type === 'trial') {
+      const t = (CC.TRIALS || []).find(x => x.id === e.id), nm = t ? t.name : 'a Trial';
+      return e.won ? `🧪 ${nm} — won in ${CC.fmtDur(e.dur || 0)} (${e.n}/${CC.TRIAL.maxDone})` : e.abandoned ? `🧪 ${nm} — abandoned at a spring` : `🧪 ${nm} — the clock ran out`;
+    }
+    if (e.type === 'bedFound') { const p = this.core.plantData(e.sp); return `📗 ${p ? p.name : 'a plant'} entered the seed log`; }
+    if (e.type === 'sacrifice') return `🍯 the seed log was given up for ${e.honey} honey`;
+    if (e.type === 'bell') return `🔔 the bell rang (${e.ring})${e.rehearsal ? ', rehearsing' : ''}`;
+    if (e.type === 'silence') return `🔕 ${e.who || 'someone'} silenced the bell`;
+    if (e.type === 'rehearsed') return '🔔 the rehearsal rang out';
+    if (e.type === 'fallow') return `🔔 THE WORLD LAY FALLOW — +${e.loam} loam (Fallow Year ${e.fallows})`;
+    if (e.type === 'cellar') { const cd = this.core.cellarData(e.id); return `🪨 ${cd ? cd.name : 'a Cellar perk'} → level ${e.lv}`; }
     return null;
   }
 
@@ -3394,7 +3450,8 @@ CC.UI = class {
     const dir = location.pathname.replace(/[^/]*$/, '');
     fetch(dir + 'api/quilt').then(r => r.json()).then(j => {
       this._quiltFetching = false;
-      if (!j || !j.cells || j.v <= this.quilt.v) return;
+      if (!j || !j.cells) return;
+      if (j.v < this.quilt.v) { this.fetchQuilt(); return; } /* a stitch landed mid-flight: ask again */
       const raw = j.cells;
       for (let i = 0; i < this.quilt.cells.length && 2 * i + 1 < raw.length; i++) {
         this.quilt.cells[i] = parseInt(raw.substr(2 * i, 2), 16) || 0;
@@ -3446,7 +3503,7 @@ CC.UI = class {
   }
 
   /* ---------------- the Seed Bed (R23) ---------------- */
-  plotName(i) { return `${'ABCDEF'[i % CC.BED.w]}${Math.floor(i / CC.BED.w) + 1}`; }
+  plotName(i) { const W = this.core.bedW(); return `${'ABCDEF'[i % W]}${Math.floor(i / W) + 1}`; }
   plantEffectText(p) {
     const bits = [];
     if (p.mult) bits.push(p.mult >= 1 ? `×${p.mult} production` : `×${p.mult} (a weed)`);
@@ -3500,9 +3557,9 @@ CC.UI = class {
     const cl = document.createElement('div'); cl.className = 'bm-close'; cl.textContent = 'close ✕';
     cl.addEventListener('click', () => this.closeBedMenu());
     m.appendChild(cl);
-    const W = CC.BED.w, x = i % W, y = Math.floor(i / W);
+    const W = this.core.bedW(), H = this.core.bedH(), x = i % W, y = Math.floor(i / W);
     m.style.left = `${Math.min(60, x * (100 / W))}%`;
-    m.style.top = `${Math.min(55, (y + 1) * (100 / CC.BED.h))}%`;
+    m.style.top = `${Math.min(55, (y + 1) * (100 / H))}%`;
     m.classList.remove('hidden');
   }
   closeBedMenu() { this.$('bed-menu').classList.add('hidden'); this.bedMenuPlot = -1; }
@@ -3571,7 +3628,7 @@ CC.UI = class {
   }
   /* a plant as five strokes: stem, leaves, a head coloured by what it does */
   drawBed() {
-    const x = this.bedCtx, c = this.core, W = CC.BED.w, H = CC.BED.h, cw = 256 / W, ch = 256 / H;
+    const x = this.bedCtx, c = this.core, W = c.bedW(), H = c.bedH(), cw = 256 / W, ch = 256 / H;
     const soil = c.soilData();
     const ground = { dirt: ['#5a3c22', '#4a3019'], clay: ['#7a5540', '#5e4030'], chips: ['#8a6a3a', '#6b5028'] }[soil.id] || ['#5a3c22', '#4a3019'];
     for (let i = 0; i < W * H; i++) {
@@ -4083,10 +4140,16 @@ CC.UI = class {
         const a = this.fmtX(c.seedMult()), b = this.fmtX(1 + 0.08 * (c.seeds + n));
         return a === b ? `${a}, stacking +8% deeper` : `${a} → <b>${b}</b>`;
       })()}.` +
-      (patch ? `<br><br><i>Your name will not be recorded. Your deed will be felt.</i>` : '');
+      (patch ? `<br><br><i>Your name will not be recorded. Your deed will be felt.</i>` : '') +
+      (c.trial ? (() => { /* a Trial is running: going to seed abandons it for everyone */
+        const t = c.trialData();
+        return `<br><br><b style="color:var(--ink-carrot)">⚠ A Trial is running: ${t ? t.name : c.trial.id}</b> — ` +
+          `${CC.fmt(c.totalRun)} / ${CC.fmt(c.trial.goal)}, ${CC.fmtDur(Math.max(0, CC.TRIAL.hours * 3600 - c.trial.t))} left. ` +
+          `Going to seed now <b>abandons it for everyone</b>: no completion, no perk.`;
+      })() : '');
     this.buildTrialPick();
     const yes = this.$('modal-yes');
-    yes.textContent = `Go to seed (+${CC.fmt(n)})`;
+    yes.textContent = c.trial ? `Abandon the Trial and go to seed (+${CC.fmt(n)})` : `Go to seed (+${CC.fmt(n)})`;
     yes.onclick = () => {
       this.$('modal').classList.add('hidden');
       const trial = this._trialChoice || null;
@@ -4269,6 +4332,9 @@ CC.UI = class {
       if (ev.won) {
         CC.audio.fanfare();
         this.toast(`🧪 ${t.name} — WON in ${CC.fmtDur(ev.t || 0)}! The world is back where it was. ${t.rewardText} (${ev.n}/${CC.TRIAL.maxDone}).`);
+      } else if (ev.abandoned) {
+        CC.audio.rabbit();
+        this.toast(`🧪 ${t.name} — abandoned${ev.who ? ` by ${ev.who}` : ''} at a spring. No completion, no perk.`);
       } else {
         CC.audio.rabbit();
         this.toast(`🧪 ${t.name} — the clock ran out. The spring carries on, rule lifted.`);
@@ -4794,7 +4860,7 @@ CC.UI = class {
           if (p.scarecrow) bits.push(`Scarecrow ${p.scarecrow}`);
           if (p.startTier) bits.push(`tier-${p.startTier} start`);
           if (p.resproutCap) bits.push(`resprout +${p.resproutCap}`);
-          for (const k in p.cap) bits.push(`${k} cap +${p.cap[k]}`);
+          for (const k in p.cap) { const u = CC.SHED.find(x => x.id === k); bits.push(`${u ? u.name : k} cap +${p.cap[k]}`); }
           if (p.longEars) bits.push(`Long Ears ${p.longEars}`);
           if (p.clickFrenzy) bits.push(`Click Frenzy ${p.clickFrenzy}`);
           return `<div>Trials won 🧪 <b>${done}</b></div>` +

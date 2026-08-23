@@ -92,6 +92,8 @@ class Patch:
         self.orders = OrderBook(self.eco.d, parish_file(), self.chronicle, self.quilt)
         self._names_7d = 0                              # Many Hands: distinct names, 7 days
         self._names_at = 0.0
+        self._paint_at: dict[str, float] = {}           # quilt cooldown per ADDRESS — sockets are free (R22 review)
+        self._quilt_sent_v = 0                          # the quilt version whose diffs every client has seen
         self.clients: set[WebSocket] = set()
         self.click_window = 0          # clicks landed in the current snapshot window
         self.click_rate = 0            # last window's global clicks/sec, for display
@@ -189,7 +191,7 @@ class Patch:
             "bell": self.orders.bell,                       # Lie Fallow's bell (R24)
             "market": {"active": mh["active"], "next": mh["next"], "end": mh["end"]},
             "now": wall,  # server wall clock so deadlines render without trusting the tab
-            "quiltV": self.quilt.version,  # R22: a client behind this version refetches /api/quilt
+            "quiltV": self._quilt_sent_v,  # R22: the version whose diffs have been broadcast; a client behind it refetches
         }
 
     # ---------- persistence ----------
@@ -386,6 +388,7 @@ class Patch:
             for ev in self._pending:
                 await self.broadcast(ev)
             self._pending = []
+            self._quilt_sent_v = self.quilt.version  # every stitch up to here has now been broadcast
 
             if now - last_save > SAVE_INTERVAL:
                 last_save = now
@@ -481,7 +484,12 @@ class Patch:
             # whole planet's next spring; junk ids fall back to a plain spring
             tid = msg.get("trial")
             tid = tid if isinstance(tid, str) and eco.trial_available(tid) and not eco.trial else None
+            was = dict(eco.trial) if eco.trial else None
             gained = eco.prestige(tid)
+            if gained and was:  # going to seed mid-Trial abandons it — for everyone, on the record
+                self.emit({"type": "trial", "id": was["id"], "won": False, "abandoned": True,
+                           "n": eco.trial_done(was["id"]), "t": was["t"], "who": conn.get("name") or ""})
+                self.chronicle.log({"type": "trial", "id": was["id"], "won": False, "abandoned": True, "t": was["t"]})
             if gained:
                 # boost = the world's actual seed-bonus change; the old
                 # "+8N% forever" copy overstated it by orders of magnitude
@@ -559,7 +567,8 @@ class Patch:
         elif kind == "paint":
             # the Quilt (R22): one stitch per connection per cooldown, for a
             # second of the world's harvest — bots painting are welcome (P4)
-            if now - conn.get("last_paint", -1e9) < self.quilt.cooldown:
+            key = conn.get("addr") or "?"
+            if now - self._paint_at.get(key, -1e9) < self.quilt.cooldown:
                 return None
             raw_i, raw_c = msg.get("i"), msg.get("c")
             if not all(isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
@@ -567,7 +576,9 @@ class Patch:
                 return None  # garbage is not a stitch (and never a crash)
             i, c = int(raw_i), int(raw_c)
             if self.quilt.paint(i, c):
-                conn["last_paint"] = now
+                self._paint_at[key] = now
+                if len(self._paint_at) > 5000:  # a flood of addresses: forget the cold ones
+                    self._paint_at = {k: v for k, v in self._paint_at.items() if now - v < self.quilt.cooldown}
                 eco.bank = max(0.0, eco.bank - eco.cps() * self.quilt.cost_seconds)
                 self._pending.append({"type": "event", "ev": {"type": "paint", "i": i, "c": c,
                                                               "v": self.quilt.version}})
@@ -642,7 +653,9 @@ def create_app() -> FastAPI:
         ensure_loop()
         await ws.accept()
         patch.clients.add(ws)
-        conn = {"last_click_msg": 0.0, "msg_times": []}
+        fwd = (ws.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+        conn = {"last_click_msg": 0.0, "msg_times": [],
+                "addr": fwd or (ws.client.host if ws.client else "")}
         try:
             # the greeting must carry the live visitor too, or a reconnect
             # mid-visit makes the client walk it off and respawn it (review)

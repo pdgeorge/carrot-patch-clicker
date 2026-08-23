@@ -102,7 +102,8 @@ class Economy:
         self.trial: dict | None = None   # {id, goal, t} while a Trial spring runs
         self.trials_done: dict[str, int] = {}
         self.trial_best: dict[str, float] = {}
-        self.run_log: list[float] = []   # last five springs' run totals
+        self.run_best: float = 0.0       # the best plain spring on record — the Trial goal's memory
+        self.run_t: float = 0.0          # seconds since this spring began
         self.perks: dict = fresh_perks()
         self.halt_t: float = 0.0         # Late Frost: seconds of stillness left
         self.sc_t: float = 0.0           # Scarecrow clock
@@ -294,7 +295,8 @@ class Economy:
         self.buffs = [b for b in self.buffs if b.get("keep")]
         self.trial = None
         self.halt_t = 0.0
-        self.run_log = []
+        self.run_best = 0.0
+        self.run_t = 0.0
         self.owned = [0] * len(self.owned)
         self.spring_start()
         self._ribbon_seen = len(self.ribbons())
@@ -500,11 +502,34 @@ class Economy:
     def trial_done(self, tid: str) -> int:
         return self.trials_done.get(tid, 0)
 
+    def plain_run(self) -> float:
+        return self.total_run if not self.trial and self.run_t >= self.d.get("trial", {}).get("minSpringSec", 3600) else 0.0
+
+    def rule_handicap(self, tid: str) -> float:
+        """How much of a plain spring's income the rule leaves, measured on
+        THIS garden. Mirror of core.js ruleHandicap."""
+        t = self.trial_data(tid)
+        if not t:
+            return 1.0
+        saved, saved_halt = self.trial, self.halt_t
+        self.trial, self.halt_t = None, 0.0
+        plain = self.cps()
+        self.trial = {"id": tid, "goal": 0.0, "t": 0.0}
+        under = (self.click_power() * self.d.get("trial", {}).get("refClicks", 5)
+                 if t["rule"].get("buildingsOff") else self.cps())
+        self.trial, self.halt_t = saved, saved_halt
+        if not plain > 0:
+            return t["rule"].get("mulAll") or 1.0  # a bare garden: a flat rule still counts
+        return max(0.001, min(1.0, under / plain))
+
     def trial_goal(self, tid: str) -> float:
-        """The largest of the last five springs (including the one ending
-        now), one decade higher per completion."""
-        best = max([1e6] + self.run_log + [self.total_run])
-        return best * 10 ** self.trial_done(tid)
+        """The best plain spring on record (or the one ending now), scaled by
+        the rule's handicap, doubling per completion."""
+        best = max(1e6, self.run_best, self.plain_run())
+        return best * self.rule_handicap(tid) * self.d.get("trial", {}).get("step", 2) ** self.trial_done(tid)
+
+    def row_count(self, i: int) -> int:
+        return self.owned[i] if self.row_exists(i) else 0
 
     def trial_available(self, tid: str) -> bool:
         t = self.trial_data(tid)
@@ -578,14 +603,14 @@ class Economy:
                 m *= 2
         for u in self.d["synergyUpgrades"]:
             if u["target"] == i and self.bought.get(u["id"]):
-                m *= 1 + u["pct"] * self.owned[u["per"]]
+                m *= 1 + u["pct"] * self.row_count(u["per"])
         for u in self.d["shed"]:
             if u.get("building") == i and u.get("bmult"):
                 m *= u["bmult"] ** self.shed_level(u["id"])
         return m
 
     def bumper_count(self, i: int) -> int:
-        return sum(1 for at in self.d["milestones"] if self.owned[i] >= at)
+        return sum(1 for at in self.d["milestones"] if self.row_count(i) >= at)
 
     def bumper_total(self) -> int:
         return sum(self.bumper_count(i) for i in range(len(self.owned)))
@@ -612,8 +637,8 @@ class Economy:
                 m *= u["mult"] ** self.shed_level(u["id"])
         m *= self.almanac_mult()
         m *= self.d["milestoneMult"] ** self.bumper_total()
-        e = self.rule("expAll")  # Drought: every blessing at three-quarter power
-        return m ** e if e else m
+        k = self.rule("mulAll")  # Drought: every blessing shrinks to a quarter (scale-free)
+        return m * k if k else m
 
     def almanac_count(self) -> int:
         return len(self.almanac)
@@ -677,7 +702,8 @@ class Economy:
         # Click Frenzy (R22 perk): a Rabbit Frenzy also multiplies clicks ×(1+2·lv)
         cf = (1 + 2 * self.perks["clickFrenzy"]
               if self.perks["clickFrenzy"] and any(b["name"] == "Rabbit Frenzy" for b in self.buffs) else 1)
-        return ((base + pct * self.base_cps(True)) * self.buff_mult() * self.season_mult()
+        # Late Frost stills the harvest share of a click too; the bare hand never stills
+        return ((base + pct * self.base_cps(True) * self.halt_mult()) * self.buff_mult() * self.season_mult()
                 * self.hands_bonus * cf * self.bed_mult())
 
     # ---------- actions ----------
@@ -755,7 +781,7 @@ class Economy:
     def shed_maxed(self, u: dict) -> bool:
         lv = self.shed_level(u["id"])
         if u.get("repeat"):
-            return "max" in u and lv >= u["max"]
+            return "max" in u and lv >= self.shed_cap(u)  # cap perks count (R22)
         return lv >= 1
 
     def shed_visible(self, u: dict) -> bool:
@@ -834,7 +860,8 @@ class Economy:
         # under a rule. Going to seed mid-Trial abandons it.
         goal = (self.trial_goal(trial_id)
                 if trial_id and self.trial_available(trial_id) and not self.trial else 0)
-        self.run_log = (self.run_log + [self.total_run])[-self.d.get("trial", {}).get("runLog", 5):]
+        self.run_best = max(self.run_best, self.plain_run())  # only an honest plain spring raises the bar
+        self.run_t = 0.0
         self.trial = {"id": trial_id, "goal": goal, "t": 0.0} if goal > 0 else None
         self.halt_t = 0.0
         self.seeds += gain
@@ -872,6 +899,7 @@ class Economy:
         for b in expired:
             events.append({"type": "buffEnd", "name": b["name"]})
         # Trials (R22): the thaw, the clock, the goal
+        self.run_t += dt
         if self.halt_t > 0:
             self.halt_t = max(0.0, self.halt_t - dt)
         if self.trial:
@@ -967,7 +995,7 @@ class Economy:
             "tins": self.tins, "stalls": self.stalls, "weathers": self.weathers,
             "honey": self.honey, "beeT": self.bee_t,
             "trial": dict(self.trial) if self.trial else None, "trialsDone": self.trials_done,
-            "trialBest": self.trial_best, "runLog": self.run_log, "perks": self.perks,
+            "trialBest": self.trial_best, "runBest": self.run_best, "runT": self.run_t, "perks": self.perks,
             "haltT": self.halt_t,
             "bed": {"soil": self.bed["soil"], "plots": [dict(p) if p else None for p in self.bed["plots"]],
                     "log": dict(self.bed["log"]), "seed": self.bed["seed"], "n": self.bed["n"],
@@ -995,6 +1023,21 @@ class Economy:
         # a save is data, not authority (review F1): unknown shed ids are
         # dropped, levels forced to sane ints — a forged 1e9 "level" raises
         # OverflowError in every cost/effect pow and would kill the server
+        # Trial perks first: a cap perk raises a ladder's cap, and the shed clamp below must see it (R22 review)
+        pk = s.get("perks") if isinstance(s.get("perks"), dict) else {}
+
+        def cnt(v, hi):
+            return min(hi, _cnt(v))
+        self.perks = {
+            "scarecrow": cnt(pk.get("scarecrow"), 5), "startTier": cnt(pk.get("startTier"), len(self.d["tiers"])),
+            "resproutCap": cnt(pk.get("resproutCap"), 100), "longEars": cnt(pk.get("longEars"), 5),
+            "clickFrenzy": cnt(pk.get("clickFrenzy"), 5), "cap": {},
+        }
+        raw_cap = pk.get("cap") if isinstance(pk.get("cap"), dict) else {}
+        for u in self.d["shed"]:
+            v = cnt(raw_cap.get(u["id"]), 10)
+            if v > 0 and "max" in u:
+                self.perks["cap"][u["id"]] = v
         self.shed = {}
         raw_shed = s.get("shed") or {}
         for u in self.d["shed"]:
@@ -1041,25 +1084,16 @@ class Economy:
                   and math.isfinite(raw_t) and raw_t > 0 else 0.0)
             self.trial = {"id": tr["id"], "goal": float(tr["goal"]),
                           "t": min(tt, td.get("hours", 48) * 3600.0)}
+        # pre-fix saves carried a five-entry runLog: its best seeds the high-water mark
         raw_log = s.get("runLog")
-        self.run_log = ([float(x) for x in raw_log
-                         if isinstance(x, (int, float)) and not isinstance(x, bool)
-                         and math.isfinite(x) and x >= 0][-td.get("runLog", 5):]
-                        if isinstance(raw_log, list) else [])
-        pk = s.get("perks") if isinstance(s.get("perks"), dict) else {}
-
-        def cnt(v, hi):
-            return min(hi, _cnt(v))
-        self.perks = {
-            "scarecrow": cnt(pk.get("scarecrow"), 5), "startTier": cnt(pk.get("startTier"), len(self.d["tiers"])),
-            "resproutCap": cnt(pk.get("resproutCap"), 100), "longEars": cnt(pk.get("longEars"), 5),
-            "clickFrenzy": cnt(pk.get("clickFrenzy"), 5), "cap": {},
-        }
-        raw_cap = pk.get("cap") if isinstance(pk.get("cap"), dict) else {}
-        for u in self.d["shed"]:
-            v = cnt(raw_cap.get(u["id"]), 10)
-            if v > 0 and "max" in u:
-                self.perks["cap"][u["id"]] = v
+        old_log = ([float(x) for x in raw_log if isinstance(x, (int, float)) and not isinstance(x, bool)
+                    and math.isfinite(x) and x >= 0] if isinstance(raw_log, list) else [])
+        raw_rb = s.get("runBest", 0)
+        rb_ok = isinstance(raw_rb, (int, float)) and not isinstance(raw_rb, bool) and math.isfinite(raw_rb) and raw_rb > 0
+        self.run_best = max([0.0, float(raw_rb) if rb_ok else 0.0] + old_log)
+        raw_rt = s.get("runT", 0)
+        self.run_t = (min(float(raw_rt), 1e9) if isinstance(raw_rt, (int, float)) and not isinstance(raw_rt, bool)
+                      and math.isfinite(raw_rt) and raw_rt > 0 else 0.0)
         raw_h = s.get("haltT", 0)
         self.halt_t = (min(float(raw_h), 3600.0) if isinstance(raw_h, (int, float))
                        and not isinstance(raw_h, bool) and math.isfinite(raw_h) and raw_h > 0 else 0.0)
@@ -1153,7 +1187,7 @@ class Economy:
             "tins": self.tins, "stalls": self.stalls, "weathers": self.weathers,
             "honey": self.honey, "handsBonus": self.hands_bonus, "marketHour": self.market_hour,
             "trial": self.trial, "trialsDone": self.trials_done, "trialBest": self.trial_best,
-            "runLog": self.run_log, "perks": self.perks, "haltT": self.halt_t,
+            "runBest": self.run_best, "runT": self.run_t, "perks": self.perks, "haltT": self.halt_t,
             "bed": self.bed, "bedT": self.bed_t, "sacrifices": self.sacrifices,
             "loam": self.loam, "cellar": self.cellar, "fallows": self.fallows, "rehearsed": self.rehearsed,
             "almanac": self.almanac,

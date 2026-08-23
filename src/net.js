@@ -178,7 +178,8 @@ CC.Patch = class {
       c.trial = s.trial ? { ...s.trial } : null;
       c.trialsDone = s.trialsDone || {};
       c.trialBest = s.trialBest || {};
-      c.runLog = s.runLog || [];
+      c.runBest = s.runBest || 0;
+      c.runT = s.runT || 0;
       c.perks = s.perks ? { cap: {}, ...s.perks } : CC.Core.freshPerks();
       c.haltT = s.haltT || 0;
       /* Lie Fallow (R24): loam, the Cellar, the bell */

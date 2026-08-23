@@ -360,14 +360,17 @@ CC.ALMANAC = [];
 })();
 
 /* Trials (R22): a spring replayed under ONE rule. The goal is "get back to
-   where we were" — the largest run-total of the last five springs, one decade
-   higher per completion — inside 48 h; then the spring simply carries on.
-   Rewards are automation, caps and unlocks, never multipliers (β-free). */
-CC.TRIAL = { hours: 48, maxDone: 5, runLog: 5, scarecrowEvery: 60, scarecrowPct: 0.01,
+   where we were": the best plain spring on record (an hour or longer, so a
+   spam of instant springs cannot lower it), scaled by the rule's HANDICAP
+   measured on the garden being left (so Short Rows or Hands Only ask for
+   what those rules can actually make), doubling per completion — inside
+   48 h; then the spring simply carries on. Rewards are automation, caps and
+   unlocks, never multipliers (β-free). */
+CC.TRIAL = { hours: 48, maxDone: 5, step: 2, minSpringSec: 3600, refClicks: 5, scarecrowEvery: 60, scarecrowPct: 0.01,
   resproutCapBase: 100, longEarsSec: 3 };
 CC.TRIALS = [
   { id: 'frost', name: 'Late Frost', rule: { haltOnBuy: 180 },
-    line: 'Every purchase stills the whole garden; it thaws over three minutes.',
+    line: 'Every purchase stills the whole garden — plots and hands alike; it thaws over three minutes.',
     reward: { scarecrow: 1 }, rewardText: 'Scarecrow +1 (tends two more rows)' },
   { id: 'rotation', name: 'Crop Rotation', rule: { chain: true },
     line: 'No plot may outnumber the plot before it.',
@@ -377,9 +380,9 @@ CC.TRIALS = [
     reward: { resproutCap: 20 }, rewardText: 'heirlooms resprout 20 deeper' },
   { id: 'hands', name: 'Hands Only', rule: { buildingsOff: true },
     line: 'The plots sleep. Hands, guests and rain do all the work.',
-    reward: { cap: 'l1', n: 2 }, rewardText: 'Sprinkler Network cap +2 valves' },
-  { id: 'drought', name: 'Drought', rule: { expAll: 0.75 },
-    line: 'Every blessing shrinks to its three-quarter power.',
+    reward: { cap: 'l1', n: 1 }, rewardText: 'Sprinkler Network cap +1 valve' },
+  { id: 'drought', name: 'Drought', rule: { mulAll: 0.25 },
+    line: 'Every blessing shrinks to a quarter.',
     reward: { longEars: 1 }, rewardText: 'Long Ears +1 (guests linger 3 s longer)' },
   { id: 'fog', name: 'Fog', rule: { hidden: true },
     line: 'The numbers are gone. Tend by feel.',

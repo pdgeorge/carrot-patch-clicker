@@ -70,7 +70,9 @@ class Chronicle:
             pass
 
     def log(self, ev: dict) -> None:
-        rec = {"t": round(time.time(), 1), **ev}
+        rec = {**ev, "t": round(time.time(), 1)}  # the epoch always wins the key
+        if "t" in ev:
+            rec["dur"] = ev["t"]                  # a Trial's elapsed seconds, not a timestamp
         self.recent.append(rec)
         self._days = None
         try:
@@ -262,12 +264,19 @@ class OrderBook:
         buildings × season, no buffs, no Many Hands, no Late Frost — so the
         reward just applied (or a rain at the bell, or a crowd of sockets)
         can never set the bar for the next order (review R21)."""
+        saved = eco.trial  # a Trial rule must not set the bar (Hands Only would ask for 1 carrot)
+        eco.trial = None
+        try:
+            steady = eco.base_cps() * eco.season_mult()
+        finally:
+            eco.trial = saved
         return {
             "lifetime": eco.total_all_time, "visitors": eco.rabbits + eco.tins + eco.stalls,
             "stalls": eco.stalls, "pages": len(eco.almanac), "springs": eco.prestiges,
-            "sproutsSpent": eco.sprouts_spent, "cps": eco.base_cps() * eco.season_mult(),
+            "sproutsSpent": eco.sprouts_spent, "cps": steady,
             "sprouts": eco.sprouts, "trials": sum(eco.trials_done.values()),
             "weekSprings": self.chronicle.count("prestige", 7 * DAY),
+            "quiltFill": self.quilt.fill() if self.quilt else 0.0,
         }
 
     def targets(self, spec: dict, base: dict, window: float) -> list[float]:
@@ -284,6 +293,9 @@ class OrderBook:
         guests = window / (sum(gap) / 2 + 12)
         wsum = sum(v.get("weight", 1) for v in vs) or 1
         stall_share = next((v.get("weight", 1) for v in vs if v["id"] == "parsnip"), 0) / wsum
+        if k == "quilt":  # a share of the BARE cloth at posting: always something left to stitch
+            f0 = base.get("quiltFill", 0.0)
+            return [f0 + float(t) * (1.0 - f0) for t in spec["tiers"]]
         scale = {"harvest": max(base["cps"], 1.0) * window,
                  "sprouts": max(base["sprouts"], 1),
                  "visitors": max(guests, 1.0),
@@ -298,8 +310,8 @@ class OrderBook:
         k = spec["kind"]
         if k == "pages":
             return len(self.d.get("almanac", [])) - len(eco.almanac) >= spec["tiers"][0]
-        if k == "quilt":
-            return (self.quilt.fill() if self.quilt else 0.0) < spec["tiers"][0]
+        if k == "quilt":  # only a FINISHED quilt has nothing left to order
+            return (self.quilt.fill() if self.quilt else 0.0) < 0.999
         if k == "trials":
             return any(eco.trial_available(t["id"]) for t in self.d.get("trials", []))
         return True

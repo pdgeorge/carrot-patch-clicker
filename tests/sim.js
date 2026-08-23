@@ -546,7 +546,7 @@ check(badH.honey === 0 && badH.beeT <= 86400, 'negative honey and a runaway bee 
 console.log('\n=== Trials (R22) ===');
 const T = CC.TRIAL;
 /* a spring with `run` harvested so far and enough lifetime for a seed; bank set, not earned */
-const spring = (core, run) => { core.totalRun = run; core.lifetimeBase = Math.max(core.lifetimeBase, 1e7); core.bank = 1e6; };
+const spring = (core, run) => { core.totalRun = run; core.runT = 7200; core.lifetimeBase = Math.max(core.lifetimeBase, 1e7); core.bank = 1e6; };
 const tr = new CC.Core();
 spring(tr, 3e6); tr.buy(0, 10); tr.buy(1, 5);
 check(tr.trialGoal('frost') === 3e6, 'goal is the spring being left (no log yet)');
@@ -555,7 +555,10 @@ const tr2 = new CC.Core();
 spring(tr2, 3e6);
 check(tr2.prestige('frost') > 0 && tr2.trial && tr2.trial.id === 'frost' && tr2.trial.goal === 3e6,
   'going to seed into Late Frost opens a Trial at the spring\'s goal');
-check(tr2.runLog.length === 1 && tr2.runLog[0] === 3e6, 'the run log remembers the spring');
+check(tr2.runBest === 3e6, 'the best plain spring is remembered');
+const quick = new CC.Core(); quick.runBest = 5e9; quick.totalRun = 1e6; quick.runT = 30; quick.lifetimeBase = 1e9; quick.bank = 1e6;
+quick.prestige();
+check(quick.runBest === 5e9 && quick.trialGoal('frost') === 5e9, 'a thirty-second spring lowers nothing (review: six instant springs)');
 tr2.bank = 1e4; tr2.buy(0, 5);
 check(tr2.cps() === 0 && tr2.haltT === 180, 'a purchase stills the garden');
 tr2.tick(90); /* ribbons/pages latch here too, so compare against the live base */
@@ -570,18 +573,48 @@ const won = tr2.tick(0.1);
 check(won.some(e => e.type === 'trial' && e.won && e.id === 'frost' && e.n === 1), 'reaching the goal wins the Trial');
 check(tr2.trial === null && tr2.trialsDone.frost === 1 && tr2.trialBest.frost > 0 && tr2.perks.scarecrow === 1,
   'the Trial clears, the count and best time record, the Scarecrow is paid');
-check(tr2.trialGoal('frost') >= 3e7 && tr2.trialGoal('frost') < 3.1e7, 'the next Late Frost asks a decade more');
+check(tr2.trialGoal('frost') === 6e6, 'the next Late Frost asks double (a Trial spring never raises the bar)');
 tr2.latchPages();
 check(tr2.almanac.tr0 === true && !tr2.almanac.tr7, 'The Thaw is written; the set page waits');
 /* expiry */
 const tx = new CC.Core();
 spring(tx, 1e9); tx.prestige('drought');
-const gm = tx.globalMult();
-tx.trial = null; const gmRaw = tx.globalMult(); tx.trial = { id: 'drought', goal: 1e9, t: 0 };
-check(Math.abs(gm - Math.pow(gmRaw, 0.75)) < 1e-12 * gmRaw, 'Drought raises every blessing to the 3/4 power');
+const gm = tx.globalMult(), goalD = tx.trial.goal;
+tx.trial = null; const gmRaw = tx.globalMult(); tx.trial = { id: 'drought', goal: goalD, t: 0 };
+check(Math.abs(gm - gmRaw * 0.25) < 1e-12 * gmRaw, 'Drought shrinks every blessing to a quarter — scale-free');
+check(Math.abs(tx.trial.goal - 1e9 * 0.25) < 1, 'and its goal is a quarter of the spring being left (handicap-aware)');
 const lost = tx.tick(T.hours * 3600 + 1);
 check(lost.some(e => e.type === 'trial' && !e.won) && tx.trial === null && !tx.trialsDone.drought,
   'the clock runs out: the spring simply continues, nothing is paid');
+/* handicaps: the goal asks for what the rule can make */
+const hc = new CC.Core(); hc.lifetimeBase = 1e7; hc.runT = 7200; hc.bank = 1e12;
+for (let i = 0; i < 10; i++) hc.buy(i, 30);
+hc.totalRun = 1e9;
+const plain = hc.cps();
+const share6 = (() => { let c = 0; for (let i = 0; i < 6; i++) c += hc.owned[i] * CC.BUILDINGS[i].cps * hc.buildingMult(i); return c * hc.globalMult(); })() / hc.baseCps();
+check(hc.ruleHandicap('rows') <= share6 && hc.ruleHandicap('rows') > share6 * 0.8, `Short Rows asks for about the first six rows' share (${(hc.ruleHandicap('rows') * 100).toFixed(1)}% vs ${(share6 * 100).toFixed(1)}% raw)`);
+check(Math.abs(hc.trialGoal('rows') - 1e9 * hc.ruleHandicap('rows')) < 1, 'the goal is scaled by it');
+check(hc.ruleHandicap('frost') === 1 && hc.ruleHandicap('fog') === 1 && hc.ruleHandicap('hedge') === 1, 'time-costing rules have no income handicap');
+check(hc.ruleHandicap('hands') > 0 && hc.ruleHandicap('hands') < 0.05, `Hands Only asks for a reference hand's clicks (${(hc.ruleHandicap('hands') * 100).toFixed(2)}%)`);
+check(hc.cps() === plain && hc.trial === null, 'measuring a handicap leaves the garden untouched');
+/* Late Frost stills the harvest share of a click */
+const lf = new CC.Core(); lf.lifetimeBase = 1e7; lf.runT = 7200; lf.bank = 1e9; lf.totalRun = 1e8; lf.buy(0, 20); lf.bought.c1 = true; lf.shed.l1 = 3;
+lf.prestige('frost'); lf.bank = 1e9; lf.buy(0, 20);
+const cpHalt = lf.clickPower(); lf.haltT = 0; const cpThaw = lf.clickPower();
+check(cpHalt < cpThaw && cpHalt >= 1, 'under Late Frost a click keeps only its bare hand while the garden is stilled');
+/* Short Rows: ghost rows hold nothing */
+const gh = new CC.Core(); gh.lifetimeBase = 1e7; gh.runT = 7200; gh.totalRun = 1e8; gh.bank = 1e9; gh.shed.h7 = 50;
+gh.prestige('rows');
+check(gh.owned[CC.SHED.find(u => u.id === 'h7').building] === 50 && gh.rowCount(CC.SHED.find(u => u.id === 'h7').building) === 0
+  && gh.bumperCount(CC.SHED.find(u => u.id === 'h7').building) === 0, 'a resprouted row past six stands but counts for nothing — no bumpers, no synergy');
+/* the Sprinkler cap perk is usable */
+const sp = new CC.Core(); sp.sprouts = 1e12; sp.sproutsSpent = 1e6; sp.shed.l1 = 6;
+const l1 = CC.SHED.find(u => u.id === 'l1');
+check(sp.shedMaxed(l1) && !sp.buyShed('l1'), 'six valves is the cap');
+sp.perks.cap.l1 = 1;
+check(!sp.shedMaxed(l1) && sp.buyShed('l1') && sp.shedLevel('l1') === 7 && sp.shedMaxed(l1), 'the Hands Only perk opens a seventh valve');
+const sp2 = new CC.Core(); sp2.deserialize(JSON.parse(JSON.stringify(sp.serialize())));
+check(sp2.shedLevel('l1') === 7, 'and it survives a reload (perks are read before the shed clamp)');
 /* Crop Rotation: a pyramid of plots */
 const cr = new CC.Core();
 spring(cr, 1e7); cr.prestige('rotation'); cr.bank = 1e9;
@@ -635,13 +668,13 @@ sv.haltT = 0; sv.trial.t = 100;
 const sv2 = new CC.Core();
 sv2.deserialize(JSON.parse(JSON.stringify(sv.serialize())));
 check(sv2.trial && sv2.trial.id === 'hedge' && sv2.trial.goal === sv.trial.goal && sv2.trial.t === 100
-  && sv2.trialsDone.frost === 3 && sv2.trialBest.frost === 1234.5 && sv2.perks.longEars === 2 && sv2.runLog.length === 1,
+  && sv2.trialsDone.frost === 3 && sv2.trialBest.frost === 1234.5 && sv2.perks.longEars === 2 && sv2.runBest === 1e7,
   'a Trial, its ledger and the perks survive a save');
 const junk = new CC.Core();
 junk.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0, owned: [], bought: {}, seeds: 0, sprouts: 0, shed: {},
   trial: { id: 'frost', goal: Infinity, t: -5 }, trialsDone: { frost: 99, bogus: 3 }, perks: { scarecrow: 1e9, cap: { l1: 50, zz: 1 } }, runLog: [1, 'x', -2, Infinity], haltT: 1e12 });
 check(junk.trial === null && junk.trialsDone.frost === T.maxDone && junk.trialsDone.bogus === undefined
-  && junk.perks.scarecrow === 5 && junk.perks.cap.l1 === 10 && junk.perks.cap.zz === undefined && junk.runLog.length === 1 && junk.haltT === 3600,
+  && junk.perks.scarecrow === 5 && junk.perks.cap.l1 === 10 && junk.perks.cap.zz === undefined && junk.runBest === 1 && junk.haltT === 3600,
   'forged Trial state is clamped: no infinite goal, no ladder past its top');
 check(!junk.trialAvailable('frost') && junk.trialAvailable('fog'), 'a maxed Trial cannot be entered again');
 
@@ -724,7 +757,7 @@ check(hs.almanac.sb6 === true && hs.almanac.sb5 === true, 'Seedless to Nay and T
 const sv3 = new CC.Core();
 sv3.bed.plots[3] = { sp: 'thyme', age: 2 }; sv3.bed.log.sprout = 4; sv3.bed.seed = 777; sv3.bed.soil = 'chips'; sv3.bedT = 42;
 const sv4 = new CC.Core();
-sv4.deserialize(JSON.parse(JSON.stringify(sv3.serialize())));
+sv4.deserialize({ ...JSON.parse(JSON.stringify(sv3.serialize())), last: Date.now() + 5000 }); /* no offline seconds to catch up */
 check(sv4.bed.plots[3].sp === 'thyme' && sv4.bed.plots[3].age === 2 && sv4.bed.log.sprout === 4 && sv4.bed.seed === 777
   && sv4.bed.soil === 'chips' && sv4.bedT === 42, 'the bed survives a save');
 const junkB = new CC.Core();

@@ -87,6 +87,7 @@ CC.UI = class {
     /* served page = the world game, always; file:// = private dev garden (P6) */
     this.worldMode = location.protocol.startsWith('http');
     this.core.mirrorBook = this.worldMode; /* the server's almanac is the book (R16) */
+    this.core.mirror = this.worldMode;     /* no local automation or transitions: the snapshot is the truth (R22) */
 
     this.buildStatic();
     this.dayNight = this.pref('carrot-daynight') || 'auto'; /* ☀/🌙 is a display preference */
@@ -148,9 +149,10 @@ CC.UI = class {
       pal.appendChild(b);
     });
     this.$('quilt').addEventListener('pointerdown', e => {
-      const r = e.currentTarget.getBoundingClientRect();
-      const x = Math.floor((e.clientX - r.left) / r.width * this.quilt.w);
-      const y = Math.floor((e.clientY - r.top) / r.height * this.quilt.h);
+      /* map against the CONTENT box: the patchwork border is 6 px of frame, not cloth */
+      const el = e.currentTarget, r = el.getBoundingClientRect();
+      const x = Math.floor((e.clientX - r.left - el.clientLeft) / el.clientWidth * this.quilt.w);
+      const y = Math.floor((e.clientY - r.top - el.clientTop) / el.clientHeight * this.quilt.h);
       if (x >= 0 && y >= 0 && x < this.quilt.w && y < this.quilt.h) this.paintCell(y * this.quilt.w + x, this.quiltColor);
     });
     this.$('quilt-copy').addEventListener('click', () => this.copyQuilt());
@@ -160,16 +162,16 @@ CC.UI = class {
     this.bedCtx = this.$('bed').getContext('2d');
     this.bedMenuPlot = -1;
     this.$('bed').addEventListener('pointerdown', e => {
-      const r = e.currentTarget.getBoundingClientRect();
-      const W = CC.BED.w, H = CC.BED.h;
-      const x = Math.floor((e.clientX - r.left) / r.width * W), y = Math.floor((e.clientY - r.top) / r.height * H);
+      const el = e.currentTarget, r = el.getBoundingClientRect();
+      const W = this.core.bedW(), H = this.core.bedH();
+      const x = Math.floor((e.clientX - r.left - el.clientLeft) / el.clientWidth * W), y = Math.floor((e.clientY - r.top - el.clientTop) / el.clientHeight * H);
       if (x < 0 || y < 0 || x >= W || y >= H) return;
       this.bedClick(y * W + x);
     });
     this.$('bed').addEventListener('mousemove', e => {
-      const r = e.currentTarget.getBoundingClientRect();
-      const W = CC.BED.w, H = CC.BED.h;
-      const x = Math.floor((e.clientX - r.left) / r.width * W), y = Math.floor((e.clientY - r.top) / r.height * H);
+      const el = e.currentTarget, r = el.getBoundingClientRect();
+      const W = this.core.bedW(), H = this.core.bedH();
+      const x = Math.floor((e.clientX - r.left - el.clientLeft) / el.clientWidth * W), y = Math.floor((e.clientY - r.top - el.clientTop) / el.clientHeight * H);
       this.bedHover = (x >= 0 && y >= 0 && x < W && y < H) ? y * W + x : -1;
       this.bedTip();
     });
@@ -356,6 +358,12 @@ CC.UI = class {
       add(n('shed') + n('upgrade'), 'thing bought', 'things bought');
       for (const e of evs.filter(e => e.type === 'order_resolved'))
         parts.push(e.won ? `${e.name} met (tier ${e.tier})` : `${e.name} missed`);
+      for (const e of evs.filter(e => e.type === 'trial')) {
+        const t = (CC.TRIALS || []).find(x => x.id === e.id);
+        parts.push(`${t ? t.name : 'a Trial'} ${e.won ? 'won' : e.abandoned ? 'abandoned' : 'lost'}`);
+      }
+      add(n('bedFound'), 'new plant found', 'new plants found');
+      if (n('fallow')) parts.push('THE WORLD LAY FALLOW');
       if (n('market_open')) parts.push('a Market Hour');
       if (parts.length) this.toast(`🌍 While you were away (${CC.fmtDur(gap)}): ${parts.join(', ')}.`);
     }).catch(() => { /* decorative */ });
@@ -384,6 +392,17 @@ CC.UI = class {
     if (e.type === 'almanac') { const pg = CC.ALMANAC.find(p => p.id === e.id); return `📖 ${pg ? pg.name : 'a page'} was written`; }
     if (e.type === 'quiet') return `🌙 the garden stirred after ${e.hours}h of quiet`;
     if (e.type === 'market_open') return '🏪 Market Hour';
+    if (e.type === 'trial') {
+      const t = (CC.TRIALS || []).find(x => x.id === e.id), nm = t ? t.name : 'a Trial';
+      return e.won ? `🧪 ${nm} — won in ${CC.fmtDur(e.dur || 0)} (${e.n}/${CC.TRIAL.maxDone})` : e.abandoned ? `🧪 ${nm} — abandoned at a spring` : `🧪 ${nm} — the clock ran out`;
+    }
+    if (e.type === 'bedFound') { const p = this.core.plantData(e.sp); return `📗 ${p ? p.name : 'a plant'} entered the seed log`; }
+    if (e.type === 'sacrifice') return `🍯 the seed log was given up for ${e.honey} honey`;
+    if (e.type === 'bell') return `🔔 the bell rang (${e.ring})${e.rehearsal ? ', rehearsing' : ''}`;
+    if (e.type === 'silence') return `🔕 ${e.who || 'someone'} silenced the bell`;
+    if (e.type === 'rehearsed') return '🔔 the rehearsal rang out';
+    if (e.type === 'fallow') return `🔔 THE WORLD LAY FALLOW — +${e.loam} loam (Fallow Year ${e.fallows})`;
+    if (e.type === 'cellar') { const cd = this.core.cellarData(e.id); return `🪨 ${cd ? cd.name : 'a Cellar perk'} → level ${e.lv}`; }
     return null;
   }
 
@@ -433,7 +452,8 @@ CC.UI = class {
     const dir = location.pathname.replace(/[^/]*$/, '');
     fetch(dir + 'api/quilt').then(r => r.json()).then(j => {
       this._quiltFetching = false;
-      if (!j || !j.cells || j.v <= this.quilt.v) return;
+      if (!j || !j.cells) return;
+      if (j.v < this.quilt.v) { this.fetchQuilt(); return; } /* a stitch landed mid-flight: ask again */
       const raw = j.cells;
       for (let i = 0; i < this.quilt.cells.length && 2 * i + 1 < raw.length; i++) {
         this.quilt.cells[i] = parseInt(raw.substr(2 * i, 2), 16) || 0;
@@ -485,7 +505,7 @@ CC.UI = class {
   }
 
   /* ---------------- the Seed Bed (R23) ---------------- */
-  plotName(i) { return `${'ABCDEF'[i % CC.BED.w]}${Math.floor(i / CC.BED.w) + 1}`; }
+  plotName(i) { const W = this.core.bedW(); return `${'ABCDEF'[i % W]}${Math.floor(i / W) + 1}`; }
   plantEffectText(p) {
     const bits = [];
     if (p.mult) bits.push(p.mult >= 1 ? `×${p.mult} production` : `×${p.mult} (a weed)`);
@@ -539,9 +559,9 @@ CC.UI = class {
     const cl = document.createElement('div'); cl.className = 'bm-close'; cl.textContent = 'close ✕';
     cl.addEventListener('click', () => this.closeBedMenu());
     m.appendChild(cl);
-    const W = CC.BED.w, x = i % W, y = Math.floor(i / W);
+    const W = this.core.bedW(), H = this.core.bedH(), x = i % W, y = Math.floor(i / W);
     m.style.left = `${Math.min(60, x * (100 / W))}%`;
-    m.style.top = `${Math.min(55, (y + 1) * (100 / CC.BED.h))}%`;
+    m.style.top = `${Math.min(55, (y + 1) * (100 / H))}%`;
     m.classList.remove('hidden');
   }
   closeBedMenu() { this.$('bed-menu').classList.add('hidden'); this.bedMenuPlot = -1; }
@@ -610,7 +630,7 @@ CC.UI = class {
   }
   /* a plant as five strokes: stem, leaves, a head coloured by what it does */
   drawBed() {
-    const x = this.bedCtx, c = this.core, W = CC.BED.w, H = CC.BED.h, cw = 256 / W, ch = 256 / H;
+    const x = this.bedCtx, c = this.core, W = c.bedW(), H = c.bedH(), cw = 256 / W, ch = 256 / H;
     const soil = c.soilData();
     const ground = { dirt: ['#5a3c22', '#4a3019'], clay: ['#7a5540', '#5e4030'], chips: ['#8a6a3a', '#6b5028'] }[soil.id] || ['#5a3c22', '#4a3019'];
     for (let i = 0; i < W * H; i++) {
@@ -1122,10 +1142,16 @@ CC.UI = class {
         const a = this.fmtX(c.seedMult()), b = this.fmtX(1 + 0.08 * (c.seeds + n));
         return a === b ? `${a}, stacking +8% deeper` : `${a} → <b>${b}</b>`;
       })()}.` +
-      (patch ? `<br><br><i>Your name will not be recorded. Your deed will be felt.</i>` : '');
+      (patch ? `<br><br><i>Your name will not be recorded. Your deed will be felt.</i>` : '') +
+      (c.trial ? (() => { /* a Trial is running: going to seed abandons it for everyone */
+        const t = c.trialData();
+        return `<br><br><b style="color:var(--ink-carrot)">⚠ A Trial is running: ${t ? t.name : c.trial.id}</b> — ` +
+          `${CC.fmt(c.totalRun)} / ${CC.fmt(c.trial.goal)}, ${CC.fmtDur(Math.max(0, CC.TRIAL.hours * 3600 - c.trial.t))} left. ` +
+          `Going to seed now <b>abandons it for everyone</b>: no completion, no perk.`;
+      })() : '');
     this.buildTrialPick();
     const yes = this.$('modal-yes');
-    yes.textContent = `Go to seed (+${CC.fmt(n)})`;
+    yes.textContent = c.trial ? `Abandon the Trial and go to seed (+${CC.fmt(n)})` : `Go to seed (+${CC.fmt(n)})`;
     yes.onclick = () => {
       this.$('modal').classList.add('hidden');
       const trial = this._trialChoice || null;
@@ -1308,6 +1334,9 @@ CC.UI = class {
       if (ev.won) {
         CC.audio.fanfare();
         this.toast(`🧪 ${t.name} — WON in ${CC.fmtDur(ev.t || 0)}! The world is back where it was. ${t.rewardText} (${ev.n}/${CC.TRIAL.maxDone}).`);
+      } else if (ev.abandoned) {
+        CC.audio.rabbit();
+        this.toast(`🧪 ${t.name} — abandoned${ev.who ? ` by ${ev.who}` : ''} at a spring. No completion, no perk.`);
       } else {
         CC.audio.rabbit();
         this.toast(`🧪 ${t.name} — the clock ran out. The spring carries on, rule lifted.`);
@@ -1833,7 +1862,7 @@ CC.UI = class {
           if (p.scarecrow) bits.push(`Scarecrow ${p.scarecrow}`);
           if (p.startTier) bits.push(`tier-${p.startTier} start`);
           if (p.resproutCap) bits.push(`resprout +${p.resproutCap}`);
-          for (const k in p.cap) bits.push(`${k} cap +${p.cap[k]}`);
+          for (const k in p.cap) { const u = CC.SHED.find(x => x.id === k); bits.push(`${u ? u.name : k} cap +${p.cap[k]}`); }
           if (p.longEars) bits.push(`Long Ears ${p.longEars}`);
           if (p.clickFrenzy) bits.push(`Click Frenzy ${p.clickFrenzy}`);
           return `<div>Trials won 🧪 <b>${done}</b></div>` +

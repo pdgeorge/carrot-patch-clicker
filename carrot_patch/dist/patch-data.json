@@ -2067,7 +2067,9 @@
  "trial": {
   "hours": 48,
   "maxDone": 5,
-  "runLog": 5,
+  "step": 2,
+  "minSpringSec": 3600,
+  "refClicks": 5,
   "scarecrowEvery": 60,
   "scarecrowPct": 0.01,
   "resproutCapBase": 100,
@@ -2080,7 +2082,7 @@
    "rule": {
     "haltOnBuy": 180
    },
-   "line": "Every purchase stills the whole garden; it thaws over three minutes.",
+   "line": "Every purchase stills the whole garden — plots and hands alike; it thaws over three minutes.",
    "reward": {
     "scarecrow": 1
    },
@@ -2119,17 +2121,17 @@
    "line": "The plots sleep. Hands, guests and rain do all the work.",
    "reward": {
     "cap": "l1",
-    "n": 2
+    "n": 1
    },
-   "rewardText": "Sprinkler Network cap +2 valves"
+   "rewardText": "Sprinkler Network cap +1 valve"
   },
   {
    "id": "drought",
    "name": "Drought",
    "rule": {
-    "expAll": 0.75
+    "mulAll": 0.25
    },
-   "line": "Every blessing shrinks to its three-quarter power.",
+   "line": "Every blessing shrinks to a quarter.",
    "reward": {
     "longEars": 1
    },

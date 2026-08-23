@@ -541,8 +541,8 @@ for (const f of ['data.js', 'core.js']) {
   vm.runInThisContext(fs.readFileSync(path.join(process.argv[1], 'src', f), 'utf8'));
 }
 const out = {};
-const run = (id, fn) => { const c = new CC.Core(); c.totalRun = 5e6; c.lifetimeBase = 2e7; c.bank = 1e6; c.shed.l1 = 3;
-  c.bought.c0 = true; c.prestige(id); c.bank = 1e9; fn(c); return c; };
+const run = (id, fn) => { const c = new CC.Core(); c.totalRun = 5e6; c.runT = 7200; c.lifetimeBase = 2e7; c.bank = 1e6; c.shed.l1 = 3;
+  c.bought.c0 = true; c.buy(0, 5); c.buy(1, 2); c.prestige(id); c.bank = 1e9; fn(c); return c; };
 const f = run('frost', c => { c.buy(0, 12); c.buy(1, 4); c.tick(45); });
 out.frost = { cps: f.cps(), click: f.clickPower(), halt: f.haltT, goal: f.trial.goal, t: f.trial.t };
 const r = run('rotation', c => { c.buy(0, 7); c.buy(1, 7); c.buy(1, 1); c.buy(2, 3); });
@@ -559,7 +559,9 @@ w.perks.startTier = 1; w.perks.cap.l1 = 2; w.perks.clickFrenzy = 1;
 w.totalRun = 1e8; w.lifetimeBase = 1e9; w.bank = 0; w.prestige();
 w.buffs.push({ name: 'Rabbit Frenzy', mult: 7, left: 10 });
 out.won = { done: w.trialsDone, best: w.trialBest.frost, scarecrow: w.perks.scarecrow, goalNext: w.trialGoal('frost'),
-  bought: Object.keys(w.bought).sort(), cap: w.shedCap(CC.SHED.find(u => u.id === 'l1')), click: w.clickPower(), log: w.runLog };
+  bought: Object.keys(w.bought).sort(), cap: w.shedCap(CC.SHED.find(u => u.id === 'l1')), click: w.clickPower(), log: w.runBest };
+const hp = new CC.Core(); hp.lifetimeBase = 1e7; hp.runT = 7200; hp.bank = 1e12; for (let i = 0; i < 10; i++) hp.buy(i, 30); hp.totalRun = 1e9; hp.shed.l1 = 2; hp.bought.c0 = true;
+out.handicaps = CC.TRIALS.map(t => [t.id, hp.ruleHandicap(t.id), hp.trialGoal(t.id)]);
 const sc = new CC.Core(); sc.perks.scarecrow = 2; sc.bank = 5e6; sc.tick(61); sc.tick(61);
 out.scarecrow = { owned: sc.owned, bank: sc.bank };
 out.snap = w.serialize();
@@ -571,8 +573,9 @@ js22 = json.loads(subprocess.run(
 
 def run22(tid, fn):
     c = Economy(load_data())
-    c.total_run = 5e6; c._lifetime_base = 2e7; c.bank = 1e6; c.shed["l1"] = 3
+    c.total_run = 5e6; c.run_t = 7200; c._lifetime_base = 2e7; c.bank = 1e6; c.shed["l1"] = 3
     c.bought["c0"] = True
+    c.buy(0, 5); c.buy(1, 2)
     c.prestige(tid); c.bank = 1e9
     fn(c)
     return c
@@ -610,11 +613,18 @@ j = js22["won"]
 check(pw.trials_done == j["done"] and near(pw.trial_best["frost"], j["best"]) and pw.perks["scarecrow"] == j["scarecrow"]
       and near(pw.trial_goal("frost"), j["goalNext"]), "a won Trial records the same ledger and next goal")
 check(sorted(pw.bought) == j["bought"] and pw.shed_cap(next(u for u in pw.d["shed"] if u["id"] == "l1")) == j["cap"]
-      and near(pw.click_power(), j["click"]) and pw.run_log == j["log"], "perks land identically at the next spring")
+      and near(pw.click_power(), j["click"]) and pw.run_best == j["log"], "perks land identically at the next spring")
+hp = Economy(load_data()); hp._lifetime_base = 1e7; hp.run_t = 7200; hp.bank = 1e12
+for i in range(10):
+    hp.buy(i, 30)
+hp.total_run = 1e9; hp.shed["l1"] = 2; hp.bought["c0"] = True
+py_h = [[t["id"], hp.rule_handicap(t["id"]), hp.trial_goal(t["id"])] for t in hp.d["trials"]]
+check(all(a[0] == b[0] and near(a[1], b[1]) and near(a[2], b[2]) for a, b in zip(py_h, js22["handicaps"])),
+      "every rule's handicap and goal agree (" + ", ".join(f"{a[0]} {a[1]:.3f}" for a in py_h) + ")")
 psc = Economy(load_data()); psc.perks["scarecrow"] = 2; psc.bank = 5e6; psc.tick(61); psc.tick(61)
 check(psc.owned == js22["scarecrow"]["owned"] and near(psc.bank, js22["scarecrow"]["bank"]), f"the Scarecrow buys the same rows ({psc.owned[:4]})")
 p22 = Economy(load_data()); p22.deserialize(js22["snap"])
-check(p22.trials_done == pw.trials_done and p22.perks == pw.perks and p22.run_log == pw.run_log and p22.trial is None,
+check(p22.trials_done == pw.trials_done and p22.perks == pw.perks and p22.run_best == pw.run_best and p22.trial is None,
       "a JS save's Trial ledger and perks load into Python")
 p22b = Economy(load_data())
 p22b.deserialize({"v": 1, "bank": 0, "totalAllTime": 0, "totalRun": 0, "clicks": 0, "owned": [], "bought": {}, "seeds": 0,
@@ -622,7 +632,7 @@ p22b.deserialize({"v": 1, "bank": 0, "totalAllTime": 0, "totalRun": 0, "clicks":
                   "trialsDone": {"frost": 99, "bogus": 3}, "perks": {"scarecrow": 1e9, "cap": {"l1": 50, "zz": 1}},
                   "runLog": [1, "x", -2, 1e999], "haltT": 1e12})
 check(p22b.trial is None and p22b.trials_done == {"frost": 5} and p22b.perks["scarecrow"] == 5
-      and p22b.perks["cap"] == {"l1": 10} and p22b.run_log == [1.0] and p22b.halt_t == 3600.0,
+      and p22b.perks["cap"] == {"l1": 10} and p22b.run_best == 1.0 and p22b.halt_t == 3600.0,
       "forged Trial state clamps identically (py)")
 
 # ---------- 1i. the Seed Bed (R23): the same seed grows the same garden in both engines ----------
@@ -1110,6 +1120,27 @@ check(all(e["type"] in ("order_posted", "order_resolved", "order_skipped", "quie
 chron2 = Chronicle(pdir / "w_events.jsonl")
 check(len(chron2.recent) == len(chron.recent) and chron2.days(7)[0]["counts"] == days[0]["counts"],
       "a restart reads the day-book back from the file tail into memory")
+# R22 review: the quilt order is a share of the bare cloth at posting, and never a sure fail
+q_half = Quilt(load_data(), pdir / "qh.json")
+for i in range(len(q_half.cells) // 2):
+    q_half.cells[i] = 2
+b_qh = OrderBook(load_data(), pdir / "w10_parish.json", chron, q_half)
+b_qh.rotation = 6
+o_q = b_qh.post(eco, t0)
+check(o_q["id"] == "quilt" and abs(o_q["targets"][0] - (0.5 + 0.25 * 0.5)) < 1e-9 and o_q["targets"][2] < 1.0,
+      f"a half-stitched quilt is ordered to 62.5 / 75 / 87.5 % ({[round(x, 3) for x in o_q['targets']]})")
+check(b_qh.tier(eco) == 0, "…and tier 0 at posting, not a free win")
+# a Trial rule must not set the harvest bar
+ho = Economy(load_data()); ho.earn(1e7); ho.buy(0, 20); ho.buy(1, 5)
+steady_ho = ho.base_cps() * ho.season_mult()
+ho.trial = {"id": "hands", "goal": 1e9, "t": 0.0}
+o_ho = OrderBook(load_data(), pdir / "w11_parish.json", chron).post(ho, t0)
+check(abs(o_ho["targets"][0] - steady_ho * (o_ho["deadline"] - t0)) < 1e-6 * o_ho["targets"][0], "a harvest posted during Hands Only asks for the plain steady cps")
+# a Trial's elapsed time never overwrites the chronicle's clock
+chron.log({"type": "trial", "id": "frost", "won": True, "n": 1, "t": 4321.0})
+last_ev = chron.recent[-1]
+check(last_ev["t"] > 1e9 and last_ev["dur"] == 4321.0, "a trial record keeps the epoch and moves its elapsed time to dur")
+
 # Wider Orders (R24): a second slot means a second card, never the same kind twice
 wide = Economy(load_data()); wide.earn(1e7); wide.buy(0, 20); wide.cellar["orders"] = 2
 b_w = OrderBook(load_data(), pdir / "w8_parish.json", chron)
@@ -1228,6 +1259,11 @@ with TestClient(app) as client:
         ws.send_json({"type": "paint", "i": 6, "c": 3})
         time.sleep(0.05)
         check(patch.quilt.cells[6] == 0, "a second stitch inside the cooldown is ignored")
+        with client.websocket_connect("/ws") as ws2:  # a fresh socket from the same address is still the same hand
+            ws2.receive_json()
+            ws2.send_json({"type": "paint", "i": 7, "c": 3})
+            time.sleep(0.05)
+            check(patch.quilt.cells[7] == 0, "reconnecting does not reset the needle (cooldown is per address)")
         for junk in ({"i": "5", "c": 3}, {"i": True, "c": 1}, {"i": 1e999, "c": 1}, {"i": -1, "c": 1}, {"i": 7, "c": 99}, {}):
             ws.send_json({"type": "paint", **junk})
         time.sleep(1.1)
@@ -1243,9 +1279,20 @@ with TestClient(app) as client:
             ws.send_json({"type": "prestige", "trial": junk})
         time.sleep(0.05)
         check(patch.eco.trial["id"] == "frost", "junk trial ids and a seedless prestige change nothing")
+        time.sleep(1.1)  # flood guard
+        patch.eco.total_run = 5e9; patch.eco._lifetime_base = 1e22; patch._pending.clear()  # more seeds than the last spring earned
+        ws.send_json({"type": "prestige"})
+        time.sleep(0.05)
+        check(patch.eco.trial is None and any(m.get("type") == "event" and m["ev"]["type"] == "trial" and m["ev"].get("abandoned")
+                                                for m in patch._pending), "going to seed mid-Trial abandons it, on the wire and on the record")
+        check(any(e["type"] == "trial" and e.get("abandoned") for e in patch.chronicle.read(0)), "the chronicle says so")
+        patch.eco.total_run = 1e15; patch.eco._lifetime_base = 1e24
+        ws.send_json({"type": "prestige", "trial": "frost"})
+        time.sleep(0.05)
+        check(patch.eco.trial is not None and patch.eco.trial["id"] == "frost", "…and a fresh Trial can begin")
         snap = None
         time.sleep(1.2)  # the socket buffers older snapshots; read until one taken after the prestige
-        for _ in range(400):
+        for _ in range(60):
             m = ws.receive_json()
             if m["type"] == "snapshot" and m["state"].get("trial"):
                 snap = m

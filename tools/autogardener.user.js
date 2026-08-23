@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Carrot Patch Autogardener
 // @namespace    https://github.com/pdgeorge/carrot-patch-clicker
-// @version      1.2.0
+// @version      1.2.1
 // @description  Tends the shared carrot patch: clicks, buys whatever is best value right now, greets visitors. Auto-clickers are gardeners too (DESIGN P4).
 // @author       the gardeners
 // @match        https://pdgeorge.com.au/carrot-patch/*
@@ -114,8 +114,12 @@
     core.owned[i] += n;
     const eng = effective() - base;
     core.owned[i] -= n;
-    const analytic = n * CC.BUILDINGS[i].cps * core.buildingMult(i)
-      * core.globalMult() * core.buffMult() * seasonM();
+    // the analytic floor (for ulp underflow at scale) must respect the rules:
+    // a row Short Rows cut makes nothing, Hands Only makes nothing from plots
+    const rowOn = typeof core.rowExists !== 'function' || core.rowExists(i);
+    const plotsOn = typeof core.rule !== 'function' || !core.rule('buildingsOff');
+    const analytic = rowOn && plotsOn ? n * CC.BUILDINGS[i].cps * core.buildingMult(i)
+      * core.globalMult() * core.buffMult() * seasonM() : 0;
     return Math.max(eng, analytic);
   }
 
@@ -153,7 +157,9 @@
   // WHICH building: best payback for a single unit. HOW MANY: bulkCount.
   function bestBuilding(base) {
     let pick = null;
+    const room = i => (typeof core.rowRoom === 'function' ? core.rowRoom(i) : Infinity);
     for (let i = 0; i < CC.BUILDINGS.length; i++) {
+      if (room(i) < 1) continue; // Trials (R22): Short Rows cuts the field, Crop Rotation chains it
       const cost1 = core.costOf(i, 1);
       if (!(cost1 <= core.bank)) continue;
       const g1 = buildingGain(i, 1, base);
@@ -168,8 +174,10 @@
     // budget, stretch to land exactly on it
     const next = typeof core.nextBumperAt === 'function' ? core.nextBumperAt(pick.i) : null;
     const toMilestone = next ? next - core.owned[pick.i] : 0;
-    const n = (toMilestone > want && core.costOf(pick.i, toMilestone) <= core.bank * CFG.spendFrac)
+    let n = (toMilestone > want && core.costOf(pick.i, toMilestone) <= core.bank * CFG.spendFrac)
       ? toMilestone : want;
+    n = Math.min(n, room(pick.i)); // never ask for more than the rule allows
+    if (n < 1) return null;
     return { kind: 'building', i: pick.i, n, cost: core.costOf(pick.i, n) };
   }
 
