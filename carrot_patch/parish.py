@@ -19,6 +19,7 @@ business, not economy (the "blobs in JSON, ledgers in SQLite" doctrine).
 from __future__ import annotations
 
 import json
+import math
 import time
 from collections import deque
 from pathlib import Path
@@ -26,51 +27,82 @@ from pathlib import Path
 from .economy import Economy, market_hour_at
 
 DAY = 86400.0
-NOTABLE = {"prestige", "season", "order_posted", "order_resolved", "ribbon",
+NOTABLE = {"prestige", "season", "order_posted", "order_resolved", "order_skipped", "ribbon",
            "almanac", "quiet", "fallow", "trial"}
+KINDS = {"harvest", "visitors", "stalls", "pages", "springs", "sprouts", "quilt", "trials"}
 
 
 def utc_day(epoch: float) -> str:
     return time.strftime("%Y-%m-%d", time.gmtime(epoch))
 
 
+RING = 20000          # events kept in memory: a week at ~1k/day with room to spare
+TAIL_BYTES = 4 << 20  # how much of an old file is read back at startup
+DAYS_TTL = 60.0       # /api/chronicle day summaries are memoised this long
+
+
 class Chronicle:
+    """Append-only on disk (the durable record); a bounded ring in memory
+    (what the endpoints read). The file is touched once at startup and
+    then only ever appended — a GET never rescans it (review R21)."""
+
     def __init__(self, path: Path):
         self.path = path
+        self.recent: deque = deque(maxlen=RING)
+        self._days: tuple[float, list] | None = None
+        try:
+            with open(self.path, "rb") as f:
+                f.seek(0, 2)
+                size = f.tell()
+                f.seek(max(0, size - TAIL_BYTES))
+                chunk = f.read().decode("utf-8", "replace")
+            lines = chunk.split("\n")
+            if size > TAIL_BYTES:
+                lines = lines[1:]  # the first line of a tail read is a torn one
+            for line in lines:
+                try:
+                    ev = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(ev, dict) and isinstance(ev.get("t"), (int, float)) and ev.get("type"):
+                    self.recent.append(ev)
+        except OSError:
+            pass
 
     def log(self, ev: dict) -> None:
         rec = {"t": round(time.time(), 1), **ev}
+        self.recent.append(rec)
+        self._days = None
         try:
             with open(self.path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(rec) + "\n")
         except OSError:
             pass  # the chronicle is a record, never a gate
 
-    def read(self, since: float = 0.0, max_lines: int = 20000) -> list[dict]:
-        if not self.path.exists():
-            return []
-        out: list[dict] = []
-        with open(self.path, encoding="utf-8") as f:
-            for line in deque(f, maxlen=max_lines):
-                try:
-                    ev = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if ev.get("t", 0) >= since:
-                    out.append(ev)
-        return out
+    def read(self, since: float = 0.0) -> list[dict]:
+        return [ev for ev in self.recent if ev["t"] >= since]
+
+    def count(self, kind: str, seconds: float) -> int:
+        since = time.time() - seconds
+        return sum(1 for ev in self.recent if ev["type"] == kind and ev["t"] >= since)
 
     def days(self, n: int = 7) -> list[dict]:
         """Per-UTC-day summaries for the last n days, newest first: counts
-        by event type plus the notable events in order."""
+        by event type plus the notable events in order. Memoised: every
+        client polls this, and the answer changes at most once a second."""
+        now = time.time()
+        if self._days and now - self._days[0] < DAYS_TTL:
+            return self._days[1]
         buckets: dict[str, dict] = {}
-        for ev in self.read(time.time() - n * DAY):
+        for ev in self.read(now - n * DAY):
             d = utc_day(ev["t"])
             b = buckets.setdefault(d, {"day": d, "counts": {}, "notable": []})
             b["counts"][ev["type"]] = b["counts"].get(ev["type"], 0) + 1
             if ev["type"] in NOTABLE:
                 b["notable"].append(ev)
-        return sorted(buckets.values(), key=lambda b: b["day"], reverse=True)
+        out = sorted(buckets.values(), key=lambda b: b["day"], reverse=True)
+        self._days = (now, out)
+        return out
 
 
 class Quilt:
@@ -145,6 +177,7 @@ class OrderBook:
         self.quilt = quilt
         self.order: dict | None = None
         self.history: list[dict] = []     # last outcomes, newest last
+        self.rotation = 0                 # next table index — its own counter, not len(history)
         self.override_used = 0
         self.last_intent = 0.0
         self.effects: dict[str, float] = {}  # name -> until (epoch); visitorRate/weatherGap
@@ -159,6 +192,7 @@ class OrderBook:
         if isinstance(s, dict):
             self.order = s.get("order") if isinstance(s.get("order"), dict) else None
             self.history = [h for h in (s.get("history") or []) if isinstance(h, dict)][-20:]
+            self.rotation = int(s.get("rotation", len(self.history)) or 0)
             self.override_used = int(s.get("overrideUsed", 0) or 0)
             self.last_intent = float(s.get("lastIntent", 0) or 0)
             self.effects = {k: float(v) for k, v in (s.get("effects") or {}).items()}
@@ -167,7 +201,7 @@ class OrderBook:
         tmp = self.path.with_suffix(".tmp")
         try:
             tmp.write_text(json.dumps({
-                "order": self.order, "history": self.history[-20:],
+                "order": self.order, "history": self.history[-20:], "rotation": self.rotation,
                 "overrideUsed": self.override_used, "lastIntent": self.last_intent,
                 "effects": self.effects,
             }))
@@ -176,51 +210,107 @@ class OrderBook:
             pass
 
     # ---------- the override file: a human holds the pen ----------
+    @staticmethod
+    def valid_spec(x) -> bool:
+        """The documented shape, enforced at the pen: a known kind and exactly
+        three finite, positive, ascending tiers. Anything else is skipped —
+        a typo must never post an unwinnable order or stop the world loop."""
+        if not isinstance(x, dict) or x.get("kind") not in KINDS:
+            return False
+        t = x.get("tiers")
+        if not (isinstance(t, list) and len(t) == 3):
+            return False
+        if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0 for v in t):
+            return False
+        return t[0] <= t[1] <= t[2]
+
     def override_spec(self) -> dict | None:
         path = self.path.with_name("orders_override.json")
         try:
             raw = json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
             return None
         specs = raw if isinstance(raw, list) else [raw]
-        specs = [x for x in specs if isinstance(x, dict) and x.get("kind") and x.get("tiers")]
-        if self.override_used < len(specs):
-            spec = dict(specs[self.override_used])
-            spec.setdefault("id", f"override{self.override_used}")
-            spec.setdefault("name", "A Special Order")
-            spec["authored"] = True
-            return spec
+        while self.override_used < len(specs):
+            x = specs[self.override_used]
+            if self.valid_spec(x):
+                spec = {"id": str(x.get("id", f"override{self.override_used}"))[:24],
+                        "name": str(x.get("name", "A Special Order"))[:40], "kind": x["kind"],
+                        "tiers": [float(v) for v in x["tiers"]], "line": str(x.get("line", ""))[:160],
+                        "unit": str(x.get("unit", ""))[:40], "authored": True}
+                return spec
+            self.override_used += 1  # skip the bad one, remember that we did
+            self.chronicle.log({"type": "order_skipped", "reason": "invalid override"})
         return None
 
     # ---------- posting ----------
     def baseline(self, eco: Economy) -> dict:
+        """The world as it stands at posting. `cps` is the STEADY rate —
+        buildings × season, no buffs, no Many Hands, no Late Frost — so the
+        reward just applied (or a rain at the bell, or a crowd of sockets)
+        can never set the bar for the next order (review R21)."""
         return {
             "lifetime": eco.total_all_time, "visitors": eco.rabbits + eco.tins + eco.stalls,
             "stalls": eco.stalls, "pages": len(eco.almanac), "springs": eco.prestiges,
-            "sproutsSpent": eco.sprouts_spent, "cps": eco.cps(), "sprouts": eco.sprouts,
-            "trials": sum(eco.trials_done.values()),
+            "sproutsSpent": eco.sprouts_spent, "cps": eco.base_cps() * eco.season_mult(),
+            "sprouts": eco.sprouts, "trials": sum(eco.trials_done.values()),
+            "weekSprings": self.chronicle.count("prestige", 7 * DAY),
         }
 
-    def targets(self, spec: dict, base: dict) -> list[float]:
-        """Relative targets: harvest tiers are weeks of the cps at posting,
-        grounds tiers a share of the sprouts held. A dead-still world (cps 0,
-        no sprouts) would post a free order — floor the scale so tier 1 is
-        always a deed, never a formality."""
+    def targets(self, spec: dict, base: dict, window: float) -> list[float]:
+        """Relative targets, pro-rated to the ACTUAL window (a first-boot or
+        post-restart order is due in 1–8 days, not always 7): harvest tiers
+        are multiples of the steady cps × the seconds until the bell; guest
+        tiers a share of the guests expected in the window (one per mean
+        gap; stalls by their weight); springs a multiple of last week's;
+        grounds a share of the sprouts held. Quilt fill and pages are
+        absolute. A dead-still world is floored so tier 1 is always a deed."""
         k = spec["kind"]
-        scale = {"harvest": max(base["cps"], 1.0) * 7 * DAY,
-                 "sprouts": max(base["sprouts"], 1)}.get(k, 1)
+        vs = self.d.get("visitors") or []
+        gap = self.d.get("visitorGap") or [90, 240]
+        guests = window / (sum(gap) / 2 + 12)
+        wsum = sum(v.get("weight", 1) for v in vs) or 1
+        stall_share = next((v.get("weight", 1) for v in vs if v["id"] == "parsnip"), 0) / wsum
+        scale = {"harvest": max(base["cps"], 1.0) * window,
+                 "sprouts": max(base["sprouts"], 1),
+                 "visitors": max(guests, 1.0),
+                 "stalls": max(guests * stall_share, 1.0),
+                 "springs": max(base.get("weekSprings", 0), 1) * (window / (7 * DAY))}.get(k, 1)
         return [max(1.0, float(t) * scale) for t in spec["tiers"]]
 
+    def reachable(self, spec: dict, eco: Economy) -> bool:
+        """Some kinds can be dead on the live world: a full Almanac has no
+        pages to write, a finished quilt has nothing to fill, maxed Trials
+        cannot be entered. Those are skipped, not posted as sure Embargoes."""
+        k = spec["kind"]
+        if k == "pages":
+            return len(self.d.get("almanac", [])) - len(eco.almanac) >= spec["tiers"][0]
+        if k == "quilt":
+            return (self.quilt.fill() if self.quilt else 0.0) < spec["tiers"][0]
+        if k == "trials":
+            return any(eco.trial_available(t["id"]) for t in self.d.get("trials", []))
+        return True
+
     def post(self, eco: Economy, now: float) -> dict:
+        fallback = {"id": "harvest", "name": "The Parish Harvest", "kind": "harvest", "tiers": [1, 2, 4]}
         spec = self.override_spec()
         if spec:
             self.override_used += 1
         else:
-            table = self.d.get("orders") or []
-            spec = table[len(self.history) % len(table)] if table else {
-                "id": "harvest", "name": "The Parish Harvest", "kind": "harvest", "tiers": [1, 2, 4]}
+            table = [x for x in (self.d.get("orders") or []) if self.valid_spec(x)]
+            spec = None
+            for _ in range(len(table)):  # walk the rotation past the unwinnable
+                cand = table[self.rotation % len(table)]
+                self.rotation += 1
+                if self.reachable(cand, eco):
+                    spec = cand
+                    break
+                self.chronicle.log({"type": "order_skipped", "id": cand["id"], "reason": "unreachable"})
+            spec = spec or fallback
         mh = market_hour_at(now, self.d)
-        deadline = mh["end"]
+        # the bell is the end of the next Market Hour; with no Market Hour in
+        # the data, a plain week (a dead 1970 deadline would resolve every tick)
+        deadline = mh["end"] if mh["end"] > now else now + 7 * DAY
         if deadline - now < DAY:           # never post an order due in under a day
             deadline += 7 * DAY
         base = self.baseline(eco)
@@ -229,7 +319,7 @@ class OrderBook:
             "line": spec.get("line", ""), "unit": spec.get("unit", ""),
             "authored": bool(spec.get("authored")),
             "postedAt": now, "deadline": deadline, "base": base,
-            "targets": self.targets(spec, base),
+            "targets": self.targets(spec, base, deadline - now),
         }
         self.chronicle.log({"type": "order_posted", "id": spec["id"], "name": spec["name"],
                             "deadline": deadline})

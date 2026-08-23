@@ -15,6 +15,8 @@ from pathlib import Path
 
 NAME_MIN = 2
 NAME_MAX = 20
+LEGACY_DAY = "2026-07-17"   # the rebuild: anyone on the board before R21 was here before it
+HANDS_MAX = 50              # presence board: names listed per day (the count is always exact)
 
 
 class TenderBook:
@@ -36,6 +38,11 @@ class TenderBook:
                           ("best_streak", "INTEGER NOT NULL DEFAULT 0")):
             if col not in cols:
                 self.db.execute(f"ALTER TABLE tenders ADD COLUMN {col} {decl}")
+        # tenders who signed before the presence columns existed were here
+        # first by definition: date them before R21, or the restart day
+        # would make founders of whoever reconnected first (review R21)
+        self.db.execute("UPDATE tenders SET first_seen = ? WHERE first_seen IS NULL", (LEGACY_DAY,))
+        self.db.execute("CREATE INDEX IF NOT EXISTS tenders_last_day ON tenders(last_day)")
         self.db.commit()
         try:
             lines = blocklist_path.read_text(encoding="utf-8").splitlines()
@@ -83,16 +90,21 @@ class TenderBook:
         the longest tending streaks (names ≥ 7 days old), and the founders.
         A sybil account gains one presence-day each — nothing to farm."""
         today = today or time.strftime("%Y-%m-%d", time.gmtime())
-        week_ago = time.strftime("%Y-%m-%d", time.gmtime(time.time() - 7 * 86400))
+        yesterday = (date.fromisoformat(today) - timedelta(days=1)).isoformat()
+        week_ago = (date.fromisoformat(today) - timedelta(days=7)).isoformat()
+        count = self.db.execute("SELECT COUNT(*) FROM tenders WHERE last_day = ?", (today,)).fetchone()[0]
         hands = [r[0] for r in self.db.execute(
-            "SELECT name FROM tenders WHERE last_day = ? ORDER BY name", (today,))]
+            "SELECT name FROM tenders WHERE last_day = ? ORDER BY clicks DESC, name LIMIT ?", (today, HANDS_MAX))]
+        # a streak is LIVE only if it reached yesterday or today; a run that
+        # ended last month is a best, not "days running" (review R21)
         streaks = [{"name": r[0], "streak": r[1], "best": r[2]} for r in self.db.execute(
-            "SELECT name, streak, best_streak FROM tenders WHERE first_seen <= ? "
-            "ORDER BY best_streak DESC, streak DESC, name LIMIT 5", (week_ago,))]
+            "SELECT name, CASE WHEN last_day >= ? THEN streak ELSE 0 END AS live, best_streak "
+            "FROM tenders WHERE first_seen <= ? ORDER BY live DESC, best_streak DESC, clicks DESC, name LIMIT 5",
+            (yesterday, week_ago))]
         founders = [{"name": r[0], "since": r[1]} for r in self.db.execute(
             "SELECT name, first_seen FROM tenders WHERE first_seen IS NOT NULL "
-            "ORDER BY first_seen, name LIMIT 5")]
-        return {"hands_today": hands, "streaks": streaks, "founders": founders}
+            "ORDER BY first_seen, clicks DESC, name LIMIT 5")]
+        return {"hands_today": hands, "hands_count": count, "streaks": streaks, "founders": founders}
 
     def names_active(self, days: int = 7) -> int:
         """Distinct names seen in the last N days — Many Hands' second term."""

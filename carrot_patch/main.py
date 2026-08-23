@@ -36,6 +36,7 @@ MAX_CLICKS_PER_MSG = 1000    # anti-flood only, never game balance (DESIGN P4/R2
                              # packets, not enthusiasm; the economy makes clicks fade
 MIN_MSG_INTERVAL = 0.75      # seconds between click batches per connection
 MAX_MSGS_PER_SEC = 10        # any message type, per connection
+NAME_INTERVAL = 5.0          # seconds between accepted signatures per connection (R21)
 SNAPSHOT_INTERVAL = 1.0
 SAVE_INTERVAL = 30.0
 
@@ -102,6 +103,10 @@ class Patch:
         self._pending: list[dict] = []  # extra events to broadcast with next snapshot
         if not self.eco.season_start:  # R17: the calendar starts the day it ships
             self.eco.season_start = time.time()
+        # the Parish clocks are transient (never saved): read them before the
+        # first tick, or a restart inside Market Hour would re-ring the bell
+        self.eco.market_hour = market_hour_at(time.time(), self.eco.d)["active"]
+        self.eco.hands_bonus = self.hands_bonus()
 
     def visitor_wait(self, lo: float, hi: float) -> float:
         """Seconds until the next visitor — Fair season, the Market Hour and
@@ -401,7 +406,12 @@ class Patch:
                     self.tenders.bump(conn["name"], buildings=bought)
 
         elif kind == "name":
-            # sign the noticeboard (R11): recognition, never resources
+            # sign the noticeboard (R11): recognition, never resources. One
+            # signature per socket per NAME_INTERVAL: a board row is permanent,
+            # and ten a second would be a sybil's whole day in a minute (R21)
+            if now - conn.get("last_name", -1e9) < NAME_INTERVAL:
+                return {"type": "name", "ok": False, "name": ""}
+            conn["last_name"] = now
             name = self.tenders.clean(msg.get("name", ""))
             if name:
                 conn["name"] = name
@@ -456,9 +466,9 @@ class Patch:
                 self.emit({"type": "prestige", "gained": gained,
                            "boost": eco.seed_mult() / before,
                            "trial": eco.trial["id"] if eco.trial else None})
+                # no `who`: the modal promises "your name will not be recorded" (R11)
                 self.chronicle.log({"type": "prestige", "gained": gained,
-                                    "trial": eco.trial["id"] if eco.trial else None,
-                                    "who": conn.get("name") or ""})
+                                    "trial": eco.trial["id"] if eco.trial else None})
                 self.save()
 
         elif kind == "paint":

@@ -1796,24 +1796,24 @@
    "name": "Open Gate",
    "kind": "visitors",
    "tiers": [
-    20,
-    40,
-    80
+    0.1,
+    0.3,
+    0.6
    ],
-   "line": "Every guest greeted — golden, tin, or parsnip.",
-   "unit": "visitors caught"
+   "line": "Greet the guests who come — golden, tin, or parsnip.",
+   "unit": "of the guests expected"
   },
   {
    "id": "diplomacy",
    "name": "Parsnip Diplomacy",
    "kind": "stalls",
    "tiers": [
-    4,
-    8,
-    16
+    0.1,
+    0.3,
+    0.6
    ],
    "line": "Meet the Parsnip Man at his stall. Repeatedly.",
-   "unit": "stall gambles"
+   "unit": "of the stalls expected"
   },
   {
    "id": "ink",
@@ -1832,12 +1832,12 @@
    "name": "Springs in a Row",
    "kind": "springs",
    "tiers": [
-    3,
-    6,
-    12
+    0.5,
+    1,
+    1.5
    ],
-   "line": "Send the garden to seed, again and again.",
-   "unit": "springs"
+   "line": "Keep last week's pace of springs — then beat it.",
+   "unit": "of last week's springs"
   },
   {
    "id": "grounds",

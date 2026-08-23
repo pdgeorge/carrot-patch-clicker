@@ -54,6 +54,11 @@ CC.THEMES = {
     body: ['#ffb054', '#c86018'], tops: '#4a8a5a', rain: 'rgba(185,215,245,0.36)' },
 };
 
+/* R21 client cues (DESIGN Tunables): the away summary needs an hour's gap;
+   an order's due label turns urgent inside six hours */
+CC.AWAY_AFTER = 3600;
+CC.DUE_SOON = 6 * 3600;
+
 CC.UI = class {
   constructor(core) {
     this.core = core;
@@ -270,9 +275,13 @@ CC.UI = class {
       const y = document.createElement('span'); y.textContent = b;
       r.append(x, y); box.appendChild(r);
     };
-    const hands = p.hands_today || [];
-    title(`🤝 HERE TODAY · ${hands.length}`);
-    if (hands.length) { const d = document.createElement('div'); d.textContent = hands.join(' · '); box.appendChild(d); }
+    const hands = p.hands_today || [], total = p.hands_count !== undefined ? p.hands_count : hands.length;
+    title(`🤝 HERE TODAY · ${total}`);
+    if (hands.length) {
+      const d = document.createElement('div');
+      d.textContent = hands.join(' · ') + (total > hands.length ? ` · …and ${total - hands.length} more` : '');
+      box.appendChild(d);
+    }
     else { const d = document.createElement('div'); d.className = 'board-empty'; d.textContent = 'Nobody yet today — sign in and tend.'; box.appendChild(d); }
     if ((p.streaks || []).some(x => x.streak > 1)) {
       title('🔥 STREAKS');
@@ -289,16 +298,20 @@ CC.UI = class {
      trust a tab whose clock is wrong */
   now() { return Date.now() / 1000 + (this.patch ? this.patch.skew : 0); }
 
-  /* once, after the first snapshot: if this browser was away for an hour
-     or more, the chronicle says what the world did meanwhile */
+  /* on every snapshot: if this tab was away an hour or more — closed, or a
+     laptop lid shut with it open — the chronicle says what the world did
+     meanwhile. The baseline is the previous snapshot, so a sleeping tab
+     that redials gets its summary too (review R21). */
   whileAway() {
-    if (this._awayChecked || !this.worldMode) return;
-    this._awayChecked = true;
+    if (!this.worldMode) return;
+    const now = Date.now() / 1000;
     const last = this._lastSeen;
-    const gap = Date.now() / 1000 - last;
-    if (!last || gap < 3600) return;
+    this._lastSeen = now;
+    const gap = now - last;
+    if (!last || gap < CC.AWAY_AFTER) return;
     const dir = location.pathname.replace(/[^/]*$/, '');
-    fetch(dir + 'api/chronicle?since=' + Math.floor(last)).then(r => r.json()).then(j => {
+    const since = Math.floor(last + (this.patch ? this.patch.skew : 0)); /* server time, not the tab's */
+    fetch(dir + 'api/chronicle?since=' + since).then(r => r.json()).then(j => {
       const evs = j.events || [];
       if (!evs.length) return;
       const n = t => evs.filter(e => e.type === t).length;
@@ -329,7 +342,10 @@ CC.UI = class {
 
   noteText(e) {
     const who = e.who ? e.who : 'someone';
-    if (e.type === 'prestige') return `🌸 ${who} sent the garden to seed (+${CC.fmt(e.gained || 0)} seeds)`;
+    if (e.type === 'prestige') {
+      const tt = e.trial && (CC.TRIALS || []).find(x => x.id === e.trial);
+      return `🌸 the garden went to seed (+${CC.fmt(e.gained || 0)} seeds)${tt ? ` — into ${tt.name}` : ''}`;
+    }
     if (e.type === 'season') { const s = CC.SEASONS.find(x => x.id === e.id); return `🎪 ${s ? s.name : 'a new season'} began`; }
     if (e.type === 'order_posted') return `📜 the Parish posted ${e.name}`;
     if (e.type === 'order_resolved') return e.won ? `📜 ${e.name} met — tier ${e.tier}` : `📜 ${e.name} missed`;
@@ -1153,6 +1169,7 @@ CC.UI = class {
         const pick = CC.WEATHER.find(x => (w -= x.weight) < 0) || CC.WEATHER[0];
         this.core.buffs.push({ name: pick.name, mult: pick.mult, left: pick.dur });
         this.core.weathers++;
+        this.core.mintHoney('rain'); /* R21: weather is a deed of the sky, in both gardens */
         this.patchEvent({ type: 'weather', id: pick.id });
       }
     }
@@ -1229,14 +1246,15 @@ CC.UI = class {
         this.$('order-card').classList.toggle('authored', !!o.authored);
         const due = this.$('order-due');
         due.textContent = left > 0 ? `due in ${CC.fmtDur(left)}` : 'the bell is ringing…';
-        due.classList.toggle('soon', left < 6 * 3600);
+        due.classList.toggle('soon', left < CC.DUE_SOON);
         this.$('order-line').textContent = o.line || '';
         const next = tier < t.length ? t[tier] : null;
         this.$('order-progress').textContent = next
           ? `${CC.fmt(v)} / ${CC.fmt(next)} ${unit}` : `${CC.fmt(v)} ${unit} — every tier met`;
         this.$('order-tier').textContent = tier ? `tier ${tier} of ${t.length} ${'✓'.repeat(tier)}` : 'no tier yet';
-        /* piecewise fill: the track's marks sit at 25 / 50 / 100 % */
-        const stops = [0, 0.25, 0.5, 1];
+        /* piecewise fill: the track's marks sit at 25 / 50 / 100 % for three
+           tiers; any other count spreads its marks evenly */
+        const stops = t.length === 3 ? [0, 0.25, 0.5, 1] : t.map((_, i) => i / t.length).concat([1]);
         let pct = 1;
         if (tier < t.length) {
           const lo = tier ? t[tier - 1] : 0, hi = t[tier];
@@ -1247,7 +1265,7 @@ CC.UI = class {
         const say = list => (list || []).map(e => e.honey ? `🍯${e.honey}` : e.buff ? `${e.buff.name} ×${e.buff.mult}` :
           e.visitorRate ? `guests ×${e.visitorRate}` : e.weatherGapMult ? `weather ÷${e.weatherGapMult}` : '').filter(Boolean).join(' + ');
         this.$('order-stakes').textContent =
-          `stakes — ${[1, 2, 3].map(i => `${i}: ${say(rw[i])}`).join(' · ')} · missed: ${say(fail)}`;
+          `stakes — ${t.map((_, i) => `${i + 1}: ${say(rw[i + 1])}`).join(' · ')} · missed: ${say(fail)}`;
         const last = o.last, ol = this.$('order-last');
         ol.classList.toggle('won', !!(last && last.tier > 0));
         ol.classList.toggle('lost', !!(last && !last.tier));

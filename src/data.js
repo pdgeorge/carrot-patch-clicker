@@ -526,14 +526,16 @@ CC.QUIET = { afterHours: 6, boostHours: 1, boost: 2 };
 CC.ORDERS = [
   { id: 'harvest', name: 'The Parish Harvest', kind: 'harvest', tiers: [1, 2, 4],
     line: 'Fill the barns before Market Hour.', unit: 'weeks of harvest at posting' },
-  { id: 'gate', name: 'Open Gate', kind: 'visitors', tiers: [20, 40, 80],
-    line: 'Every guest greeted — golden, tin, or parsnip.', unit: 'visitors caught' },
-  { id: 'diplomacy', name: 'Parsnip Diplomacy', kind: 'stalls', tiers: [4, 8, 16],
-    line: 'Meet the Parsnip Man at his stall. Repeatedly.', unit: 'stall gambles' },
+  /* guest tiers are a SHARE of the guests expected before the bell (one
+     per mean gap): a tenth needs someone about; half needs a watch kept */
+  { id: 'gate', name: 'Open Gate', kind: 'visitors', tiers: [0.1, 0.3, 0.6],
+    line: 'Greet the guests who come — golden, tin, or parsnip.', unit: 'of the guests expected' },
+  { id: 'diplomacy', name: 'Parsnip Diplomacy', kind: 'stalls', tiers: [0.1, 0.3, 0.6],
+    line: 'Meet the Parsnip Man at his stall. Repeatedly.', unit: 'of the stalls expected' },
   { id: 'ink', name: 'Ink for the Almanac', kind: 'pages', tiers: [1, 2, 3],
     line: 'New pages, written by deeds.', unit: 'pages written' },
-  { id: 'springs', name: 'Springs in a Row', kind: 'springs', tiers: [3, 6, 12],
-    line: 'Send the garden to seed, again and again.', unit: 'springs' },
+  { id: 'springs', name: 'Springs in a Row', kind: 'springs', tiers: [0.5, 1, 1.5],
+    line: 'Keep last week\'s pace of springs — then beat it.', unit: 'of last week\'s springs' },
   { id: 'grounds', name: 'Plant the Grounds', kind: 'sprouts', tiers: [0.25, 0.5, 1],
     line: 'Spend what the shed is hoarding.', unit: 'of the sprouts held at posting' },
   { id: 'quilt', name: 'Stitch the Quilt', kind: 'quilt', tiers: [0.25, 0.5, 0.75],

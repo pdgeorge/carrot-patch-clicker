@@ -890,7 +890,7 @@ with TestClient(app) as client:
 # ---------- 2b. the Parish (R21): orders, the chronicle, the quiet, presence ----------
 print("\n=== the Parish (R21) ===")
 import tempfile  # noqa: E402
-from carrot_patch.parish import Chronicle, OrderBook  # noqa: E402
+from carrot_patch.parish import Chronicle, OrderBook, Quilt  # noqa: E402
 
 pdir = Path(tempfile.mkdtemp(prefix="carrot_parish_"))
 chron = Chronicle(pdir / "w_events.jsonl")
@@ -901,8 +901,16 @@ t0 = 1787443200.0  # Sun 23 Aug 2026 00:00 UTC
 o = book.post(eco, t0)
 check(o["id"] == "harvest" and o["deadline"] == 1788004800.0,
       "first order is the Parish Harvest, due at the end of Saturday's Market Hour")
-check(o["targets"] == [eco.cps() * 7 * 86400 * k for k in (1, 2, 4)],
-      "harvest tiers are 1/2/4 weeks of the cps at posting")
+steady = eco.base_cps() * eco.season_mult()
+check(o["targets"] == [steady * (o["deadline"] - t0) * k for k in (1, 2, 4)],
+      "harvest tiers are 1/2/4 × the steady cps × the actual window (6.5 days here)")
+eco.buffs.append({"name": "Rabbit Frenzy", "mult": 7, "left": 30.0}); eco.hands_bonus = 2.5
+o_b = OrderBook(load_data(), pdir / "w2_parish.json", chron).post(eco, t0)
+check(o_b["targets"] == o["targets"], "a frenzy and a crowd at the bell cannot move the target (review R21)")
+eco.buffs.clear(); eco.hands_bonus = 1.0
+late = OrderBook(load_data(), pdir / "w3_parish.json", chron).post(eco, t0 + 4 * 86400)  # Thursday
+check(late["targets"][0] == steady * (late["deadline"] - (t0 + 4 * 86400)) and late["targets"][0] < o["targets"][0],
+      "an order posted on Thursday is pro-rated to its 2.5-day window, never a 7-day bar")
 check(book.tier(eco) == 0 and book.maybe_resolve(eco, t0 + 86400) is None, "nothing resolves before the bell")
 eco.earn(o["targets"][1] + 1)
 check(book.tier(eco) == 2, "earning two weeks' worth reaches tier 2")
@@ -923,8 +931,9 @@ check(out2["tier"] == 0 and any(b["name"] == "Parish Embargo" for b in eco.buffs
       "a missed order: Embargo ×0.5 and the weather thins for a day, then it's over")
 # a won tier 3 livens the gate
 o3 = book.post(eco, o2["deadline"] + 1)
-eco.stalls += 16
-check(o3["id"] == "diplomacy" and book.tier(eco) == 3, "16 stall gambles meet Parsnip Diplomacy tier 3")
+eco.stalls += int(o3["targets"][2]) + 1
+check(o3["id"] == "diplomacy" and book.tier(eco) == 3 and 1 <= o3["targets"][0] < o3["targets"][2],
+      f"Parsnip Diplomacy tiers are a share of the stalls expected this week ({[round(x) for x in o3['targets']]})")
 out3 = book.maybe_resolve(eco, o3["deadline"])
 check(out3["tier"] == 3 and book.visitor_rate(o3["deadline"] + 1) == 2.0
       and book.visitor_rate(o3["deadline"] + 2 * 86400) == 1.0, "tier 3 doubles visitors for a day")
@@ -937,11 +946,49 @@ check(book2.order == o4 and len(book2.history) == 3, "the order book survives a 
     {"id": "tmbday", "name": "A Birthday Order", "kind": "visitors", "tiers": [1, 2, 3], "line": "For the gardener."}]))
 book2.order = None
 o5 = book2.post(eco, o4["deadline"])
-check(o5["id"] == "tmbday" and o5["authored"] is True and o5["targets"] == [1.0, 2.0, 3.0],
-      "the override file posts first, marked authored")
+check(o5["id"] == "tmbday" and o5["authored"] is True and len(o5["targets"]) == 3
+      and o5["targets"][0] < o5["targets"][1] < o5["targets"][2],
+      "the override file posts first, marked authored, pro-rated like any order")
 book2.order = None
 o6 = book2.post(eco, o4["deadline"])
 check(o6["id"] != "tmbday" and o6["authored"] is False, "each override posts once, then the table resumes")
+# the pen is checked: bad shapes are skipped, never posted, never a crash
+(pdir / "orders_override.json").write_text(json.dumps([
+    {"kind": "harvest", "tiers": "1,2,4"}, {"kind": "visitors", "tiers": [1, 2, 3, 4]},
+    {"kind": "bogus", "tiers": [1, 2, 3]}, {"kind": "harvest", "tiers": [1, 2, 1e999]},
+    {"kind": "harvest", "tiers": [3, 2, 1]}, {"kind": "stalls", "tiers": [0.2, 0.4, 0.8], "name": "x" * 80}]))
+book2.override_used = 0
+book2.order = None
+o7 = book2.post(eco, o4["deadline"])
+check(o7["kind"] == "stalls" and o7["authored"] and len(o7["name"]) == 40 and book2.override_used == 6,
+      "five malformed override specs are skipped (logged), the sixth posts with its name trimmed")
+(pdir / "orders_override.json").unlink()
+# the rotation is its own counter: a restart after 20+ orders keeps its place
+book3 = OrderBook(load_data(), pdir / "w_parish.json", chron)
+book3.history = [{"tier": 1}] * 20; book3.rotation = 23; book3.save()
+book4 = OrderBook(load_data(), pdir / "w_parish.json", chron)
+check(book4.rotation == 23 and len(book4.history) == 20, "the rotation pointer survives the 20-entry history cap")
+# no Market Hour in the data: a plain week, never a 1970 deadline
+d_nomh = load_data(); d_nomh["marketHour"] = None
+b_nomh = OrderBook(d_nomh, pdir / "w5_parish.json", chron)
+o8 = b_nomh.post(eco, t0)
+check(abs(o8["deadline"] - (t0 + 7 * 86400)) < 1 and b_nomh.maybe_resolve(eco, t0 + 60) is None,
+      "without a Market Hour an order is due in a week — not overdue at once")
+# unwinnable kinds are skipped: a full Almanac has no pages to write
+full = Economy(load_data())
+for pg in full.d["almanac"]:
+    full.almanac[pg["id"]] = True
+b_skip = OrderBook(load_data(), pdir / "w6_parish.json", chron)
+b_skip.rotation = 3  # 'ink' is next
+o9 = b_skip.post(full, t0)
+check(o9["id"] != "ink" and any(e["type"] == "order_skipped" and e.get("id") == "ink" for e in chron.read(0)),
+      "Ink for the Almanac is skipped on a full book and the chronicle says so")
+q_full = Quilt(load_data(), pdir / "q.json")
+for i in range(len(q_full.cells)):
+    q_full.cells[i] = 1
+b_q = OrderBook(load_data(), pdir / "w7_parish.json", chron, q_full)
+b_q.rotation = 6  # 'quilt' is next
+check(b_q.post(eco, t0)["id"] != "quilt", "a finished quilt is not ordered again")
 # the quiet state
 q = load_data()["quiet"]
 book2.touch(eco, 1e9)
@@ -955,8 +1002,11 @@ check(hrs is not None and hrs > q["afterHours"] and eco.buffs[-1]["name"] == "We
 days = chron.days(7)
 check(days and days[0]["counts"].get("order_posted", 0) >= 5 and any(e["type"] == "quiet" for e in days[0]["notable"]),
       "the chronicle buckets the day: counts plus notable events")
-check(all(e["type"] in ("order_posted", "order_resolved", "quiet") for d in days for e in d["notable"]),
+check(all(e["type"] in ("order_posted", "order_resolved", "order_skipped", "quiet") for d in days for e in d["notable"]),
       "only notable types reach the day's notes")
+chron2 = Chronicle(pdir / "w_events.jsonl")
+check(len(chron2.recent) == len(chron.recent) and chron2.days(7)[0]["counts"] == days[0]["counts"],
+      "a restart reads the day-book back from the file tail into memory")
 import shutil  # noqa: E402
 shutil.rmtree(pdir, ignore_errors=True)
 
@@ -974,9 +1024,29 @@ ada = next(r for r in tb.db.execute("SELECT streak, best_streak, first_seen FROM
 bob = next(r for r in tb.db.execute("SELECT streak, best_streak FROM tenders WHERE name='Bob'"))
 check(ada[0] == 3 and ada[1] == 3 and ada[2] == "2026-08-20", f"three consecutive days make a streak of 3 (Ada {ada})")
 check(bob[0] == 1 and bob[1] == 1, f"a missed day resets the streak (Bob {bob})")
-check(pres["hands_today"] == ["Bob"], "hands today lists who tended today")
+check(pres["hands_today"] == ["Bob"] and pres["hands_count"] == 1, "hands today lists who tended today, with an exact count")
 check(pres["founders"][0]["name"] == "Ada", "founders are ordered by first appearance")
 check(tb.names_active(7) == 2, "two names active this week")
+pres_later = tb.presence(today="2026-09-30")
+ada_row = next(x for x in pres_later["streaks"] if x["name"] == "Ada")
+check(ada_row["streak"] == 0 and ada_row["best"] == 3, "a streak that ended last month is a best, not 'days running'")
+for i in range(60):
+    tb.bump(f"sybil{i:02d}", clicks=0, today="2026-09-30")
+pres_many = tb.presence(today="2026-09-30")
+check(len(pres_many["hands_today"]) == 50 and pres_many["hands_count"] == 60, "the hands list is bounded; the count is exact")
+# a pre-R21 registry: nobody becomes a founder on restart day
+import sqlite3  # noqa: E402
+legacy_db = Path(tempfile.mkdtemp(prefix="carrot_legacy_")) / "t.db"
+con = sqlite3.connect(legacy_db)
+con.execute("CREATE TABLE tenders (name TEXT PRIMARY KEY, clicks INTEGER NOT NULL DEFAULT 0, buildings INTEGER NOT NULL DEFAULT 0)")
+con.execute("INSERT INTO tenders VALUES ('tbone', 422000000, 5), ('!zed', 1, 0)")
+con.commit(); con.close()
+tb2 = TenderBook(legacy_db, ROOT / "carrot_patch" / "blocklist.txt")
+tb2.bump("!zed", clicks=1)
+tb2.bump("newcomer", clicks=1)
+f2 = tb2.presence()["founders"]
+check(f2[0]["name"] == "tbone" and f2[1]["name"] == "!zed" and f2[0]["since"] < "2026-08-01",
+      "legacy tenders are dated before R21 and ranked by clicks — the restart day makes no founders")
 
 # over the wire: the snapshot carries the order and the market clock; /api/chronicle and presence answer
 with TestClient(app) as client:
