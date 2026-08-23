@@ -1764,6 +1764,66 @@
      "sacrifices": 1
     }
    ]
+  },
+  {
+   "id": "fy0",
+   "name": "Fallow Year I",
+   "flavor": "The whole world lay fallow. The seeds went into the ground as loam.",
+   "unlock": [
+    {
+     "fallows": 1
+    }
+   ]
+  },
+  {
+   "id": "fy1",
+   "name": "Three Winters",
+   "flavor": "Three times the bell rang out, and three times the garden came back.",
+   "unlock": [
+    {
+     "fallows": 3
+    }
+   ]
+  },
+  {
+   "id": "fy2",
+   "name": "Ten Winters",
+   "flavor": "The cycle is the game now.",
+   "unlock": [
+    {
+     "fallows": 10
+    }
+   ]
+  },
+  {
+   "id": "fy3",
+   "name": "The Cellar Door",
+   "flavor": "Loam spent on a rule, not a number.",
+   "unlock": [
+    {
+     "cellarAny": 1
+    }
+   ]
+  },
+  {
+   "id": "fy4",
+   "name": "A Full Cellar",
+   "flavor": "Every perk at its cap. The rules are all rewritten.",
+   "unlock": [
+    {
+     "cellarFull": 1
+    }
+   ]
+  },
+  {
+   "id": "fy5",
+   "name": "Rehearsal",
+   "flavor": "The bell rang four times and nothing happened. Next time, it will.",
+   "unlock": [
+    {
+     "rehearsed": 1
+    }
+   ]
   }
  ],
  "almanacMult": 1.02,
@@ -2500,6 +2560,63 @@
    "rabbit": 1.5,
    "weather": 2,
    "flavor": "The last page. Step inside and the bed is finished."
+  }
+ ],
+ "fallow": {
+  "minLoam": 400,
+  "rings": 4,
+  "ringGap": 7200,
+  "tilthPerFallow": 0.05,
+  "tilthCap": 25
+ },
+ "cellar": [
+  {
+   "id": "quick",
+   "name": "Quick Spring",
+   "cap": 5,
+   "per": 10,
+   "effect": "every spring starts with 10 of each plot per level",
+   "flavor": "The first morning of the year is already half done."
+  },
+  {
+   "id": "pace",
+   "name": "Scarecrow Pace",
+   "cap": 5,
+   "per": 10,
+   "effect": "the Scarecrow acts 10 s sooner per level (60 s → 10 s)",
+   "flavor": "It learned to hurry. Nobody taught it."
+  },
+  {
+   "id": "gate",
+   "name": "Open Gate",
+   "cap": 8,
+   "per": 0.05,
+   "effect": "guests arrive 5% more often per level",
+   "flavor": "The latch is off. The rabbits noticed first."
+  },
+  {
+   "id": "beds",
+   "name": "Deeper Beds",
+   "cap": 2,
+   "per": 1,
+   "effect": "the Seed Bed grows a row and a column per level (4×4 → 6×6); heirlooms resprout 25 deeper",
+   "flavor": "Dig once, and the bed remembers the shape."
+  },
+  {
+   "id": "orders",
+   "name": "Wider Orders",
+   "cap": 2,
+   "per": 1,
+   "effect": "one more Parish Order on the board at a time",
+   "flavor": "The Parish has more paper than it knows what to do with."
+  },
+  {
+   "id": "memory",
+   "name": "Seed Memory",
+   "cap": 6,
+   "per": 1,
+   "effect": "every Fallow cycle begins with 10^level seeds already earned (a head start of hours, not a bonus)",
+   "flavor": "The ground does not forget what grew in it."
   }
  ]
 }

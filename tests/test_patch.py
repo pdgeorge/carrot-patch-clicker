@@ -684,6 +684,50 @@ p23b = Economy(load_data()); p23b.deserialize(js23["snap"])
 check(p23b.bed["plots"] == p23.bed["plots"] and p23b.bed["log"] == p23.bed["log"] and p23b.bed["seed"] == p23.bed["seed"]
       and p23b.bed["soil"] == "chips", "a JS save's bed loads into Python intact")
 
+# ---------- 1j. Lie Fallow (R24): the same retirement in both engines ----------
+print("\n=== R24 Lie Fallow parity ===")
+JS_R24 = r"""
+const fs = require('fs'), path = require('path'), vm = require('vm');
+for (const f of ['data.js', 'core.js']) {
+  vm.runInThisContext(fs.readFileSync(path.join(process.argv[1], 'src', f), 'utf8'));
+}
+const c = new CC.Core();
+c.seeds = 1.96e22; c.lifetimeBase = 4.5e50; c.totalRun = 1e47; c.bank = 1e48; c.sprouts = 5e20;
+c.shed = { p0: 1, p5: 1, p9: 1, l0: 1045, l1: 6, h0: 105 }; c.bought = { c0: true }; c.honey = 140; c.fallows = 1;
+c.bed.plots[3] = { sp: 'thyme', age: 2 }; c.bed.log.sprout = 3; c.perks.startTier = 1;
+const out = { pending: c.loamPending(), avail: c.fallowAvailable(), gain: c.fallow() };
+for (const id of ['quick', 'quick', 'beds', 'pace', 'gate', 'memory', 'memory', 'orders']) c.buyCellar(id);
+out.loam = c.loam; out.cellar = c.cellar; out.bedW = c.bedW(); out.plots = c.bed.plots.length; out.thyme = c.bed.plots[3];
+out.every = c.scarecrowEvery(); out.gate = c.gateRate(); out.tilth = c.tilthMult();
+c.totalRun = 4e8; c.lifetimeBase = 1e8; c.bank = 1; out.gained = c.prestige(); out.sprouts = c.sprouts; out.owned = c.owned; out.bought = Object.keys(c.bought).sort();
+c.seeds = 1e21; out.gain2 = c.fallow(); out.seeds = c.seeds; out.tat = c.totalAllTime; out.pendingSeeds = c.pendingSeeds();
+out.cps = c.cps(); out.shed = c.shed; out.snap = c.serialize();
+console.log(JSON.stringify(out));
+"""
+js24 = json.loads(subprocess.run(
+    ["node", "-e", JS_R24, str(ROOT)], capture_output=True, text=True, check=True).stdout)
+p24 = Economy(load_data())
+p24.seeds = 1.96e22; p24._lifetime_base = 4.5e50; p24.total_run = 1e47; p24.bank = 1e48; p24.sprouts = 5e20
+p24.shed = {"p0": 1, "p5": 1, "p9": 1, "l0": 1045, "l1": 6, "h0": 105}; p24.bought = {"c0": True}; p24.honey = 140; p24.fallows = 1
+p24.bed["plots"][3] = {"sp": "thyme", "age": 2}; p24.bed["log"]["sprout"] = 3; p24.perks["startTier"] = 1
+check(p24.loam_pending() == js24["pending"] == 496 and p24.fallow_available() == js24["avail"] is True, "496 loam pending, the bell available")
+check(p24.fallow() == js24["gain"] == 496, "the Fallow pays the same")
+for cid in ["quick", "quick", "beds", "pace", "gate", "memory", "memory", "orders"]:
+    p24.buy_cellar(cid)
+check(p24.loam == js24["loam"] and p24.cellar == js24["cellar"] and p24.bed_w() == js24["bedW"] and len(p24.bed["plots"]) == js24["plots"]
+      and p24.bed["plots"][3] == js24["thyme"], f"the Cellar buys identically ({p24.cellar}, loam {p24.loam})")
+check(p24.scarecrow_every() == js24["every"] and near(p24.gate_rate(), js24["gate"]) and near(p24.tilth_mult(), js24["tilth"]), "pace, gate and tilth agree")
+p24.total_run = 4e8; p24._lifetime_base = 1e8; p24.bank = 1.0
+check(p24.prestige() == js24["gained"] and p24.sprouts == js24["sprouts"] and p24.owned == js24["owned"] and sorted(p24.bought) == js24["bought"],
+      f"a Quick Spring with Tilth starts the same ({p24.owned[:3]}…, {p24.sprouts} sprouts)")
+p24.seeds = 1e21
+check(p24.fallow() == js24["gain2"] and p24.seeds == js24["seeds"] and p24.total_all_time == js24["tat"] and p24.pending_seeds() == js24["pendingSeeds"] == 0,
+      f"Seed Memory starts the next cycle identically ({p24.seeds} seeds)")
+check(near(p24.cps(), js24["cps"]) and p24.shed == js24["shed"], "cps and the surviving shed agree")
+p24b = Economy(load_data()); p24b.deserialize(js24["snap"])
+check(p24b.loam == p24.loam and p24b.cellar == p24.cellar and p24b.fallows == 3 and len(p24b.bed["plots"]) == 25,
+      "a JS save's loam, Cellar and 5×5 bed load into Python")
+
 # ---------- 2. live protocol over a real websocket ----------
 print("\n=== protocol (in-process server) ===")
 import os  # noqa: E402
@@ -1066,6 +1110,56 @@ check(all(e["type"] in ("order_posted", "order_resolved", "order_skipped", "quie
 chron2 = Chronicle(pdir / "w_events.jsonl")
 check(len(chron2.recent) == len(chron.recent) and chron2.days(7)[0]["counts"] == days[0]["counts"],
       "a restart reads the day-book back from the file tail into memory")
+# Wider Orders (R24): a second slot means a second card, never the same kind twice
+wide = Economy(load_data()); wide.earn(1e7); wide.buy(0, 20); wide.cellar["orders"] = 2
+b_w = OrderBook(load_data(), pdir / "w8_parish.json", chron)
+check(b_w.slots(wide) == 3, "Wider Orders 2: three slots")
+o_a = b_w.post(wide, t0); o_b = b_w.post(wide, t0); o_c = b_w.post(wide, t0)
+check(len(b_w.live) == 3 and len({o_a["id"], o_b["id"], o_c["id"]}) == 3 and b_w.order is o_a, "three different orders stand; the first is the legacy one")
+check(len(b_w.snapshot_all(wide)) == 3 and b_w.snapshot(wide, t0)["id"] == o_a["id"], "the snapshot lists every card")
+wide.earn(o_a["targets"][2] + 1)
+out_w = b_w.maybe_resolve(wide, o_a["deadline"])
+check(out_w and out_w["id"] == o_a["id"] and out_w["tier"] == 3 and len(b_w.live) == 2 and b_w.order is o_b,
+      "at the bell each due order resolves on its own; the others stay")
+b_w2 = OrderBook(load_data(), pdir / "w8_parish.json", chron)
+check(len(b_w2.live) == 2, "all live orders survive a restart")
+
+# Lie Fallow's bell (R24): four rings two hours apart; the first is a rehearsal
+fb = Economy(load_data()); fb.seeds = 1.96e22; fb._lifetime_base = 4.5e50
+book_b = OrderBook(load_data(), pdir / "w9_parish.json", chron, Quilt(load_data(), pdir / "q9.json"))
+F = load_data()["fallow"]
+small = Economy(load_data()); small.seeds = 1e10
+check(book_b.ring(small, t0, "tbone") is None, "no loam, no bell")
+b = book_b.ring(fb, t0, "tbone")
+check(b and b["rehearsal"] is True and b["rung"] == 1 and book_b.ring(fb, t0 + 1) is None, "the first bell is a rehearsal, and only one bell rings at a time")
+check(book_b.bell_tick(fb, t0 + F["ringGap"] - 1) == [], "quiet until the second ring")
+ev2 = book_b.bell_tick(fb, t0 + F["ringGap"])
+check(ev2 and ev2[0]["type"] == "bell" and ev2[0]["ring"] == 2 and ev2[0]["rehearsal"], "the second ring, two hours on")
+check(book_b.silence("pdgeorge") and book_b.bell is None and not book_b.silence(), "anyone can silence it; once")
+book_b.ring(fb, t0, "tbone")
+evs_b = []
+for k in range(1, F["rings"] + 1):
+    evs_b.extend(book_b.bell_tick(fb, t0 + k * F["ringGap"]))
+check([e["type"] for e in evs_b] == ["bell", "bell", "rehearsed"] and fb.rehearsed and fb.fallows == 0 and fb.seeds == 1.96e22,
+      "the rehearsal rings out: nothing resets, the bell is armed")
+book_b.quilt.cells[0] = 5
+book_b.ring(fb, t0, "tbone")
+evs_b = []
+for k in range(1, F["rings"] + 1):
+    evs_b.extend(book_b.bell_tick(fb, t0 + k * F["ringGap"]))
+fal = next((e for e in evs_b if e["type"] == "fallow"), None)
+check(fal and fal["loam"] == 496 and fb.fallows == 1 and fb.seeds == 0 and fb.loam == 496 and book_b.bell is None,
+      "the real bell: the world lies fallow for 496 loam")
+check(fal["quilt"][:2] == "05" and book_b.quilt.cells[0] == 0 and book_b.quilt.version > 0, "the quilt is framed into the chronicle and cleared")
+check(any(e["type"] == "fallow" for e in chron.read(0)), "the chronicle records the Fallow Year")
+book_b.ring(fb, t0)
+check(book_b.bell is None, "after the Fallow the loam is gone: the bell is silent again")
+book_c = OrderBook(load_data(), pdir / "w9_parish.json", chron)
+fb.seeds = 1e22
+book_c.ring(fb, t0)
+book_d = OrderBook(load_data(), pdir / "w9_parish.json", chron)
+check(book_d.bell and book_d.bell["rung"] == 1, "a ringing bell survives a restart")
+
 import shutil  # noqa: E402
 shutil.rmtree(pdir, ignore_errors=True)
 
@@ -1216,6 +1310,34 @@ with TestClient(app) as client:
                 break
         check(snap and "bed" in snap["state"] and snap["state"]["bed"]["soil"] == "clay" and "bedT" in snap["state"],
               "the snapshot carries the bed")
+
+    # Lie Fallow (R24) over the wire: the bell, the Cellar
+    with client.websocket_connect("/ws") as ws:
+        ws.receive_json()
+        patch.eco.seeds = 1.96e22; patch.eco._lifetime_base = 4.5e50; patch.eco.loam = 5
+        ws.send_json({"type": "ring"})
+        time.sleep(0.05)
+        check(patch.orders.bell and patch.orders.bell["rehearsal"] and patch.orders.bell["rung"] == 1, "the bell rings over the wire — a rehearsal first")
+        ws.send_json({"type": "silence"})
+        time.sleep(0.05)
+        check(patch.orders.bell is None, "…and is silenced over the wire")
+        ws.send_json({"type": "cellar", "id": "quick"})
+        ws.send_json({"type": "cellar", "id": "bogus"})
+        ws.send_json({"type": "cellar", "id": ["x"]})
+        time.sleep(0.05)
+        check(patch.eco.cellar.get("quick") == 1 and patch.eco.loam == 4, "loam buys a Cellar level; junk ids buy nothing")
+        # the bell rings out for real when the clock says so
+        patch.eco.rehearsed = True
+        ws.send_json({"type": "ring"})
+        time.sleep(0.05)
+        check(patch.orders.bell and not patch.orders.bell["rehearsal"], "the armed bell is real")
+        patch.orders.bell["at"] = time.time() - 4 * patch.eco.d["fallow"]["ringGap"]  # every ring is due
+        time.sleep(1.3)
+        check(patch.orders.bell is None and patch.eco.fallows == 1 and patch.eco.seeds == 0 and patch.eco.loam == 4 + 496,
+              f"the world lies fallow on the tick: +496 loam, seeds retired (fallows {patch.eco.fallows})")
+        check(any(e["type"] == "fallow" for e in patch.chronicle.read(0)), "the chronicle records it")
+        fresh_f = Economy(load_data()); fresh_f.deserialize(json.loads(state_path.read_text()))
+        check(fresh_f.fallows == 1 and fresh_f.loam == 500 and fresh_f.cellar.get("quick") == 1, "the Fallow is saved at once")
 
 # ---------- 3. mounted inside a parent site (lifespan never reaches sub-apps) ----------
 print("\n=== mounted under a parent FastAPI site ===")

@@ -27,6 +27,8 @@
       <div id="sprout-line"></div>
       <button id="prestige-btn" class="hidden">🌸 Go to Seed</button>
       <button id="shed-btn" class="hidden">🌱 The Potting Shed</button>
+      <button id="bell-btn" class="hidden">🔔 Ring the bell — Lie Fallow</button>
+      <div id="bell-line" class="hidden"></div>
       <div class="small-controls">
         <button id="mute-btn" title="toggle sound">🔊</button>
         <button id="daynight-btn" title="day / night / auto">🌗</button>
@@ -40,14 +42,7 @@
     <section id="col-mid">
       <div id="order" class="hidden">
         <div class="panel-title">PARISH ORDERS</div>
-        <div id="order-card">
-          <div id="order-head"><b id="order-name"></b><span id="order-due"></span></div>
-          <div id="order-line"></div>
-          <div id="order-track"><div id="order-fill"></div><i class="o-mark"></i><i class="o-mark"></i><i class="o-mark"></i></div>
-          <div id="order-foot"><span id="order-progress"></span><span id="order-tier"></span></div>
-          <div id="order-stakes"></div>
-          <div id="order-last"></div>
-        </div>
+        <div id="order-cards"></div>
       </div>
       <div class="panel-title">THE SEED LOG</div>
       <div id="seedlog-line"></div>
@@ -105,11 +100,30 @@
 
   <div id="shed" class="hidden">
     <div id="shed-box">
+      <div id="shed-tabs"><button data-tab="shed" class="on">🌱 The Potting Shed</button><button data-tab="cellar">🪨 The Root Cellar</button></div>
+      <div id="shed-pane">
       <h2>🌱 THE POTTING SHED</h2>
       <p id="shed-sub">Seeds are forever. Sprouts are for planting.</p>
       <div id="shed-balance"></div>
       <div id="shed-items"></div>
+      </div>
+      <div id="cellar-pane" class="hidden">
+      <h2>🪨 THE ROOT CELLAR</h2>
+      <p id="cellar-sub">Loam buys rules, never numbers. Level n costs n loam.</p>
+      <div id="cellar-balance"></div>
+      <div id="cellar-items"></div>
+      </div>
       <button id="shed-close">Back to the garden</button>
+    </div>
+  </div>
+
+  <div id="ceremony" class="hidden">
+    <div id="ceremony-box">
+      <div id="ceremony-eyebrow"></div>
+      <h2 id="ceremony-title"></h2>
+      <p id="ceremony-body"></p>
+      <canvas id="ceremony-quilt" width="48" height="48" class="hidden"></canvas>
+      <button id="ceremony-close">Back to the garden</button>
     </div>
   </div>
 

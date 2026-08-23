@@ -63,9 +63,9 @@ def load_data() -> dict:
         return json.load(f)
 
 
-def fresh_bed(d: dict) -> dict:
+def fresh_bed(d: dict, w: int | None = None, h: int | None = None) -> dict:
     b = d.get("bed") or {"w": 4, "h": 4}
-    return {"soil": "dirt", "plots": [None] * (b["w"] * b["h"]), "log": {}, "seed": 1, "n": 0,
+    return {"soil": "dirt", "plots": [None] * ((w or b["w"]) * (h or b["h"])), "log": {}, "seed": 1, "n": 0,
             "soilAt": 0.0, "sacrificeLeft": 0.0}
 
 
@@ -110,6 +110,11 @@ class Economy:
         self.bed: dict = fresh_bed(data)
         self.bed_t: float = 0.0
         self.sacrifices: int = 0
+        # Lie Fallow (R24): the second prestige; Loam buys rules, never numbers
+        self.loam: int = 0
+        self.cellar: dict[str, int] = {}
+        self.fallows: int = 0
+        self.rehearsed: bool = False
         self.buffs: list[dict] = []  # {name, mult, left}
         self._ribbon_seen = 0
         self._bumper_seen = [0] * len(data["buildings"])
@@ -196,7 +201,119 @@ class Economy:
             return self.log_full()
         if "sacrifices" in c:
             return self.sacrifices >= c["sacrifices"]
+        # Lie Fallow (R24)
+        if "fallows" in c:
+            return self.fallows >= c["fallows"]
+        if "loam" in c:
+            return self.loam >= c["loam"]
+        if "cellar" in c:
+            return self.cellar_level(c["cellar"]) >= c.get("n", 1)
+        if "cellarAny" in c:
+            return any(self.cellar_level(x["id"]) >= 1 for x in self.d.get("cellar", []))
+        if "cellarFull" in c:
+            return all(self.cellar_maxed(x) for x in self.d.get("cellar", []))
+        if "rehearsed" in c:
+            return self.rehearsed
         return False
+
+    # ---------- Lie Fallow & the Root Cellar (R24) — mirror of core.js ----------
+    def bed_w(self) -> int:
+        return (self.d.get("bed") or {"w": 4})["w"] + self.cellar_level("beds")
+
+    def bed_h(self) -> int:
+        return (self.d.get("bed") or {"h": 4})["h"] + self.cellar_level("beds")
+
+    def bed_resize(self, old_w: int, old_h: int) -> None:
+        w, h = self.bed_w(), self.bed_h()
+        if (old_w, old_h) == (w, h):
+            return
+        old, nxt = self.bed["plots"], [None] * (w * h)
+        for y in range(min(old_h, h)):
+            for x in range(min(old_w, w)):
+                nxt[y * w + x] = old[y * old_w + x] or None
+        self.bed["plots"] = nxt
+
+    def cellar_data(self, cid) -> dict | None:
+        return next((c for c in self.d.get("cellar", []) if c["id"] == cid), None)
+
+    def cellar_level(self, cid) -> int:
+        return self.cellar.get(cid, 0)
+
+    def cellar_cost(self, cid) -> int:
+        return self.cellar_level(cid) + 1
+
+    def cellar_maxed(self, c: dict) -> bool:
+        return self.cellar_level(c["id"]) >= c["cap"]
+
+    def buy_cellar(self, cid) -> bool:
+        c = self.cellar_data(cid)
+        if not c or self.cellar_maxed(c) or self.loam < self.cellar_cost(cid):
+            return False
+        w, h = self.bed_w(), self.bed_h()
+        self.loam -= self.cellar_cost(cid)
+        self.cellar[cid] = self.cellar_level(cid) + 1
+        if cid == "beds":
+            self.bed_resize(w, h)
+        return True
+
+    def loam_pending(self) -> int:
+        return int(math.floor(math.log10(self.seeds) ** 2)) if self.seeds >= 10 else 0
+
+    def fallow_available(self) -> bool:
+        f = self.d.get("fallow")
+        return bool(f) and self.loam_pending() >= f["minLoam"]
+
+    def tilth_mult(self) -> float:
+        f = self.d.get("fallow")
+        return 1 + f["tilthPerFallow"] * min(self.fallows, f["tilthCap"]) if f else 1.0
+
+    def scarecrow_every(self) -> float:
+        return max(10, self.d.get("trial", {}).get("scarecrowEvery", 60) - 10 * self.cellar_level("pace"))
+
+    def gate_rate(self) -> float:
+        return 1 + 0.05 * self.cellar_level("gate")
+
+    def fallow(self) -> int:
+        """The world lies fallow — mirror of core.js fallow()."""
+        if not self.fallow_available():
+            return 0
+        self._latch_pages()
+        gain = self.loam_pending()
+        self.loam += gain
+        self.fallows += 1
+        mem = self.cellar_level("memory")
+        self.bank = 0.0
+        self.total_run = 0.0
+        self._lifetime_base = float(10 ** (2 * mem + 6)) if mem > 0 else 0.0
+        self.seeds = 10 ** mem if mem > 0 else 0
+        self.sprouts = 0
+        self.bought = {}
+        for u in self.d["shed"]:
+            if u.get("repeat"):
+                self.shed.pop(u["id"], None)
+        self.buffs = [b for b in self.buffs if b.get("keep")]
+        self.trial = None
+        self.halt_t = 0.0
+        self.run_log = []
+        self.owned = [0] * len(self.owned)
+        self.spring_start()
+        self._ribbon_seen = len(self.ribbons())
+        return gain
+
+    def spring_start(self) -> None:
+        cap = (self.d.get("trial", {}).get("resproutCapBase", 100) + self.perks["resproutCap"]
+               + 25 * self.cellar_level("beds"))
+        for u in self.d["shed"]:
+            if u.get("resprout") and "building" in u:
+                self.owned[u["building"]] = max(self.owned[u["building"]], min(self.shed_level(u["id"]), cap))
+        quick = (self.cellar_data("quick") or {"per": 10})["per"] * self.cellar_level("quick")
+        if quick > 0:
+            for i in range(len(self.owned)):
+                self.owned[i] = max(self.owned[i], quick)
+        for ti in range(self.perks["startTier"]):
+            for i in range(len(self.owned)):
+                self.bought[f"b{i}t{ti}"] = True
+        self._bumper_seen = [self.bumper_count(i) for i in range(len(self.owned))]
 
     # ---------- the Seed Bed (R23) — mirror of core.js ----------
     def bed_rand(self) -> float:
@@ -318,7 +435,7 @@ class Economy:
         return min(self.d["bed"]["weatherCap"], m)
 
     def bed_neighbors(self, i: int) -> list[int]:
-        w, h = self.d["bed"]["w"], self.d["bed"]["h"]
+        w, h = self.bed_w(), self.bed_h()
         x, y = i % w, i // w
         out = []
         for dy in (-1, 0, 1):
@@ -721,7 +838,7 @@ class Economy:
         self.trial = {"id": trial_id, "goal": goal, "t": 0.0} if goal > 0 else None
         self.halt_t = 0.0
         self.seeds += gain
-        self.sprouts += gain * self.mint_mult()  # every seed sprouts (R13); doublers stack (R15)
+        self.sprouts += int(gain * self.mint_mult() * self.tilth_mult())  # every seed sprouts (R13); doublers (R15); Tilth (R24)
         self.prestiges += 1
         self.mint_honey("spring")
         self.bank = 0.0
@@ -731,19 +848,9 @@ class Economy:
         self.bought = {}
         # a spring clears the weather, never a Parish reward (R21)
         self.buffs = [b for b in self.buffs if b.get("keep")]
-        # resprout (R15): heirloom strains regrow themselves each spring —
-        # deeper with the Short Rows perk (R22)
-        cap = self.d.get("trial", {}).get("resproutCapBase", 100) + self.perks["resproutCap"]
-        for u in self.d["shed"]:
-            if u.get("resprout") and "building" in u:
-                self.owned[u["building"]] = min(self.shed_level(u["id"]), cap)
-        # Crop Rotation perk (R22): springs start with the first n tiers of
-        # building upgrades already on the shelf
-        for ti in range(self.perks["startTier"]):
-            for i in range(len(self.owned)):
-                self.bought[f"b{i}t{ti}"] = True
-        # pre-seed, silently: resprouted rows must not fire a bumper toast storm
-        self._bumper_seen = [self.bumper_count(i) for i in range(len(self.owned))]
+        # resprouts (R15), Quick Spring (R24), free tiers (R22) — and the
+        # bumper pre-seed, so a resprouted row never fires a toast storm
+        self.spring_start()
         return gain
 
     # ---------- tick ----------
@@ -809,7 +916,7 @@ class Economy:
         if self.perks["scarecrow"] > 0 and not self.rule("haltOnBuy"):
             td = self.d.get("trial", {})
             self.sc_t += dt
-            if self.sc_t >= td.get("scarecrowEvery", 60):
+            if self.sc_t >= self.scarecrow_every():
                 self.sc_t = 0.0
                 pick, best = -1, math.inf
                 for i in range(min(len(self.owned), 2 * self.perks["scarecrow"])):
@@ -866,6 +973,7 @@ class Economy:
                     "log": dict(self.bed["log"]), "seed": self.bed["seed"], "n": self.bed["n"],
                     "soilAt": self.bed["soilAt"], "sacrificeLeft": self.bed["sacrificeLeft"]},
             "bedT": self.bed_t, "sacrifices": self.sacrifices,
+            "loam": self.loam, "cellar": self.cellar, "fallows": self.fallows, "rehearsed": self.rehearsed,
             "season": self.season, "seasonStart": self.season_start,
             "saved": time.time(),
         }
@@ -961,9 +1069,19 @@ class Economy:
         def num(v, hi, lo=0.0):
             return (min(float(v), hi) if isinstance(v, (int, float)) and not isinstance(v, bool)
                     and math.isfinite(v) and v > lo else lo)
-        bdd = self.d.get("bed") or {"w": 4, "h": 4, "tick": 300}
+        # the Cellar first: the bed's size depends on it (R24)
+        self.loam = _cnt(s.get("loam", 0))
+        self.fallows = _cnt(s.get("fallows", 0))
+        self.rehearsed = bool(s.get("rehearsed", False))
+        self.cellar = {}
+        raw_cel = s.get("cellar") if isinstance(s.get("cellar"), dict) else {}
+        for cd in self.d.get("cellar", []):
+            lv = _cnt(raw_cel.get(cd["id"], 0))
+            if lv > 0:
+                self.cellar[cd["id"]] = min(lv, cd["cap"])
+        bdd = {"w": self.bed_w(), "h": self.bed_h(), "tick": (self.d.get("bed") or {}).get("tick", 300)}
         rb = s.get("bed") if isinstance(s.get("bed"), dict) else {}
-        fresh = fresh_bed(self.d)
+        fresh = fresh_bed(self.d, bdd["w"], bdd["h"])
         self.bed = fresh
         if any(x["id"] == rb.get("soil") for x in self.d.get("soils", [])):
             fresh["soil"] = rb["soil"]
@@ -1037,6 +1155,7 @@ class Economy:
             "trial": self.trial, "trialsDone": self.trials_done, "trialBest": self.trial_best,
             "runLog": self.run_log, "perks": self.perks, "haltT": self.halt_t,
             "bed": self.bed, "bedT": self.bed_t, "sacrifices": self.sacrifices,
+            "loam": self.loam, "cellar": self.cellar, "fallows": self.fallows, "rehearsed": self.rehearsed,
             "almanac": self.almanac,
             "season": self.season,
             "seasonEnds": (self.season_start + self.d.get("seasonDays", 14) * 86400.0

@@ -202,8 +202,8 @@ check(!bad.almanac.fake && bad.almanac.sd0 === true
 
 /* the Almanac (R16): deeds latch forever, once, and compound */
 console.log('\n=== the Almanac ===');
-check(CC.ALMANAC.length === 95, `95 pages in the catalog — 78 + nine Trial + eight Seed Bed pages (got ${CC.ALMANAC.length})`);
-check(new Set(CC.ALMANAC.map(p => p.id)).size === 95, 'page ids unique');
+check(CC.ALMANAC.length === 101, `101 pages in the catalog — 78 + 9 Trial + 8 Seed Bed + 6 Fallow pages (got ${CC.ALMANAC.length})`);
+check(new Set(CC.ALMANAC.map(p => p.id)).size === 101, 'page ids unique');
 const al = new CC.Core();
 al.seeds = 100;
 check(al.almanacCount() === 0, 'nothing latches without a tick');
@@ -733,6 +733,68 @@ junkB.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0, owne
 check(junkB.bed.soil === 'dirt' && junkB.bed.plots[0] === null && junkB.bed.plots[1].age === 12 && junkB.bed.plots[2] === null
   && junkB.bed.log.bogus === undefined && junkB.bed.log.clover === undefined && junkB.bed.log.sprout === 2 && junkB.bed.seed > 0 && junkB.bed.sacrificeLeft === 3600,
   'a forged bed is pruned to known species and sane ages');
+
+/* Lie Fallow (R24): seeds retire into loam; loam buys rules */
+console.log('\n=== Lie Fallow (R24) ===');
+const F = CC.FALLOW;
+const fw = new CC.Core();
+fw.seeds = 1.96e22; fw.lifetimeBase = 4.5e50; fw.totalRun = 1e47; fw.bank = 1e48; fw.sprouts = 5e20;
+fw.shed = { p0: 1, p1: 1, p5: 1, l0: 1045, l1: 6, h0: 105, h3: 110 }; fw.bought = { c0: true, b0t0: true };
+fw.honey = 140; fw.trialsDone = { frost: 2 }; fw.perks.scarecrow = 2; fw.bed.log.sprout = 3; fw.bed.plots[0] = { sp: 'thyme', age: 2 };
+fw.buffs = [{ name: 'Gentle Rain', mult: 2, left: 50 }, { name: 'Bumper Week', mult: 3, left: 1e5, keep: true }];
+check(fw.loamPending() === 496 && fw.fallowAvailable(), 'the live world\'s first Fallow is worth 496 loam');
+const small = new CC.Core(); small.seeds = 1e19;
+check(small.loamPending() === 361 && !small.fallowAvailable() && small.fallow() === 0, 'below 1e20 seeds (400 loam) the bell is silent');
+check(fw.ribbons().length > 10, 'ribbons stand before the Fallow');
+const got = fw.fallow();
+check(got === 496 && fw.loam === 496 && fw.fallows === 1, 'the world lies fallow: +496 loam');
+check(fw.seeds === 0 && fw.totalAllTime === 0 && fw.bank === 0 && fw.sprouts === 0 && fw.ribbons().length === 0
+  && Object.keys(fw.bought).length === 0 && fw.owned.every(n => n === 0), 'seeds, lifetime, ribbons, bank, sprouts, plots, upgrades: gone');
+check(fw.shed.p0 === 1 && fw.shed.p5 === 1 && fw.shed.l0 === undefined && fw.shed.l1 === undefined && fw.shed.h0 === undefined,
+  'the shed keeps its one-shots and loses its ladders (tm\'s call)');
+check(fw.honey === 140 && fw.trialsDone.frost === 2 && fw.perks.scarecrow === 2 && fw.bed.log.sprout === 3 && fw.bed.plots[0].sp === 'thyme',
+  'honey, the Trial ledger, perks, the seed log and the bed itself survive');
+check(fw.buffs.length === 1 && fw.buffs[0].name === 'Bumper Week', 'the weather clears; the Parish reward stays');
+fw.latchPages();
+check(fw.almanac.fy0 === true && fw.almanac.fy3 === undefined, 'Fallow Year I is written');
+/* the Root Cellar */
+check(fw.cellarCost('quick') === 1 && fw.buyCellar('quick') && fw.cellarCost('quick') === 2 && fw.loam === 495, 'level 1 costs 1 loam, level 2 costs 2');
+for (let k = 0; k < 10; k++) fw.buyCellar('quick');
+check(fw.cellarLevel('quick') === 5 && fw.loam === 496 - 15, 'Quick Spring caps at 5 (1+2+3+4+5 = 15 loam)');
+check(!fw.buyCellar('quick') && !fw.buyCellar('bogus'), 'a capped perk and a bogus id buy nothing');
+fw.totalRun = 1e8; fw.lifetimeBase = 1e8; fw.bank = 1e6; fw.prestige();
+check(fw.owned.every(n => n === 50), 'Quick Spring 5: every spring starts with 50 of each plot');
+check(fw.buyCellar('beds') && fw.bedW() === 5 && fw.bed.plots.length === 25 && fw.bed.plots[0].sp === 'thyme', 'Deeper Beds: 5×5, plants kept by position');
+fw.bed.plots[24] = { sp: 'clover', age: 1 };
+check(fw.buyCellar('beds') && fw.bedW() === 6 && fw.bed.plots.length === 36 && fw.bed.plots[4 * 6 + 4].sp === 'clover' && !fw.buyCellar('beds'),
+  '…then 6×6, and no deeper');
+check(fw.bedNeighbors(0).length === 3 && fw.bedNeighbors(7).length === 8, 'neighbours follow the new shape');
+fw.buyCellar('pace'); fw.buyCellar('pace');
+check(fw.scarecrowEvery() === 40, 'Scarecrow Pace 2: every 40 s');
+fw.buyCellar('gate');
+check(Math.abs(fw.gateRate() - 1.05) < 1e-12, 'Open Gate 1: guests ×1.05');
+for (let k = 0; k < 6; k++) fw.buyCellar('memory');
+check(fw.cellarLevel('memory') === 6, 'Seed Memory to 6');
+fw.seeds = 1e21; fw.lifetimeBase = 1e48;
+const got2 = fw.fallow();
+check(got2 === 441 && fw.seeds === 1e6 && fw.totalAllTime === 1e18 && fw.pendingSeeds() === 0,
+  'Seed Memory 6: the next cycle starts at a million seeds and the lifetime that earned them — no phantom pending seeds');
+check(Math.abs(fw.tilthMult() - 1.10) < 1e-12, 'Tilth: two Fallows sweeten the mint by 10%');
+const tl = new CC.Core(); tl.fallows = 40;
+check(Math.abs(tl.tilthMult() - (1 + F.tilthPerFallow * F.tilthCap)) < 1e-12, 'Tilth caps at 25 Fallows');
+tl.seeds = 0; tl.totalRun = 1e8; tl.lifetimeBase = 1e8; tl.bank = 1;
+const s0 = tl.sprouts, gT = tl.prestige();
+check(gT > 0 && tl.sprouts - s0 === Math.floor(gT * tl.mintMult() * tl.tilthMult()), 'the sprout mint carries Tilth (floored)');
+/* save / load */
+const fs2 = new CC.Core();
+fs2.deserialize(JSON.parse(JSON.stringify(fw.serialize())));
+check(fs2.loam === fw.loam && fs2.fallows === 2 && fs2.cellarLevel('beds') === 2 && fs2.bed.plots.length === 36 && fs2.bed.plots[4 * 6 + 4].sp === 'clover',
+  'loam, the Cellar and a 6×6 bed survive a save');
+const junkF = new CC.Core();
+junkF.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0, owned: [], bought: {}, seeds: 0, sprouts: 0, shed: {},
+  loam: -3, fallows: 2.5, cellar: { quick: 99, bogus: 1, beds: 1 }, bed: { plots: Array(16).fill(null) } });
+check(junkF.loam === 0 && junkF.fallows === 2 && junkF.cellar.quick === 5 && junkF.cellar.bogus === undefined && junkF.bed.plots.length === 25,
+  'forged loam and Cellar levels are clamped; the bed is sized by the Cellar');
 
 console.log(fails ? `\n${fails} FAILURE(S)` : '\nALL CHECKS PASSED');
 process.exit(fails ? 1 : 0);

@@ -28,7 +28,7 @@ from .economy import Economy, market_hour_at
 
 DAY = 86400.0
 NOTABLE = {"prestige", "season", "order_posted", "order_resolved", "order_skipped", "ribbon",
-           "almanac", "quiet", "fallow", "trial", "bedFound", "sacrifice"}
+           "almanac", "quiet", "fallow", "trial", "bedFound", "sacrifice", "bell", "silence", "rehearsed"}
 KINDS = {"harvest", "visitors", "stalls", "pages", "springs", "sprouts", "quilt", "trials"}
 
 
@@ -175,13 +175,23 @@ class OrderBook:
         self.path = state_path
         self.chronicle = chronicle
         self.quilt = quilt
-        self.order: dict | None = None
+        self.live: list[dict] = []        # the orders on the board (Wider Orders: up to 3)
         self.history: list[dict] = []     # last outcomes, newest last
+        self.bell: dict | None = None     # Lie Fallow's bell: {at, rehearsal, rung, who}
         self.rotation = 0                 # next table index — its own counter, not len(history)
         self.override_used = 0
         self.last_intent = 0.0
         self.effects: dict[str, float] = {}  # name -> until (epoch); visitorRate/weatherGap
         self.load()
+
+    # the first order on the board: the legacy single-order view
+    @property
+    def order(self) -> dict | None:
+        return self.live[0] if self.live else None
+
+    @order.setter
+    def order(self, o: dict | None) -> None:
+        self.live = [o] if o else []
 
     # ---------- persistence ----------
     def load(self) -> None:
@@ -190,7 +200,9 @@ class OrderBook:
         except (OSError, json.JSONDecodeError):
             return
         if isinstance(s, dict):
-            self.order = s.get("order") if isinstance(s.get("order"), dict) else None
+            live = s.get("orders") if isinstance(s.get("orders"), list) else [s.get("order")]
+            self.live = [o for o in live if isinstance(o, dict) and "deadline" in o][:3]
+            self.bell = s.get("bell") if isinstance(s.get("bell"), dict) and "at" in s.get("bell") else None
             self.history = [h for h in (s.get("history") or []) if isinstance(h, dict)][-20:]
             self.rotation = int(s.get("rotation", len(self.history)) or 0)
             self.override_used = int(s.get("overrideUsed", 0) or 0)
@@ -201,7 +213,8 @@ class OrderBook:
         tmp = self.path.with_suffix(".tmp")
         try:
             tmp.write_text(json.dumps({
-                "order": self.order, "history": self.history[-20:], "rotation": self.rotation,
+                "order": self.order, "orders": self.live, "bell": self.bell,
+                "history": self.history[-20:], "rotation": self.rotation,
                 "overrideUsed": self.override_used, "lastIntent": self.last_intent,
                 "effects": self.effects,
             }))
@@ -291,6 +304,10 @@ class OrderBook:
             return any(eco.trial_available(t["id"]) for t in self.d.get("trials", []))
         return True
 
+    def slots(self, eco: Economy) -> int:
+        """Wider Orders (R24): one more order on the board per Cellar level."""
+        return 1 + eco.cellar_level("orders")
+
     def post(self, eco: Economy, now: float) -> dict:
         fallback = {"id": "harvest", "name": "The Parish Harvest", "kind": "harvest", "tiers": [1, 2, 4]}
         spec = self.override_spec()
@@ -299,9 +316,12 @@ class OrderBook:
         else:
             table = [x for x in (self.d.get("orders") or []) if self.valid_spec(x)]
             spec = None
-            for _ in range(len(table)):  # walk the rotation past the unwinnable
+            posted = {o["id"] for o in self.live}
+            for _ in range(len(table)):  # walk the rotation past the unwinnable and the already-posted
                 cand = table[self.rotation % len(table)]
                 self.rotation += 1
+                if cand["id"] in posted:
+                    continue
                 if self.reachable(cand, eco):
                     spec = cand
                     break
@@ -314,21 +334,23 @@ class OrderBook:
         if deadline - now < DAY:           # never post an order due in under a day
             deadline += 7 * DAY
         base = self.baseline(eco)
-        self.order = {
+        o = {
             "id": spec["id"], "name": spec["name"], "kind": spec["kind"],
             "line": spec.get("line", ""), "unit": spec.get("unit", ""),
             "authored": bool(spec.get("authored")),
             "postedAt": now, "deadline": deadline, "base": base,
             "targets": self.targets(spec, base, deadline - now),
         }
+        self.live.append(o)
         self.chronicle.log({"type": "order_posted", "id": spec["id"], "name": spec["name"],
                             "deadline": deadline})
         self.save()
-        return self.order
+        return o
 
     # ---------- progress & resolution ----------
-    def value(self, eco: Economy) -> float:
-        o, b = self.order, self.order["base"]
+    def value(self, eco: Economy, o: dict | None = None) -> float:
+        o = o or self.order
+        b = o["base"]
         k = o["kind"]
         if k == "harvest":
             return eco.total_all_time - b["lifetime"]
@@ -348,41 +370,104 @@ class OrderBook:
             return self.quilt.fill() if self.quilt else 0.0
         return 0.0
 
-    def tier(self, eco: Economy) -> int:
-        v = self.value(eco)
-        return sum(1 for t in self.order["targets"] if v >= t)
+    def tier(self, eco: Economy, o: dict | None = None) -> int:
+        o = o or self.order
+        v = self.value(eco, o)
+        return sum(1 for t in o["targets"] if v >= t)
 
-    def snapshot(self, eco: Economy, now: float) -> dict | None:
-        if not self.order:
-            return None
-        v = self.value(eco)
+    def snapshot_one(self, eco: Economy, o: dict) -> dict:
+        v = self.value(eco, o)
         return {
-            "id": self.order["id"], "name": self.order["name"], "kind": self.order["kind"],
-            "line": self.order["line"], "unit": self.order["unit"], "authored": self.order["authored"],
-            "deadline": self.order["deadline"], "targets": self.order["targets"],
-            "value": v, "tier": sum(1 for t in self.order["targets"] if v >= t),
+            "id": o["id"], "name": o["name"], "kind": o["kind"],
+            "line": o["line"], "unit": o["unit"], "authored": o["authored"],
+            "deadline": o["deadline"], "targets": o["targets"],
+            "value": v, "tier": sum(1 for t in o["targets"] if v >= t),
             "last": self.history[-1] if self.history else None,
         }
 
+    def snapshot(self, eco: Economy, now: float) -> dict | None:
+        return self.snapshot_one(eco, self.order) if self.order else None
+
+    def snapshot_all(self, eco: Economy) -> list[dict]:
+        return [self.snapshot_one(eco, o) for o in self.live]
+
     def maybe_resolve(self, eco: Economy, now: float) -> dict | None:
         """At the deadline: apply the reached tier's rewards (or the failure
-        effects), record the outcome, and clear the order. Returns the
-        outcome for the caller to broadcast, else None."""
-        if not self.order or now < self.order["deadline"]:
+        effects), record the outcome, and clear that order. Returns the
+        outcome for the caller to broadcast, else None (one per call)."""
+        o = next((x for x in self.live if now >= x["deadline"]), None)
+        if not o:
             return None
-        o = self.order
-        tier = self.tier(eco)
+        tier = self.tier(eco, o)
         rewards = (self.d.get("orderRewards") or {}).get(str(tier)) if tier else None
         effects = rewards if tier else (self.d.get("orderFail") or [])
         applied = self.apply(eco, effects or [], now)
-        outcome = {"id": o["id"], "name": o["name"], "tier": tier, "value": self.value(eco),
+        outcome = {"id": o["id"], "name": o["name"], "tier": tier, "value": self.value(eco, o),
                    "targets": o["targets"], "applied": applied, "at": now}
         self.history.append(outcome)
         self.chronicle.log({"type": "order_resolved", "id": o["id"], "name": o["name"],
                             "tier": tier, "won": tier > 0})
-        self.order = None
+        self.live = [x for x in self.live if x is not o]
         self.save()
         return outcome
+
+    # ---------- the bell (R24): four rings, two hours apart ----------
+    def ring(self, eco: Economy, now: float, who: str = "") -> dict | None:
+        """Anyone may ring it once the loam is there. The first bell of the
+        world is a REHEARSAL: it rings out and nothing resets."""
+        f = self.d.get("fallow")
+        if not f or self.bell or not eco.fallow_available():
+            return None
+        self.bell = {"at": now, "rehearsal": not eco.rehearsed, "rung": 1, "who": who[:20]}
+        self.chronicle.log({"type": "bell", "ring": 1, "rehearsal": self.bell["rehearsal"]})
+        self.save()
+        return self.bell
+
+    def silence(self, who: str = "") -> bool:
+        if not self.bell:
+            return False
+        self.bell = None
+        self.chronicle.log({"type": "silence", "who": who[:20]})
+        self.save()
+        return True
+
+    def bell_tick(self, eco: Economy, now: float, quilt: Quilt | None = None) -> list[dict]:
+        """Ring the next bell when its time comes; on the last, the world
+        lies fallow (or, the first time, learns that it could have)."""
+        f = self.d.get("fallow")
+        b = self.bell
+        quilt = quilt or self.quilt
+        if not f or not b:
+            return []
+        events: list[dict] = []
+        # every ring whose time has come (a long outage rings straight through)
+        while b["rung"] < f["rings"] and now >= b["at"] + b["rung"] * f["ringGap"]:
+            b["rung"] += 1
+            if b["rung"] < f["rings"]:
+                events.append({"type": "bell", "ring": b["rung"], "of": f["rings"], "rehearsal": b["rehearsal"],
+                               "next": b["at"] + b["rung"] * f["ringGap"]})
+                self.chronicle.log({"type": "bell", "ring": b["rung"], "rehearsal": b["rehearsal"]})
+        if b["rung"] < f["rings"]:
+            if events:
+                self.save()
+            return events
+        # the fourth ring
+        if b["rehearsal"]:
+            eco.rehearsed = True
+            events.append({"type": "rehearsed", "loam": eco.loam_pending()})
+            self.chronicle.log({"type": "rehearsed", "loam": eco.loam_pending()})
+        else:
+            pending = eco.loam_pending()
+            gain = eco.fallow()
+            framed = quilt.clear() if quilt else ""
+            if gain:
+                events.append({"type": "fallow", "loam": gain, "fallows": eco.fallows, "quilt": framed})
+                self.chronicle.log({"type": "fallow", "loam": gain, "fallows": eco.fallows, "quilt": framed})
+            else:  # the loam drained away while the bell rang (a Fallow elsewhere): nothing to do
+                events.append({"type": "silence", "who": "the ground", "reason": "nothing to retire", "pending": pending})
+        self.bell = None
+        self.save()
+        return events
 
     def apply(self, eco: Economy, effects: list[dict], now: float) -> list[str]:
         """Reward/failure shapes: {honey}, {buff:{name,mult,dur}},

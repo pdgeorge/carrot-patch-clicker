@@ -350,6 +350,13 @@ CC.ALMANAC = [];
   page('sb7', 'The Ring', 'Step inside. The bed is finished, and it is not.', { logTier: 6 });
   page('sb5', 'The Whole Catalogue', 'Every species, once. The seed log closes its cover.', { logFull: 1 });
   page('sb6', 'Seedless to Nay', 'The log was given up for honey. The bed begins again, wiser.', { sacrifices: 1 });
+  /* Lie Fallow (R24) */
+  page('fy0', 'Fallow Year I', 'The whole world lay fallow. The seeds went into the ground as loam.', { fallows: 1 });
+  page('fy1', 'Three Winters', 'Three times the bell rang out, and three times the garden came back.', { fallows: 3 });
+  page('fy2', 'Ten Winters', 'The cycle is the game now.', { fallows: 10 });
+  page('fy3', 'The Cellar Door', 'Loam spent on a rule, not a number.', { cellarAny: 1 });
+  page('fy4', 'A Full Cellar', 'Every perk at its cap. The rules are all rewritten.', { cellarFull: 1 });
+  page('fy5', 'Rehearsal', 'The bell rang four times and nothing happened. Next time, it will.', { rehearsed: 1 });
 })();
 
 /* Trials (R22): a spring replayed under ONE rule. The goal is "get back to
@@ -455,6 +462,35 @@ CC.PLANTS = [
     flavor: 'Blew in from somewhere. Stayed for the company.' },
   { id: 'fairyring', name: 'Fairy Ring', tier: 6, parents: ['everlasting', 'heartwood'], chance: 0.005, mature: 20, life: 80, mult: 1.05, rabbit: 1.5, weather: 2,
     flavor: 'The last page. Step inside and the bed is finished.' },
+];
+
+/* Lie Fallow (R24): the second prestige. Seeds are retired into LOAM —
+   ⌊(log10 seeds)²⌋, so every cycle pays about the same (496 for the live
+   world's first; 400 at 1e20, 576 at 1e24) and "one more Fallow" never
+   stales. The bell rings four times, two hours apart; anyone may ring it,
+   anyone may silence it; the first Fallow is rehearsed first. */
+CC.FALLOW = { minLoam: 400, rings: 4, ringGap: 7200, tilthPerFallow: 0.05, tilthCap: 25 };
+/* the Root Cellar: Loam buys RULE CHANGES — automation, caps, head starts —
+   at triangular prices (level n costs n Loam). Never a production multiplier. */
+CC.CELLAR = [
+  { id: 'quick', name: 'Quick Spring', cap: 5, per: 10,
+    effect: 'every spring starts with 10 of each plot per level',
+    flavor: 'The first morning of the year is already half done.' },
+  { id: 'pace', name: 'Scarecrow Pace', cap: 5, per: 10,
+    effect: 'the Scarecrow acts 10 s sooner per level (60 s → 10 s)',
+    flavor: 'It learned to hurry. Nobody taught it.' },
+  { id: 'gate', name: 'Open Gate', cap: 8, per: 0.05,
+    effect: 'guests arrive 5% more often per level',
+    flavor: 'The latch is off. The rabbits noticed first.' },
+  { id: 'beds', name: 'Deeper Beds', cap: 2, per: 1,
+    effect: 'the Seed Bed grows a row and a column per level (4×4 → 6×6); heirlooms resprout 25 deeper',
+    flavor: 'Dig once, and the bed remembers the shape.' },
+  { id: 'orders', name: 'Wider Orders', cap: 2, per: 1,
+    effect: 'one more Parish Order on the board at a time',
+    flavor: 'The Parish has more paper than it knows what to do with.' },
+  { id: 'memory', name: 'Seed Memory', cap: 6, per: 1,
+    effect: 'every Fallow cycle begins with 10^level seeds already earned (a head start of hours, not a bonus)',
+    flavor: 'The ground does not forget what grew in it.' },
 ];
 
 /* Ribbons: permanent multipliers at lifetime-harvest milestones (your trophy shelf). */

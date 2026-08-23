@@ -214,6 +214,11 @@ restatement of the value.
 | Species & recipes | 24 species in 6 tiers (`CC.PLANTS`): 4 buyable, 2 wild (0.4 % and 0.15 % per empty plot per tick), 18 crosses at 0.5–10 % per empty plot per tick when both parents stand mature and adjacent (8-neighbour); Wood Chips ×3 mutation; Clay ages every 3rd tick at ×1.25 effect | `src/data.js`; `bedTick` | Dependency depth 5 with ~24 species was the proposal's starting point: too easy and the log closes in a week, too hard and the bed is a lawn. Recipes are in the data file on purpose (P7) and hidden in play — the wiki is half the fun. The tree has no loops (tested). |
 | Bed effects | per mature plant: mult ×1.01–1.05, guests ×1.05–1.5, rain ×1.1–2, honey 1–10 on harvest, payout 2–60 cps-minutes; aggregates capped at ×2.2 production (16 × 1.05 = ×2.18), guests ×4, rain ×3; payouts capped at 5 % of the bank + a minute | `bedMult`/`bedRabbit`/`bedWeather` in both engines | Live effects are bounded by plot count — a constant, so zero β; they multiply cps (and clicks) beside the buffs, never inside globalMult (which feeds seeds). Payouts are bank-capped like rabbit bundles so a fresh world cannot be catapulted. |
 | Seed log pages | 8 Almanac pages: one per tier found (6), the full log, the sacrifice (`{logTier}`, `{logFull}`, `{sacrifices}`) | `src/data.js` | Per TIER, not per species — 24 species pages would have been ×1.6 of permanent production from one feature; eight is ×1.17, in line with the other chapters. The species themselves are recognised in the seed log panel, not the book. |
+| Loam mint | ⌊(log₁₀ seeds)²⌋ at Lie Fallow; the bell needs ≥ 400 pending (seeds ≥ 1e20) (`CC.FALLOW`) | `loamPending` in both engines | The live world's first Fallow pays 496; regrowing to 1e20 pays 400, to 1e24 pays 576 — every cycle is worth about the same, so "one more Fallow" never stales, and the currency is human-sized (hundreds, not Vg). |
+| What Fallow resets / keeps | resets bank, plots, upgrades, lifetime (so ribbons), seeds, sprouts, shed LADDERS, the run log, a running Trial; keeps the Almanac, world counters, shed one-shots, honey, the seed log and bed, the Trials' ledger and perks, the Cellar, the chronicle; frames and clears the quilt | `fallow()` in both engines; `bell_tick` in `parish.py` | tm's call (2026-08-23): one-shots survive — a constant ×3.6 and ×16 mint that makes the regrow a different game from the first climb, while the ladders (compost 1045, heirlooms 110) are exactly the part that could only be retired, never tuned. Resetting lifetime also retires the float64 hazard structurally. |
+| The bell | 4 rings, 2 h apart (6 h from ring to Fallow); anyone rings, anyone silences; the world's FIRST bell is a rehearsal that rings out and resets nothing (`CC.FALLOW.rings/ringGap`, `rehearsed`) | `carrot_patch/parish.py` `ring/silence/bell_tick` | tm's call: four rings two hours apart, and a rehearsal first — a reset of the whole world deserves a dry run, and six hours spans every time zone's evening once. An outage rings straight through on the next tick. P1: one bell for the planet; the worst grief is a 6 h countdown anyone can cancel. |
+| Tilth | +5 % sprouts per seed per Fallow, cap 25 | `tilthMult` in both engines | A constant factor that shifts the compost ladder by a fixed ~35 levels — not a β change; capped so it is a bonus, not a growth term. |
+| The Root Cellar | level n costs n loam (triangular); Quick Spring ≤5 (10 plots/level), Scarecrow Pace ≤5 (−10 s/level, floor 10 s), Open Gate ≤8 (+5 % guests/level), Deeper Beds ≤2 (+1 row & column, +25 resprout), Wider Orders ≤2 (+1 order on the board), Seed Memory ≤6 (cycles start at 10^lv seeds' lifetime) (`CC.CELLAR`) | `src/data.js`; `buyCellar` in both engines | Every perk is automation, a cap or a head start — never a production multiplier (Deep Roots, the one β-touching perk in the proposal, was cut). Triangular prices mean a full cellar costs 1+…+5 + … = 83 loam, about one Fallow and a half; the rest is for the next perks content adds. Seed Memory sets the lifetime that would have earned the seeds, so no phantom pending seeds exist. |
 | The Quilt | 48×48, 16 colours, one stitch per connection per 30 s, costing 1 s of cps (`CC.QUILT`) | `src/data.js`; `carrot_patch/parish.py` `Quilt` | 2304 cells at 2/min/connection is a multi-day project for a handful of people — an artifact, not a minigame. The price is nominal by design (a second of harvest), so the quilt is never an economy sink; the cooldown is per socket, so bots paint at human pace (Knights of the Button: welcome). Diffs ride as `paint` events; `quiltV` in the snapshot lets a client refetch `/api/quilt` after a gap. Survives Go to Seed; framed and cleared at Lie Fallow (R24). |
 
 ## Unlock conditions
@@ -425,6 +430,25 @@ Numbered for reference. R7 and R14 are the active priorities.
   the chronicle. UI: a bed canvas with a planting menu and plot tooltips,
   a soil bar, the seed log panel with ??? chips per tier. Eight Almanac
   pages. Next: R24 Lie Fallow.
+- **R24 — Lie Fallow. ✅ Shipped (2026-08).** The Fallow Year's last slice
+  and the dimension itself: a second prestige above Go to Seed. Seeds
+  retire into **loam** (⌊(log₁₀ seeds)²⌋ — 496 for the live world); bank,
+  plots, upgrades, lifetime, ribbons, seeds, sprouts and the shed's ladders
+  return to the ground, while the Almanac, counters, one-shots, honey, the
+  seed log, the Trials' ledger and the Root Cellar stay. The **bell** rings
+  four times, two hours apart; anyone rings it, anyone silences it, and the
+  world's first bell is a rehearsal. When it rings out, the quilt is
+  framed into the chronicle and cleared, and a full-screen ceremony plays.
+  **Tilth** sweetens the sprout mint per Fallow (cap 25). Loam is spent in
+  the **Root Cellar** (a tab in the shed) on six rule changes with
+  triangular prices and hard caps: Quick Spring, Scarecrow Pace, Open Gate,
+  Deeper Beds (the Seed Bed grows to 6×6), Wider Orders (up to three Parish
+  Orders at once), Seed Memory. Six Almanac pages. Engine pair:
+  `fallow()`, `loam`, `cellar`, `fallows`, `rehearsed`, `springStart()`
+  shared by both prestiges, a bed that resizes by (x, y); parity-tested.
+  Server: `ring`/`silence`/`cellar` intents, the bell in `_parish.json`,
+  `OrderBook` grown to a list of live orders. The Fallow Year is complete;
+  what follows is content by data.
 
 ## Process for changing the game
 

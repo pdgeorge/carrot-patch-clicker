@@ -27,6 +27,8 @@ CC.Patch = class {
     this._retryTimer = null;
     this.everSynced = false; /* first snapshot received — the world is loaded */
     this.order = null;       /* R21: the Parish Order on the board, or null */
+    this.orders = [];        /* R24 Wider Orders: every card on the board */
+    this.bell = null;        /* R24: Lie Fallow's bell while it rings */
     this.market = null;      /* R21: {active, next, end} — the Market Hour clock */
     this.skew = 0;           /* server wall clock minus ours: deadlines never trust the tab */
     if (!location.protocol.startsWith('http')) return;
@@ -179,6 +181,13 @@ CC.Patch = class {
       c.runLog = s.runLog || [];
       c.perks = s.perks ? { cap: {}, ...s.perks } : CC.Core.freshPerks();
       c.haltT = s.haltT || 0;
+      /* Lie Fallow (R24): loam, the Cellar, the bell */
+      c.loam = s.loam || 0;
+      c.cellar = s.cellar || {};
+      c.fallows = s.fallows || 0;
+      c.rehearsed = !!s.rehearsed;
+      this.orders = msg.orders || (msg.order ? [msg.order] : []);
+      this.bell = msg.bell || null;
       /* the Seed Bed (R23): the server's bed is the bed */
       if (s.bed) {
         c.bed = { ...s.bed, plots: (s.bed.plots || []).map(p => p && { ...p }), log: { ...(s.bed.log || {}) } };

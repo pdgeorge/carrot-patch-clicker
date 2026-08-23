@@ -116,6 +116,7 @@ class Patch:
             rate *= (self.eco.d.get("marketHour") or {}).get("visitorRate", 1)
         rate *= self.orders.visitor_rate(time.time())
         rate *= self.eco.bed_rabbit()  # the Seed Bed (R23): clover draws rabbits
+        rate *= self.eco.gate_rate()   # Open Gate (R24 Cellar)
         return random.uniform(lo, hi) / rate
 
     def weather_wait(self) -> float:
@@ -152,10 +153,16 @@ class Patch:
         if done:
             self.emit({"type": "order", "phase": "resolved", **done})
             self.save()
-        if not self.orders.order and eco.d.get("orders"):
-            o = self.orders.post(eco, wall)
-            self.emit({"type": "order", "phase": "posted", "id": o["id"], "name": o["name"],
-                       "deadline": o["deadline"]})
+        if eco.d.get("orders"):
+            while len(self.orders.live) < self.orders.slots(eco):  # Wider Orders (R24)
+                o = self.orders.post(eco, wall)
+                self.emit({"type": "order", "phase": "posted", "id": o["id"], "name": o["name"],
+                           "deadline": o["deadline"]})
+        # Lie Fallow's bell (R24)
+        for ev in self.orders.bell_tick(eco, wall, self.quilt):
+            self.emit(ev)
+            if ev["type"] in ("fallow", "rehearsed"):
+                self.save()
 
     def touch(self, conn: dict) -> None:
         """An intent arrived. A quiet garden stirs for whoever came back."""
@@ -178,6 +185,8 @@ class Patch:
             "rabbitTtl": vttl if self.visitor and self.visitor["kind"] in ("rabbit", "tin") else 0,
             # the Parish (R21): the order on the board and the market clock
             "order": self.orders.snapshot(self.eco, wall),
+            "orders": self.orders.snapshot_all(self.eco),   # Wider Orders (R24): every card on the board
+            "bell": self.orders.bell,                       # Lie Fallow's bell (R24)
             "market": {"active": mh["active"], "next": mh["next"], "end": mh["end"]},
             "now": wall,  # server wall clock so deadlines render without trusting the tab
             "quiltV": self.quilt.version,  # R22: a client behind this version refetches /api/quilt
@@ -266,6 +275,12 @@ class Patch:
             if out == "embargo":
                 return "🥀 Parsnip embargo! Production ×0.5 for 45 seconds. He got us this time."
             return None
+        if ev["type"] == "fallow":
+            return (f"🔔 THE WORLD LIES FALLOW. +{ev.get('loam', 0)} loam; seeds, plots and ladders return to the "
+                    f"ground. Fallow Year {ev.get('fallows', 1)}.")
+        if ev["type"] == "bell":
+            return (f"🔔 The bell rings ({ev.get('ring', 1)} of {ev.get('of', 4)})"
+                    f"{' — a rehearsal' if ev.get('rehearsal') else ''}. Anyone may silence it.")
         if ev["type"] == "bedSprout":
             p = next((x for x in d.get("plants", []) if x["id"] == ev["sp"]), None)
             return f"🌱 Something new sprouted in the bed: {p['name']}." if p else None
@@ -520,6 +535,26 @@ class Patch:
             if eco.bed_cancel():
                 self.emit({"type": "sacrificeCancel", "who": conn.get("name") or ""})
                 self.save_soon()
+
+        elif kind == "ring":
+            # Lie Fallow's bell (R24): anyone may ring it once the loam is there
+            b = self.orders.ring(eco, time.time(), conn.get("name") or "")
+            if b:
+                self.emit({"type": "bell", "ring": 1, "of": eco.d["fallow"]["rings"], "rehearsal": b["rehearsal"],
+                           "next": b["at"] + eco.d["fallow"]["ringGap"], "who": b["who"]})
+                self.save()
+
+        elif kind == "silence":
+            if self.orders.silence(conn.get("name") or ""):
+                self.emit({"type": "silence", "who": conn.get("name") or ""})
+
+        elif kind == "cellar":
+            # the Root Cellar (R24): loam buys a rule
+            cid = str(msg.get("id", ""))[:16]
+            if eco.buy_cellar(cid):
+                self.emit({"type": "cellar", "id": cid, "lv": eco.cellar_level(cid)})
+                self.chronicle.log({"type": "cellar", "id": cid, "lv": eco.cellar_level(cid)})
+                self.save()
 
         elif kind == "paint":
             # the Quilt (R22): one stitch per connection per cooldown, for a

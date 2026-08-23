@@ -87,6 +87,11 @@ CC.Core = class {
     this.bed = CC.Core.freshBed();
     this.bedT = 0;                /* seconds toward the next bed tick */
     this.sacrifices = 0;
+    /* Lie Fallow (R24): the second prestige; Loam buys rules, never numbers */
+    this.loam = 0;
+    this.cellar = {};             /* Root Cellar perk id -> level; survives everything */
+    this.fallows = 0;
+    this.rehearsed = false;       /* the first bell is a rehearsal; this arms the real one */
     this.buffs = [];              /* {name, mult, left} */
     this.t = 0;
     this._ribbonCount = 0;
@@ -103,10 +108,85 @@ CC.Core = class {
   }
 
   /* ---------- the Seed Bed (R23) ---------- */
-  static freshBed() {
+  static freshBed(w, h) {
     const B = CC.BED || { w: 4, h: 4 };
-    return { soil: 'dirt', plots: Array(B.w * B.h).fill(null), log: {}, seed: 1, n: 0,
+    return { soil: 'dirt', plots: Array((w || B.w) * (h || B.h)).fill(null), log: {}, seed: 1, n: 0,
       soilAt: 0, sacrificeLeft: 0 };
+  }
+  /* the bed's size: Deeper Beds (Cellar) adds a row and a column per level */
+  bedW() { return (CC.BED ? CC.BED.w : 4) + this.cellarLevel('beds'); }
+  bedH() { return (CC.BED ? CC.BED.h : 4) + this.cellarLevel('beds'); }
+  /* regrow the plot grid to the current size, keeping every plant by (x, y) */
+  bedResize(oldW, oldH) {
+    const W = this.bedW(), H = this.bedH();
+    if (oldW === W && oldH === H) return;
+    const old = this.bed.plots, next = Array(W * H).fill(null);
+    for (let y = 0; y < Math.min(oldH, H); y++) for (let x = 0; x < Math.min(oldW, W); x++) next[y * W + x] = old[y * oldW + x] || null;
+    this.bed.plots = next;
+  }
+
+  /* ---------- Lie Fallow & the Root Cellar (R24) ---------- */
+  cellarData(id) { return (CC.CELLAR || []).find(c => c.id === id) || null; }
+  cellarLevel(id) { return (this.cellar && this.cellar[id]) || 0; }
+  cellarCost(id) { return this.cellarLevel(id) + 1; } /* triangular: level n costs n Loam */
+  cellarMaxed(c) { return this.cellarLevel(c.id) >= c.cap; }
+  buyCellar(id) {
+    const c = this.cellarData(id);
+    if (!c || this.cellarMaxed(c) || this.loam < this.cellarCost(id)) return false;
+    const w = this.bedW(), h = this.bedH();
+    this.loam -= this.cellarCost(id);
+    this.cellar[id] = this.cellarLevel(id) + 1;
+    if (id === 'beds') this.bedResize(w, h);
+    return true;
+  }
+  /* seeds retired into loam: ⌊(log10 seeds)²⌋ — a flat ~500 per cycle */
+  loamPending() { return this.seeds >= 10 ? Math.floor(Math.pow(Math.log10(this.seeds), 2)) : 0; }
+  fallowAvailable() { return !!CC.FALLOW && this.loamPending() >= CC.FALLOW.minLoam; }
+  /* Tilth: each Fallow sweetens the sprout mint a little, to a cap */
+  tilthMult() { return CC.FALLOW ? 1 + CC.FALLOW.tilthPerFallow * Math.min(this.fallows, CC.FALLOW.tilthCap) : 1; }
+  scarecrowEvery() { return Math.max(10, CC.TRIAL.scarecrowEvery - 10 * this.cellarLevel('pace')); }
+  gateRate() { return 1 + 0.05 * this.cellarLevel('gate'); }
+  /* the world lies fallow: seeds → loam; bank, plots, upgrades, lifetime
+     (hence ribbons), seeds, sprouts and the shed LADDERS reset. The Almanac,
+     counters, one-shots, the seed log, Trials' ledger and perks, honey and
+     the Cellar stay. Seed Memory starts the cycle at 10^lv seeds' worth of
+     lifetime — a head start of hours, never a bonus. */
+  fallow() {
+    if (!this.fallowAvailable()) return 0;
+    if (!this.mirrorBook) this.latchPages();
+    const gain = this.loamPending();
+    this.loam += gain;
+    this.fallows++;
+    const mem = this.cellarLevel('memory');
+    this.bank = 0;
+    this.totalRun = 0;
+    this.lifetimeBase = mem > 0 ? Math.pow(10, 2 * mem + 6) : 0;
+    this.seeds = mem > 0 ? Math.pow(10, mem) : 0;
+    this.sprouts = 0;
+    this.bought = {};
+    for (const u of CC.SHED) if (u.repeat) delete this.shed[u.id];
+    this.buffs = this.buffs.filter(b => b.keep);
+    this.trial = null; this.haltT = 0; this.runLog = [];
+    this.owned = CC.BUILDINGS.map(() => 0);
+    this.springStart();
+    this._ribbonCount = this.ribbons().length;
+    return gain;
+  }
+  /* what every spring starts with: resprouted heirlooms (deeper with the
+     Short Rows and Deeper Beds perks), Quick Spring plots, free upgrade tiers */
+  springStart() {
+    const cap = CC.TRIAL.resproutCapBase + this.perks.resproutCap + 25 * this.cellarLevel('beds');
+    for (const u of CC.SHED) {
+      if (u.resprout && u.building !== undefined) {
+        this.owned[u.building] = Math.max(this.owned[u.building], Math.min(this.shedLevel(u.id), cap));
+      }
+    }
+    const quick = (this.cellarData('quick') || { per: 10 }).per * this.cellarLevel('quick');
+    if (quick > 0) for (let i = 0; i < CC.BUILDINGS.length; i++) this.owned[i] = Math.max(this.owned[i], quick);
+    for (let ti = 0; ti < this.perks.startTier; ti++) {
+      for (let i = 0; i < CC.BUILDINGS.length; i++) this.bought[`b${i}t${ti}`] = true;
+    }
+    this._bumperSeen = CC.BUILDINGS.map((_, i) => this.bumperCount(i));
   }
   /* one 32-bit LCG, mirrored bit-for-bit in economy.py, so both engines
      roll the same mutations from the same seed (the snapshot carries it) */
@@ -192,7 +272,7 @@ CC.Core = class {
     return Math.min(CC.BED.weatherCap, m);
   }
   bedNeighbors(i) {
-    const W = CC.BED.w, H = CC.BED.h, x = i % W, y = Math.floor(i / W), out = [];
+    const W = this.bedW(), H = this.bedH(), x = i % W, y = Math.floor(i / W), out = [];
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
       if (!dx && !dy) continue;
       const nx = x + dx, ny = y + dy;
@@ -332,6 +412,13 @@ CC.Core = class {
     if (c.logTier !== undefined) return this.logTier(c.logTier);
     if (c.logFull !== undefined) return this.logFull();
     if (c.sacrifices !== undefined) return this.sacrifices >= c.sacrifices;
+    /* Lie Fallow (R24) */
+    if (c.fallows !== undefined) return this.fallows >= c.fallows;
+    if (c.loam !== undefined) return this.loam >= c.loam;
+    if (c.cellar !== undefined) return this.cellarLevel(c.cellar) >= (c.n || 1);
+    if (c.cellarAny !== undefined) return (CC.CELLAR || []).some(x => this.cellarLevel(x.id) >= 1);
+    if (c.cellarFull !== undefined) return (CC.CELLAR || []).every(x => this.cellarMaxed(x));
+    if (c.rehearsed !== undefined) return this.rehearsed;
     return false;
   }
 
@@ -619,7 +706,7 @@ CC.Core = class {
     this.trial = goal > 0 ? { id: trialId, goal, t: 0 } : null;
     this.haltT = 0;
     this.seeds += gain;
-    this.sprouts += gain * this.mintMult(); /* every seed sprouts (R13); doublers stack (R15) */
+    this.sprouts += Math.floor(gain * this.mintMult() * this.tilthMult()); /* every seed sprouts (R13); doublers stack (R15); Tilth (R24) */
     this.prestiges++;
     this.mintHoney('spring');
     this.bank = 0;
@@ -630,21 +717,9 @@ CC.Core = class {
     /* a spring clears the weather, never a Parish reward: Bumper Day/Week
        are earned by the whole world and outlive any one run (R21) */
     this.buffs = this.buffs.filter(b => b.keep);
-    /* resprout (R15): heirloom strains regrow themselves each spring —
-       deeper with the Short Rows perk (R22) */
-    const cap = CC.TRIAL.resproutCapBase + this.perks.resproutCap;
-    for (const u of CC.SHED) {
-      if (u.resprout && u.building !== undefined) {
-        this.owned[u.building] = Math.min(this.shedLevel(u.id), cap);
-      }
-    }
-    /* Crop Rotation perk (R22): springs start with the first n tiers of
-       building upgrades already on the shelf */
-    for (let ti = 0; ti < this.perks.startTier; ti++) {
-      for (let i = 0; i < CC.BUILDINGS.length; i++) this.bought[`b${i}t${ti}`] = true;
-    }
-    /* pre-seed, silently: resprouted rows must not fire a bumper toast storm */
-    this._bumperSeen = CC.BUILDINGS.map((_, i) => this.bumperCount(i));
+    /* resprouts (R15), Quick Spring (R24), free tiers (R22) — and the bumper
+       pre-seed, so a resprouted row never fires a toast storm */
+    this.springStart();
     return gain;
   }
 
@@ -706,7 +781,7 @@ CC.Core = class {
        during Late Frost (its purchase would still the garden). */
     if (this.perks.scarecrow > 0 && !this.rule('haltOnBuy')) {
       this.scT += dt;
-      if (this.scT >= CC.TRIAL.scarecrowEvery) {
+      if (this.scT >= this.scarecrowEvery()) {
         this.scT = 0;
         let pick = -1, best = Infinity;
         for (let i = 0; i < Math.min(CC.BUILDINGS.length, 2 * this.perks.scarecrow); i++) {
@@ -762,6 +837,7 @@ CC.Core = class {
       bed: { soil: this.bed.soil, plots: this.bed.plots.map(p => p && { ...p }), log: { ...this.bed.log },
         seed: this.bed.seed, n: this.bed.n, soilAt: this.bed.soilAt, sacrificeLeft: this.bed.sacrificeLeft },
       bedT: this.bedT, sacrifices: this.sacrifices,
+      loam: this.loam, cellar: this.cellar, fallows: this.fallows, rehearsed: this.rehearsed,
       almanac: this.almanac,
       /* season deliberately NOT saved: the dev garden has no calendar, and a
          ?season= theme test must never persist its bonus into the solo save;
@@ -826,7 +902,13 @@ CC.Core = class {
     this.haltT = Math.max(0, Math.min(+s.haltT || 0, 3600));
     /* the Seed Bed (R23): species must exist, ages are ints, the seed is a
        uint32, the log holds counts — a forged plot never grows a null */
-    const B = CC.BED || { w: 4, h: 4 }, rb = s.bed || {}, fresh = CC.Core.freshBed();
+    /* the Cellar first: the bed's size depends on it (R24) */
+    this.loam = Math.max(0, Math.floor(s.loam) || 0);
+    this.fallows = Math.max(0, Math.floor(s.fallows) || 0);
+    this.rehearsed = !!s.rehearsed;
+    this.cellar = {};
+    for (const cd of (CC.CELLAR || [])) { const lv = Math.floor((s.cellar || {})[cd.id]) || 0; if (lv > 0) this.cellar[cd.id] = Math.min(lv, cd.cap); }
+    const B = { w: this.bedW(), h: this.bedH() }, rb = s.bed || {}, fresh = CC.Core.freshBed(B.w, B.h);
     this.bed = fresh;
     if ((CC.SOILS || []).some(x => x.id === rb.soil)) fresh.soil = rb.soil;
     const plots = Array.isArray(rb.plots) ? rb.plots : [];

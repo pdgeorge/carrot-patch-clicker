@@ -719,7 +719,7 @@ html, body { margin: 0; padding: 0; }
   font-variant-numeric: tabular-nums;
 }
 #gate-line.market { color: var(--carrot); text-shadow: 0 0 8px rgba(255, 146, 50, 0.35); }
-#order-card {
+.order-card {
   border: 1px solid var(--paper-edge);
   border-radius: 3px;
   padding: 9px 12px 8px;
@@ -728,32 +728,32 @@ html, body { margin: 0; padding: 0; }
   box-shadow: inset 0 0 0 1px var(--paper-lit), 0 2px 6px rgba(0, 0, 0, 0.35);
   font-variant-numeric: tabular-nums;
 }
-#order-card.authored { border-style: double; border-width: 3px; }
-#order-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
-#order-head b { color: var(--ink); font-family: var(--serif); font-size: 14px; }
-#order-due { white-space: nowrap; font-size: 11.5px; }
-#order-due.soon { color: var(--ink-carrot); font-weight: 800; }
-#order-line { font-family: var(--serif); font-style: italic; margin: 2px 0 6px; }
-#order-track {
+.order-card.authored { border-style: double; border-width: 3px; }
+.order-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.order-head b { color: var(--ink); font-family: var(--serif); font-size: 14px; }
+.order-due { white-space: nowrap; font-size: 11.5px; }
+.order-due.soon { color: var(--ink-carrot); font-weight: 800; }
+.order-line { font-family: var(--serif); font-style: italic; margin: 2px 0 6px; }
+.order-track {
   position: relative; height: 9px; border-radius: 5px;
   background: rgba(80, 55, 25, 0.18); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
   overflow: hidden;
 }
-#order-fill {
+.order-fill {
   height: 100%; width: 0; border-radius: 5px;
   background: linear-gradient(90deg, var(--ink-leaf), var(--carrot));
   transition: width 0.6s ease;
 }
-#order-track .o-mark { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(60, 40, 20, 0.45); }
-#order-track .o-mark:nth-of-type(1) { left: 25%; }
-#order-track .o-mark:nth-of-type(2) { left: 50%; }
-#order-track .o-mark:nth-of-type(3) { left: 100%; margin-left: -2px; }
-#order-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 5px; font-size: 11.5px; }
-#order-tier { color: var(--ink-leaf); font-weight: 800; }
-#order-stakes { font-size: 11px; opacity: 0.78; margin-top: 5px; }
-#order-last { font-size: 11px; opacity: 0.8; margin-top: 4px; font-style: italic; }
-#order-last.won { color: var(--ink-leaf); }
-#order-last.lost { color: var(--ink-carrot); }
+.order-track .o-mark { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(60, 40, 20, 0.45); }
+.order-track .o-mark:nth-of-type(1) { left: 25%; }
+.order-track .o-mark:nth-of-type(2) { left: 50%; }
+.order-track .o-mark:nth-of-type(3) { left: 100%; margin-left: -2px; }
+.order-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 5px; font-size: 11.5px; }
+.order-tier { color: var(--ink-leaf); font-weight: 800; }
+.order-stakes { font-size: 11px; opacity: 0.78; margin-top: 5px; }
+.order-last { font-size: 11px; opacity: 0.8; margin-top: 4px; font-style: italic; }
+.order-last.won { color: var(--ink-leaf); }
+.order-last.lost { color: var(--ink-carrot); }
 #presence { font-size: 12px; line-height: 1.6; margin-top: 8px; opacity: 0.92; overflow-wrap: anywhere; }
 #presence .p-title { font-family: var(--serif); letter-spacing: 0.12em; font-size: 10.5px; opacity: 0.75; margin-top: 6px; }
 #presence .p-row { display: flex; justify-content: space-between; gap: 8px; }
@@ -868,6 +868,53 @@ html, body { margin: 0; padding: 0; }
   border: 1px solid var(--paper-edge); background: var(--paper-2); color: var(--ink-carrot);
 }
 
+.order-card + .order-card { margin-top: 8px; }
+
+/* ---------- Lie Fallow (R24): the bell, the ceremony, the Cellar ---------- */
+#bell-btn {
+  margin-top: 6px; width: 100%; padding: 8px; font: inherit; font-weight: 800; font-size: 13px; cursor: pointer;
+  border-radius: 4px; color: #fff7e6; border: 1px solid #6a4a1c;
+  background: linear-gradient(180deg, #8a6a2a, #5e4418);
+  box-shadow: inset 0 1px 0 rgba(255, 235, 200, 0.35), 0 3px 0 #3e2c0e, 0 6px 14px rgba(0, 0, 0, 0.4);
+  letter-spacing: 0.02em;
+}
+#bell-btn.ringing { animation: bell-glow 1.2s ease-in-out infinite; }
+@keyframes bell-glow { 0%, 100% { box-shadow: inset 0 1px 0 rgba(255, 235, 200, 0.35), 0 3px 0 #3e2c0e, 0 0 8px rgba(240, 180, 60, 0.3); } 50% { box-shadow: inset 0 1px 0 rgba(255, 235, 200, 0.35), 0 3px 0 #3e2c0e, 0 0 26px rgba(240, 180, 60, 0.8); } }
+#bell-line { font-size: 11.5px; font-weight: 800; color: #f0c060; margin-top: 4px; min-height: 16px; font-variant-numeric: tabular-nums; }
+#shed-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+#shed-tabs button {
+  flex: 1; font: inherit; font-weight: 800; font-size: 12px; padding: 6px; cursor: pointer; border-radius: 3px;
+  border: 1px solid var(--paper-edge); background: var(--paper); color: var(--ink-dim);
+}
+#shed-tabs button.on { background: var(--paper-2); color: var(--ink); border-color: var(--ink-leaf); }
+#cellar-pane h2 { margin: 0 0 4px; font-family: var(--serif); color: #6a4a1c; text-align: center; letter-spacing: 0.12em; }
+#cellar-sub { margin: 0 0 10px; font-family: var(--serif); font-size: 13px; font-style: italic; color: var(--ink-dim); text-align: center; }
+#cellar-balance { text-align: center; font-size: 14px; color: #6a4a1c; margin-bottom: 12px; font-variant-numeric: tabular-nums; }
+#cellar-balance b { font-size: 18px; }
+#cellar-items { display: flex; flex-direction: column; gap: 8px; }
+#cellar-items .shed-item .s-cost { color: #6a4a1c; }
+#ceremony {
+  position: fixed; inset: 0; z-index: 45; display: flex; align-items: center; justify-content: center; padding: 20px;
+  background: radial-gradient(ellipse at center, rgba(40, 30, 18, 0.92), rgba(8, 5, 2, 0.97));
+}
+#ceremony-box {
+  width: min(520px, 100%); text-align: center; color: var(--paper-2);
+  border: 1px solid rgba(240, 200, 120, 0.35); border-radius: 6px; padding: 30px 28px;
+  background: rgba(20, 14, 6, 0.6); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.8), inset 0 0 60px rgba(240, 180, 60, 0.08);
+  animation: ceremony-in 1.4s ease-out;
+}
+@keyframes ceremony-in { from { opacity: 0; transform: translateY(18px) scale(0.98); } to { opacity: 1; transform: none; } }
+#ceremony-eyebrow { font-family: var(--serif); letter-spacing: 0.3em; font-size: 11px; color: #f0c060; }
+#ceremony-box h2 { font-family: var(--serif); font-size: 30px; margin: 8px 0 12px; letter-spacing: 0.06em; color: #fff3d6; }
+#ceremony-body { font-size: 14px; line-height: 1.65; color: #efe2c4; }
+#ceremony-quilt { width: 192px; height: 192px; image-rendering: pixelated; margin: 14px auto 0; display: block; border: 6px solid transparent;
+  border-image: repeating-linear-gradient(45deg, #c9473a 0 6px, #f2b33d 6px 12px, #4c7a3a 12px 18px, #3f5f9e 18px 24px) 6; }
+#ceremony-close {
+  margin-top: 18px; font: inherit; font-weight: 800; padding: 8px 18px; cursor: pointer; border-radius: 4px;
+  border: 1px solid rgba(240, 200, 120, 0.5); background: rgba(240, 180, 60, 0.15); color: #fff3d6;
+}
+@media (prefers-reduced-motion: reduce) { #ceremony-box, #bell-btn.ringing { animation: none; } }
+
 </style>
 </head>
 <body>
@@ -900,6 +947,8 @@ html, body { margin: 0; padding: 0; }
       <div id="sprout-line"></div>
       <button id="prestige-btn" class="hidden">🌸 Go to Seed</button>
       <button id="shed-btn" class="hidden">🌱 The Potting Shed</button>
+      <button id="bell-btn" class="hidden">🔔 Ring the bell — Lie Fallow</button>
+      <div id="bell-line" class="hidden"></div>
       <div class="small-controls">
         <button id="mute-btn" title="toggle sound">🔊</button>
         <button id="daynight-btn" title="day / night / auto">🌗</button>
@@ -913,14 +962,7 @@ html, body { margin: 0; padding: 0; }
     <section id="col-mid">
       <div id="order" class="hidden">
         <div class="panel-title">PARISH ORDERS</div>
-        <div id="order-card">
-          <div id="order-head"><b id="order-name"></b><span id="order-due"></span></div>
-          <div id="order-line"></div>
-          <div id="order-track"><div id="order-fill"></div><i class="o-mark"></i><i class="o-mark"></i><i class="o-mark"></i></div>
-          <div id="order-foot"><span id="order-progress"></span><span id="order-tier"></span></div>
-          <div id="order-stakes"></div>
-          <div id="order-last"></div>
-        </div>
+        <div id="order-cards"></div>
       </div>
       <div class="panel-title">THE SEED LOG</div>
       <div id="seedlog-line"></div>
@@ -978,11 +1020,30 @@ html, body { margin: 0; padding: 0; }
 
   <div id="shed" class="hidden">
     <div id="shed-box">
+      <div id="shed-tabs"><button data-tab="shed" class="on">🌱 The Potting Shed</button><button data-tab="cellar">🪨 The Root Cellar</button></div>
+      <div id="shed-pane">
       <h2>🌱 THE POTTING SHED</h2>
       <p id="shed-sub">Seeds are forever. Sprouts are for planting.</p>
       <div id="shed-balance"></div>
       <div id="shed-items"></div>
+      </div>
+      <div id="cellar-pane" class="hidden">
+      <h2>🪨 THE ROOT CELLAR</h2>
+      <p id="cellar-sub">Loam buys rules, never numbers. Level n costs n loam.</p>
+      <div id="cellar-balance"></div>
+      <div id="cellar-items"></div>
+      </div>
       <button id="shed-close">Back to the garden</button>
+    </div>
+  </div>
+
+  <div id="ceremony" class="hidden">
+    <div id="ceremony-box">
+      <div id="ceremony-eyebrow"></div>
+      <h2 id="ceremony-title"></h2>
+      <p id="ceremony-body"></p>
+      <canvas id="ceremony-quilt" width="48" height="48" class="hidden"></canvas>
+      <button id="ceremony-close">Back to the garden</button>
     </div>
   </div>
 
@@ -1012,7 +1073,7 @@ html, body { margin: 0; padding: 0; }
 </div>
 
 <script>
-globalThis.CC = globalThis.CC || {}; CC.BUILD = '21ab712'; CC.GARDENERS = ["pdgeorge","Claude Fable 5","T_B0N3"];
+globalThis.CC = globalThis.CC || {}; CC.BUILD = '6b8083b'; CC.GARDENERS = ["pdgeorge","Claude Fable 5","T_B0N3"];
 /* ==== data.js ==== */
 /* Carrot Clicker — content: buildings, upgrades, ribbons, news. */
 globalThis.CC = globalThis.CC || {};
@@ -1366,6 +1427,13 @@ CC.ALMANAC = [];
   page('sb7', 'The Ring', 'Step inside. The bed is finished, and it is not.', { logTier: 6 });
   page('sb5', 'The Whole Catalogue', 'Every species, once. The seed log closes its cover.', { logFull: 1 });
   page('sb6', 'Seedless to Nay', 'The log was given up for honey. The bed begins again, wiser.', { sacrifices: 1 });
+  /* Lie Fallow (R24) */
+  page('fy0', 'Fallow Year I', 'The whole world lay fallow. The seeds went into the ground as loam.', { fallows: 1 });
+  page('fy1', 'Three Winters', 'Three times the bell rang out, and three times the garden came back.', { fallows: 3 });
+  page('fy2', 'Ten Winters', 'The cycle is the game now.', { fallows: 10 });
+  page('fy3', 'The Cellar Door', 'Loam spent on a rule, not a number.', { cellarAny: 1 });
+  page('fy4', 'A Full Cellar', 'Every perk at its cap. The rules are all rewritten.', { cellarFull: 1 });
+  page('fy5', 'Rehearsal', 'The bell rang four times and nothing happened. Next time, it will.', { rehearsed: 1 });
 })();
 
 /* Trials (R22): a spring replayed under ONE rule. The goal is "get back to
@@ -1471,6 +1539,35 @@ CC.PLANTS = [
     flavor: 'Blew in from somewhere. Stayed for the company.' },
   { id: 'fairyring', name: 'Fairy Ring', tier: 6, parents: ['everlasting', 'heartwood'], chance: 0.005, mature: 20, life: 80, mult: 1.05, rabbit: 1.5, weather: 2,
     flavor: 'The last page. Step inside and the bed is finished.' },
+];
+
+/* Lie Fallow (R24): the second prestige. Seeds are retired into LOAM —
+   ⌊(log10 seeds)²⌋, so every cycle pays about the same (496 for the live
+   world's first; 400 at 1e20, 576 at 1e24) and "one more Fallow" never
+   stales. The bell rings four times, two hours apart; anyone may ring it,
+   anyone may silence it; the first Fallow is rehearsed first. */
+CC.FALLOW = { minLoam: 400, rings: 4, ringGap: 7200, tilthPerFallow: 0.05, tilthCap: 25 };
+/* the Root Cellar: Loam buys RULE CHANGES — automation, caps, head starts —
+   at triangular prices (level n costs n Loam). Never a production multiplier. */
+CC.CELLAR = [
+  { id: 'quick', name: 'Quick Spring', cap: 5, per: 10,
+    effect: 'every spring starts with 10 of each plot per level',
+    flavor: 'The first morning of the year is already half done.' },
+  { id: 'pace', name: 'Scarecrow Pace', cap: 5, per: 10,
+    effect: 'the Scarecrow acts 10 s sooner per level (60 s → 10 s)',
+    flavor: 'It learned to hurry. Nobody taught it.' },
+  { id: 'gate', name: 'Open Gate', cap: 8, per: 0.05,
+    effect: 'guests arrive 5% more often per level',
+    flavor: 'The latch is off. The rabbits noticed first.' },
+  { id: 'beds', name: 'Deeper Beds', cap: 2, per: 1,
+    effect: 'the Seed Bed grows a row and a column per level (4×4 → 6×6); heirlooms resprout 25 deeper',
+    flavor: 'Dig once, and the bed remembers the shape.' },
+  { id: 'orders', name: 'Wider Orders', cap: 2, per: 1,
+    effect: 'one more Parish Order on the board at a time',
+    flavor: 'The Parish has more paper than it knows what to do with.' },
+  { id: 'memory', name: 'Seed Memory', cap: 6, per: 1,
+    effect: 'every Fallow cycle begins with 10^level seeds already earned (a head start of hours, not a bonus)',
+    flavor: 'The ground does not forget what grew in it.' },
 ];
 
 /* Ribbons: permanent multipliers at lifetime-harvest milestones (your trophy shelf). */
@@ -1758,6 +1855,11 @@ CC.Core = class {
     this.bed = CC.Core.freshBed();
     this.bedT = 0;                /* seconds toward the next bed tick */
     this.sacrifices = 0;
+    /* Lie Fallow (R24): the second prestige; Loam buys rules, never numbers */
+    this.loam = 0;
+    this.cellar = {};             /* Root Cellar perk id -> level; survives everything */
+    this.fallows = 0;
+    this.rehearsed = false;       /* the first bell is a rehearsal; this arms the real one */
     this.buffs = [];              /* {name, mult, left} */
     this.t = 0;
     this._ribbonCount = 0;
@@ -1774,10 +1876,85 @@ CC.Core = class {
   }
 
   /* ---------- the Seed Bed (R23) ---------- */
-  static freshBed() {
+  static freshBed(w, h) {
     const B = CC.BED || { w: 4, h: 4 };
-    return { soil: 'dirt', plots: Array(B.w * B.h).fill(null), log: {}, seed: 1, n: 0,
+    return { soil: 'dirt', plots: Array((w || B.w) * (h || B.h)).fill(null), log: {}, seed: 1, n: 0,
       soilAt: 0, sacrificeLeft: 0 };
+  }
+  /* the bed's size: Deeper Beds (Cellar) adds a row and a column per level */
+  bedW() { return (CC.BED ? CC.BED.w : 4) + this.cellarLevel('beds'); }
+  bedH() { return (CC.BED ? CC.BED.h : 4) + this.cellarLevel('beds'); }
+  /* regrow the plot grid to the current size, keeping every plant by (x, y) */
+  bedResize(oldW, oldH) {
+    const W = this.bedW(), H = this.bedH();
+    if (oldW === W && oldH === H) return;
+    const old = this.bed.plots, next = Array(W * H).fill(null);
+    for (let y = 0; y < Math.min(oldH, H); y++) for (let x = 0; x < Math.min(oldW, W); x++) next[y * W + x] = old[y * oldW + x] || null;
+    this.bed.plots = next;
+  }
+
+  /* ---------- Lie Fallow & the Root Cellar (R24) ---------- */
+  cellarData(id) { return (CC.CELLAR || []).find(c => c.id === id) || null; }
+  cellarLevel(id) { return (this.cellar && this.cellar[id]) || 0; }
+  cellarCost(id) { return this.cellarLevel(id) + 1; } /* triangular: level n costs n Loam */
+  cellarMaxed(c) { return this.cellarLevel(c.id) >= c.cap; }
+  buyCellar(id) {
+    const c = this.cellarData(id);
+    if (!c || this.cellarMaxed(c) || this.loam < this.cellarCost(id)) return false;
+    const w = this.bedW(), h = this.bedH();
+    this.loam -= this.cellarCost(id);
+    this.cellar[id] = this.cellarLevel(id) + 1;
+    if (id === 'beds') this.bedResize(w, h);
+    return true;
+  }
+  /* seeds retired into loam: ⌊(log10 seeds)²⌋ — a flat ~500 per cycle */
+  loamPending() { return this.seeds >= 10 ? Math.floor(Math.pow(Math.log10(this.seeds), 2)) : 0; }
+  fallowAvailable() { return !!CC.FALLOW && this.loamPending() >= CC.FALLOW.minLoam; }
+  /* Tilth: each Fallow sweetens the sprout mint a little, to a cap */
+  tilthMult() { return CC.FALLOW ? 1 + CC.FALLOW.tilthPerFallow * Math.min(this.fallows, CC.FALLOW.tilthCap) : 1; }
+  scarecrowEvery() { return Math.max(10, CC.TRIAL.scarecrowEvery - 10 * this.cellarLevel('pace')); }
+  gateRate() { return 1 + 0.05 * this.cellarLevel('gate'); }
+  /* the world lies fallow: seeds → loam; bank, plots, upgrades, lifetime
+     (hence ribbons), seeds, sprouts and the shed LADDERS reset. The Almanac,
+     counters, one-shots, the seed log, Trials' ledger and perks, honey and
+     the Cellar stay. Seed Memory starts the cycle at 10^lv seeds' worth of
+     lifetime — a head start of hours, never a bonus. */
+  fallow() {
+    if (!this.fallowAvailable()) return 0;
+    if (!this.mirrorBook) this.latchPages();
+    const gain = this.loamPending();
+    this.loam += gain;
+    this.fallows++;
+    const mem = this.cellarLevel('memory');
+    this.bank = 0;
+    this.totalRun = 0;
+    this.lifetimeBase = mem > 0 ? Math.pow(10, 2 * mem + 6) : 0;
+    this.seeds = mem > 0 ? Math.pow(10, mem) : 0;
+    this.sprouts = 0;
+    this.bought = {};
+    for (const u of CC.SHED) if (u.repeat) delete this.shed[u.id];
+    this.buffs = this.buffs.filter(b => b.keep);
+    this.trial = null; this.haltT = 0; this.runLog = [];
+    this.owned = CC.BUILDINGS.map(() => 0);
+    this.springStart();
+    this._ribbonCount = this.ribbons().length;
+    return gain;
+  }
+  /* what every spring starts with: resprouted heirlooms (deeper with the
+     Short Rows and Deeper Beds perks), Quick Spring plots, free upgrade tiers */
+  springStart() {
+    const cap = CC.TRIAL.resproutCapBase + this.perks.resproutCap + 25 * this.cellarLevel('beds');
+    for (const u of CC.SHED) {
+      if (u.resprout && u.building !== undefined) {
+        this.owned[u.building] = Math.max(this.owned[u.building], Math.min(this.shedLevel(u.id), cap));
+      }
+    }
+    const quick = (this.cellarData('quick') || { per: 10 }).per * this.cellarLevel('quick');
+    if (quick > 0) for (let i = 0; i < CC.BUILDINGS.length; i++) this.owned[i] = Math.max(this.owned[i], quick);
+    for (let ti = 0; ti < this.perks.startTier; ti++) {
+      for (let i = 0; i < CC.BUILDINGS.length; i++) this.bought[`b${i}t${ti}`] = true;
+    }
+    this._bumperSeen = CC.BUILDINGS.map((_, i) => this.bumperCount(i));
   }
   /* one 32-bit LCG, mirrored bit-for-bit in economy.py, so both engines
      roll the same mutations from the same seed (the snapshot carries it) */
@@ -1863,7 +2040,7 @@ CC.Core = class {
     return Math.min(CC.BED.weatherCap, m);
   }
   bedNeighbors(i) {
-    const W = CC.BED.w, H = CC.BED.h, x = i % W, y = Math.floor(i / W), out = [];
+    const W = this.bedW(), H = this.bedH(), x = i % W, y = Math.floor(i / W), out = [];
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
       if (!dx && !dy) continue;
       const nx = x + dx, ny = y + dy;
@@ -2003,6 +2180,13 @@ CC.Core = class {
     if (c.logTier !== undefined) return this.logTier(c.logTier);
     if (c.logFull !== undefined) return this.logFull();
     if (c.sacrifices !== undefined) return this.sacrifices >= c.sacrifices;
+    /* Lie Fallow (R24) */
+    if (c.fallows !== undefined) return this.fallows >= c.fallows;
+    if (c.loam !== undefined) return this.loam >= c.loam;
+    if (c.cellar !== undefined) return this.cellarLevel(c.cellar) >= (c.n || 1);
+    if (c.cellarAny !== undefined) return (CC.CELLAR || []).some(x => this.cellarLevel(x.id) >= 1);
+    if (c.cellarFull !== undefined) return (CC.CELLAR || []).every(x => this.cellarMaxed(x));
+    if (c.rehearsed !== undefined) return this.rehearsed;
     return false;
   }
 
@@ -2290,7 +2474,7 @@ CC.Core = class {
     this.trial = goal > 0 ? { id: trialId, goal, t: 0 } : null;
     this.haltT = 0;
     this.seeds += gain;
-    this.sprouts += gain * this.mintMult(); /* every seed sprouts (R13); doublers stack (R15) */
+    this.sprouts += Math.floor(gain * this.mintMult() * this.tilthMult()); /* every seed sprouts (R13); doublers stack (R15); Tilth (R24) */
     this.prestiges++;
     this.mintHoney('spring');
     this.bank = 0;
@@ -2301,21 +2485,9 @@ CC.Core = class {
     /* a spring clears the weather, never a Parish reward: Bumper Day/Week
        are earned by the whole world and outlive any one run (R21) */
     this.buffs = this.buffs.filter(b => b.keep);
-    /* resprout (R15): heirloom strains regrow themselves each spring —
-       deeper with the Short Rows perk (R22) */
-    const cap = CC.TRIAL.resproutCapBase + this.perks.resproutCap;
-    for (const u of CC.SHED) {
-      if (u.resprout && u.building !== undefined) {
-        this.owned[u.building] = Math.min(this.shedLevel(u.id), cap);
-      }
-    }
-    /* Crop Rotation perk (R22): springs start with the first n tiers of
-       building upgrades already on the shelf */
-    for (let ti = 0; ti < this.perks.startTier; ti++) {
-      for (let i = 0; i < CC.BUILDINGS.length; i++) this.bought[`b${i}t${ti}`] = true;
-    }
-    /* pre-seed, silently: resprouted rows must not fire a bumper toast storm */
-    this._bumperSeen = CC.BUILDINGS.map((_, i) => this.bumperCount(i));
+    /* resprouts (R15), Quick Spring (R24), free tiers (R22) — and the bumper
+       pre-seed, so a resprouted row never fires a toast storm */
+    this.springStart();
     return gain;
   }
 
@@ -2377,7 +2549,7 @@ CC.Core = class {
        during Late Frost (its purchase would still the garden). */
     if (this.perks.scarecrow > 0 && !this.rule('haltOnBuy')) {
       this.scT += dt;
-      if (this.scT >= CC.TRIAL.scarecrowEvery) {
+      if (this.scT >= this.scarecrowEvery()) {
         this.scT = 0;
         let pick = -1, best = Infinity;
         for (let i = 0; i < Math.min(CC.BUILDINGS.length, 2 * this.perks.scarecrow); i++) {
@@ -2433,6 +2605,7 @@ CC.Core = class {
       bed: { soil: this.bed.soil, plots: this.bed.plots.map(p => p && { ...p }), log: { ...this.bed.log },
         seed: this.bed.seed, n: this.bed.n, soilAt: this.bed.soilAt, sacrificeLeft: this.bed.sacrificeLeft },
       bedT: this.bedT, sacrifices: this.sacrifices,
+      loam: this.loam, cellar: this.cellar, fallows: this.fallows, rehearsed: this.rehearsed,
       almanac: this.almanac,
       /* season deliberately NOT saved: the dev garden has no calendar, and a
          ?season= theme test must never persist its bonus into the solo save;
@@ -2497,7 +2670,13 @@ CC.Core = class {
     this.haltT = Math.max(0, Math.min(+s.haltT || 0, 3600));
     /* the Seed Bed (R23): species must exist, ages are ints, the seed is a
        uint32, the log holds counts — a forged plot never grows a null */
-    const B = CC.BED || { w: 4, h: 4 }, rb = s.bed || {}, fresh = CC.Core.freshBed();
+    /* the Cellar first: the bed's size depends on it (R24) */
+    this.loam = Math.max(0, Math.floor(s.loam) || 0);
+    this.fallows = Math.max(0, Math.floor(s.fallows) || 0);
+    this.rehearsed = !!s.rehearsed;
+    this.cellar = {};
+    for (const cd of (CC.CELLAR || [])) { const lv = Math.floor((s.cellar || {})[cd.id]) || 0; if (lv > 0) this.cellar[cd.id] = Math.min(lv, cd.cap); }
+    const B = { w: this.bedW(), h: this.bedH() }, rb = s.bed || {}, fresh = CC.Core.freshBed(B.w, B.h);
     this.bed = fresh;
     if ((CC.SOILS || []).some(x => x.id === rb.soil)) fresh.soil = rb.soil;
     const plots = Array.isArray(rb.plots) ? rb.plots : [];
@@ -2575,6 +2754,8 @@ CC.Patch = class {
     this._retryTimer = null;
     this.everSynced = false; /* first snapshot received — the world is loaded */
     this.order = null;       /* R21: the Parish Order on the board, or null */
+    this.orders = [];        /* R24 Wider Orders: every card on the board */
+    this.bell = null;        /* R24: Lie Fallow's bell while it rings */
     this.market = null;      /* R21: {active, next, end} — the Market Hour clock */
     this.skew = 0;           /* server wall clock minus ours: deadlines never trust the tab */
     if (!location.protocol.startsWith('http')) return;
@@ -2727,6 +2908,13 @@ CC.Patch = class {
       c.runLog = s.runLog || [];
       c.perks = s.perks ? { cap: {}, ...s.perks } : CC.Core.freshPerks();
       c.haltT = s.haltT || 0;
+      /* Lie Fallow (R24): loam, the Cellar, the bell */
+      c.loam = s.loam || 0;
+      c.cellar = s.cellar || {};
+      c.fallows = s.fallows || 0;
+      c.rehearsed = !!s.rehearsed;
+      this.orders = msg.orders || (msg.order ? [msg.order] : []);
+      this.bell = msg.bell || null;
       /* the Seed Bed (R23): the server's bed is the bed */
       if (s.bed) {
         c.bed = { ...s.bed, plots: (s.bed.plots || []).map(p => p && { ...p }), log: { ...(s.bed.log || {}) } };
@@ -3424,6 +3612,106 @@ CC.UI = class {
     }
   }
 
+  renderOrder(card, o, first) {
+    const q = sel => card.querySelector(sel);
+    const unit = { harvest: '🥕', sprouts: '🌱 planted', visitors: 'guests caught', stalls: 'stall gambles',
+      pages: 'pages written', springs: 'springs', quilt: 'of the quilt', trials: 'trials won' }[o.kind] || '';
+    const t = o.targets || [], v = o.value || 0, tier = o.tier || 0;
+    const left = o.deadline - this.now();
+    q('.order-name').textContent = o.name;
+    card.classList.toggle('authored', !!o.authored);
+    const due = q('.order-due');
+    due.textContent = left > 0 ? `due in ${CC.fmtDur(left)}` : 'the bell is ringing…';
+    due.classList.toggle('soon', left < CC.DUE_SOON);
+    q('.order-line').textContent = o.line || '';
+    const next = tier < t.length ? t[tier] : null;
+    const show = x => o.kind === 'quilt' ? `${Math.round(x * 100)}%` : CC.fmt(x);
+    q('.order-progress').textContent = next ? `${show(v)} / ${show(next)} ${unit}` : `${show(v)} ${unit} — every tier met`;
+    q('.order-tier').textContent = tier ? `tier ${tier} of ${t.length} ${'✓'.repeat(tier)}` : 'no tier yet';
+    const stops = t.length === 3 ? [0, 0.25, 0.5, 1] : t.map((_, i) => i / t.length).concat([1]);
+    let pct = 1;
+    if (tier < t.length) {
+      const lo = tier ? t[tier - 1] : 0, hi = t[tier];
+      pct = stops[tier] + (stops[tier + 1] - stops[tier]) * Math.max(0, Math.min(1, (v - lo) / Math.max(1e-9, hi - lo)));
+    }
+    q('.order-fill').style.width = `${(pct * 100).toFixed(1)}%`;
+    const rw = CC.ORDER_REWARDS || {}, fail = CC.ORDER_FAIL || [];
+    const say = list => (list || []).map(e => e.honey ? `🍯${e.honey}` : e.buff ? `${e.buff.name} ×${e.buff.mult}` :
+      e.visitorRate ? `guests ×${e.visitorRate}` : e.weatherGapMult ? `weather ÷${e.weatherGapMult}` : '').filter(Boolean).join(' + ');
+    q('.order-stakes').textContent = `stakes — ${t.map((_, i) => `${i + 1}: ${say(rw[i + 1])}`).join(' · ')} · missed: ${say(fail)}`;
+    const last = first ? o.last : null, ol = q('.order-last');
+    ol.classList.toggle('won', !!(last && last.tier > 0));
+    ol.classList.toggle('lost', !!(last && !last.tier));
+    ol.textContent = last ? (last.tier > 0 ? `last week: ${last.name} — tier ${last.tier} met` : `last week: ${last.name} — missed`) : '';
+  }
+
+  /* ---------------- Lie Fallow (R24) ---------------- */
+  askBell() {
+    if (this.awaitingWorld()) return;
+    const c = this.core, bell = this.worldMode ? this.patch.bell : null;
+    if (bell) { /* silence it */
+      this.patch.send({ type: 'silence' });
+      return;
+    }
+    if (!c.fallowAvailable()) return;
+    const loam = c.loamPending(), F = CC.FALLOW, rehearsal = !c.rehearsed && this.worldMode;
+    this.$('modal-title').textContent = rehearsal ? '🔔 Ring the bell — a rehearsal' : '🔔 Ring the bell — Lie Fallow';
+    this.$('modal-body').innerHTML =
+      `<b>Lie Fallow</b> is the second prestige. When the bell rings out, <b>every seed is retired into loam</b>: ` +
+      `<b>${CC.fmt(c.seeds)} seeds → ${loam} loam</b>. Bank, plots, upgrades, lifetime (so ribbons), seeds, sprouts and the shed's ` +
+      `ladders return to the ground. The Almanac, counters, the shed's one-shots, honey, the seed log, the Trials' ledger ` +
+      `and the Root Cellar stay. The quilt is framed into the chronicle.` +
+      (this.worldMode ? `<br><br>The bell rings <b>${F.rings} times, ${CC.fmtDur(F.ringGap)} apart</b>; the world lies fallow at the last. ` +
+        `<b>Anyone can silence it</b> until then.` : '') +
+      (rehearsal ? `<br><br><i>This is the world's first bell: a <b>rehearsal</b>. It will ring out and nothing will reset — the next bell is real.</i>` : '');
+    this.$('trial-pick').classList.add('hidden');
+    const yes = this.$('modal-yes');
+    yes.textContent = rehearsal ? 'Ring the rehearsal' : 'Ring the bell';
+    yes.onclick = () => {
+      this.$('modal').classList.add('hidden');
+      if (this.worldMode) { this.patch.send({ type: 'ring' }); return; }
+      const got = c.fallow();
+      if (got) this.ceremony({ type: 'fallow', loam: got, fallows: c.fallows, quilt: '' });
+    };
+    this.$('modal').classList.remove('hidden');
+  }
+  ceremony(ev) {
+    const box = this.$('ceremony');
+    const qc = this.$('ceremony-quilt');
+    if (ev.type === 'fallow') {
+      CC.audio.fanfare();
+      this.$('ceremony-eyebrow').textContent = `THE FALLOW YEAR · ${ev.fallows}`;
+      this.$('ceremony-title').textContent = 'The world lies fallow';
+      this.$('ceremony-body').innerHTML = `The bell rang out. <b>+${ev.loam} loam</b> — every seed went into the ground.<br>` +
+        `Bank, plots, ribbons and ladders return to bare soil. The Almanac remembers. The Cellar is open.` +
+        (ev.quilt ? `<br><br>The quilt is framed into the chronicle:` : '');
+      if (ev.quilt && ev.quilt.length >= 2) {
+        const Q = CC.QUILT, x = qc.getContext('2d');
+        for (let i = 0; i < Q.w * Q.h && 2 * i + 1 < ev.quilt.length; i++) {
+          x.fillStyle = Q.palette[parseInt(ev.quilt.substr(2 * i, 2), 16) || 0] || Q.palette[0];
+          x.fillRect(i % Q.w, Math.floor(i / Q.w), 1, 1);
+        }
+        qc.classList.remove('hidden');
+      } else qc.classList.add('hidden');
+      this.$('ticker-text').textContent = 'The fields rest. The rabbits do not.';
+      this.tickerT = -8;
+    } else {
+      CC.audio.seed();
+      this.$('ceremony-eyebrow').textContent = 'A REHEARSAL';
+      this.$('ceremony-title').textContent = 'The bell rang out — and nothing happened';
+      this.$('ceremony-body').innerHTML = `That was the rehearsal. Had it been real, <b>${ev.loam} loam</b> would be in the Cellar now and the garden bare.` +
+        `<br><br>The bell is armed. The next ringing is the real one.`;
+      qc.classList.add('hidden');
+    }
+    box.classList.remove('hidden');
+  }
+  buyCellar(id) {
+    if (this.awaitingWorld()) return;
+    if (this.worldMode) { this.patch.send({ type: 'cellar', id }); return; }
+    const c = this.core;
+    if (c.buyCellar(id)) { CC.audio.seed(); this.toast(`🪨 ${c.cellarData(id).name} → level ${c.cellarLevel(id)}.`); }
+  }
+
   /* ---------------- Trials (R22) ---------------- */
   trialGoalText(id) { return CC.fog ? '???' : CC.fmt(this.core.trialGoal(id)); }
 
@@ -3517,6 +3805,30 @@ CC.UI = class {
       sitems.appendChild(el);
       return el;
     });
+
+    /* the Root Cellar (R24): loam buys rules */
+    const citems = this.$('cellar-items');
+    this.cellarEls = (CC.CELLAR || []).map(cd => {
+      const el = document.createElement('div');
+      el.className = 'shed-item';
+      el.innerHTML = `<div class="s-head"><b><span class="s-name"></span><span class="s-lv"></span></b>` +
+        `<span class="s-cost"></span></div><div class="s-effect"></div><div class="s-flavor"></div>`;
+      el.querySelector('.s-name').textContent = cd.name;
+      el.querySelector('.s-effect').textContent = cd.effect;
+      el.querySelector('.s-flavor').textContent = cd.flavor;
+      el.addEventListener('click', () => this.buyCellar(cd.id));
+      citems.appendChild(el);
+      return el;
+    });
+    this.$('shed-tabs').addEventListener('click', e => {
+      const tab = e.target.dataset.tab;
+      if (!tab) return;
+      for (const b of this.$('shed-tabs').children) b.classList.toggle('on', b.dataset.tab === tab);
+      this.$('shed-pane').classList.toggle('hidden', tab !== 'shed');
+      this.$('cellar-pane').classList.toggle('hidden', tab !== 'cellar');
+    });
+    this.$('bell-btn').addEventListener('click', () => this.askBell());
+    this.$('ceremony-close').addEventListener('click', () => this.$('ceremony').classList.add('hidden'));
 
     /* the Almanac (R16): 72 page-slots, filled as the world's deeds latch */
     const abox = this.$('almanac-pages');
@@ -3961,6 +4273,22 @@ CC.UI = class {
         CC.audio.rabbit();
         this.toast(`🧪 ${t.name} — the clock ran out. The spring carries on, rule lifted.`);
       }
+    } else if (ev.type === 'bell') {
+      CC.audio.fanfare();
+      const F = CC.FALLOW || { rings: 4 };
+      this.toast(`🔔 The bell rings — ${ev.ring} of ${ev.of || F.rings}${ev.rehearsal ? ' (a rehearsal)' : ''}` +
+        `${ev.who ? `, rung by ${ev.who}` : ''}. ${ev.ring < (ev.of || F.rings) ? `Next ring in ${CC.fmtDur((ev.next || 0) - this.now())}. Anyone may silence it.` : ''}`);
+      this.$('ticker-text').textContent = ev.rehearsal ? 'A bell, rehearsing. The carrots are unconvinced.' : 'The bell. Everyone heard it. Nobody says so.';
+      this.tickerT = -6;
+    } else if (ev.type === 'silence') {
+      this.toast(`🔕 ${ev.who || 'Someone'} silenced the bell${ev.reason ? ` — ${ev.reason}` : ''}.`);
+    } else if (ev.type === 'rehearsed') {
+      this.ceremony(ev);
+    } else if (ev.type === 'fallow') {
+      this.ceremony(ev);
+    } else if (ev.type === 'cellar') {
+      const cd = this.core.cellarData(ev.id);
+      if (cd) { CC.audio.seed(); this.toast(`🪨 Loam spent: ${cd.name} → level ${ev.lv}. ${cd.effect}.`); }
     } else if (ev.type === 'bedPlant') {
       const p = this.core.plantData(ev.sp);
       if (p && ev.who) this.toast(`🌱 ${ev.who} planted ${p.name} at ${this.plotName(ev.i)}.`);
@@ -4116,7 +4444,7 @@ CC.UI = class {
        the same data table the server reads — one brain, two clocks) */
     if (!this.worldMode && !this.visitor && this.t >= this.nextVisitor) {
       if (this.core.rule('noVisitors')) { /* Quiet Hedge (R22): nobody comes */
-        this.nextVisitor = this.t + CC.VISITOR_GAP[0] + Math.random() * (CC.VISITOR_GAP[1] - CC.VISITOR_GAP[0]);
+        this.nextVisitor = this.t + (CC.VISITOR_GAP[0] + Math.random() * (CC.VISITOR_GAP[1] - CC.VISITOR_GAP[0])) / this.core.gateRate();
       } else {
         let w = CC.VISITORS.reduce((s, v) => s + v.weight, 0) * Math.random();
         const pick = CC.VISITORS.find(v => (w -= v.weight) < 0) || CC.VISITORS[0];
@@ -4265,45 +4593,23 @@ CC.UI = class {
       if (c.bed.sacrificeLeft > 0) this.$('sacrifice-text').textContent = `the log is given up in ${CC.fmtDur(c.bed.sacrificeLeft)} — anyone may cancel`;
     }
 
-    /* Parish Orders (R21): the board the world can miss */
+    /* Parish Orders (R21) — every card on the board (Wider Orders, R24) */
     {
-      const o = this.worldMode && this.patch ? this.patch.order : null;
-      const panel = this.$('order');
-      panel.classList.toggle('hidden', !o);
-      if (o) {
-        const unit = { harvest: '🥕', sprouts: '🌱 planted', visitors: 'guests caught', stalls: 'stall gambles',
-          pages: 'pages written', springs: 'springs' }[o.kind] || '';
-        const t = o.targets || [], v = o.value || 0, tier = o.tier || 0;
-        const left = o.deadline - this.now();
-        this.$('order-name').textContent = o.name;
-        this.$('order-card').classList.toggle('authored', !!o.authored);
-        const due = this.$('order-due');
-        due.textContent = left > 0 ? `due in ${CC.fmtDur(left)}` : 'the bell is ringing…';
-        due.classList.toggle('soon', left < CC.DUE_SOON);
-        this.$('order-line').textContent = o.line || '';
-        const next = tier < t.length ? t[tier] : null;
-        this.$('order-progress').textContent = next
-          ? `${CC.fmt(v)} / ${CC.fmt(next)} ${unit}` : `${CC.fmt(v)} ${unit} — every tier met`;
-        this.$('order-tier').textContent = tier ? `tier ${tier} of ${t.length} ${'✓'.repeat(tier)}` : 'no tier yet';
-        /* piecewise fill: the track's marks sit at 25 / 50 / 100 % for three
-           tiers; any other count spreads its marks evenly */
-        const stops = t.length === 3 ? [0, 0.25, 0.5, 1] : t.map((_, i) => i / t.length).concat([1]);
-        let pct = 1;
-        if (tier < t.length) {
-          const lo = tier ? t[tier - 1] : 0, hi = t[tier];
-          pct = stops[tier] + (stops[tier + 1] - stops[tier]) * Math.max(0, Math.min(1, (v - lo) / Math.max(1e-9, hi - lo)));
-        }
-        this.$('order-fill').style.width = `${(pct * 100).toFixed(1)}%`;
-        const rw = CC.ORDER_REWARDS || {}, fail = CC.ORDER_FAIL || [];
-        const say = list => (list || []).map(e => e.honey ? `🍯${e.honey}` : e.buff ? `${e.buff.name} ×${e.buff.mult}` :
-          e.visitorRate ? `guests ×${e.visitorRate}` : e.weatherGapMult ? `weather ÷${e.weatherGapMult}` : '').filter(Boolean).join(' + ');
-        this.$('order-stakes').textContent =
-          `stakes — ${t.map((_, i) => `${i + 1}: ${say(rw[i + 1])}`).join(' · ')} · missed: ${say(fail)}`;
-        const last = o.last, ol = this.$('order-last');
-        ol.classList.toggle('won', !!(last && last.tier > 0));
-        ol.classList.toggle('lost', !!(last && !last.tier));
-        ol.textContent = last ? (last.tier > 0 ? `last week: ${last.name} — tier ${last.tier} met` : `last week: ${last.name} — missed`) : '';
+      const list = this.worldMode && this.patch ? (this.patch.orders || []) : [];
+      const panel = this.$('order'), box = this.$('order-cards');
+      panel.classList.toggle('hidden', !list.length);
+      while (box.children.length > list.length) box.lastChild.remove();
+      while (box.children.length < list.length) {
+        const card = document.createElement('div');
+        card.className = 'order-card';
+        card.innerHTML = `<div class="order-head"><b class="order-name"></b><span class="order-due"></span></div>` +
+          `<div class="order-line"></div>` +
+          `<div class="order-track"><div class="order-fill"></div><i class="o-mark"></i><i class="o-mark"></i><i class="o-mark"></i></div>` +
+          `<div class="order-foot"><span class="order-progress"></span><span class="order-tier"></span></div>` +
+          `<div class="order-stakes"></div><div class="order-last"></div>`;
+        box.appendChild(card);
       }
+      list.forEach((o, k) => this.renderOrder(box.children[k], o, k === 0));
     }
 
     /* season (R17): the world's shared festival, clock always visible —
@@ -4335,7 +4641,7 @@ CC.UI = class {
     this.$('sprout-line').textContent = (c.sprouts > 0 || shedBought > 0)
       ? `🌱 ${CC.fmt(c.sprouts)} sprout${c.sprouts === 1 ? '' : 's'} to spend` : '';
     const sb = this.$('shed-btn');
-    sb.classList.toggle('hidden', !(c.seeds > 0 || c.sprouts > 0 || shedBought > 0));
+    sb.classList.toggle('hidden', !(c.seeds > 0 || c.sprouts > 0 || shedBought > 0 || c.loam > 0 || c.fallows > 0));
     sb.classList.toggle('affordable', CC.SHED.some(u =>
       !c.shedMaxed(u) && c.shedVisible(u) && c.sprouts >= c.shedCost(u.id)));
     const shedSig = CC.SHED.map(u => {
@@ -4361,6 +4667,39 @@ CC.UI = class {
           : maxed ? (u.repeat ? '🌱 fully grown' : '🌱 planted')
             : `${CC.fmt(c.shedCost(u.id))} 🌱`;
       });
+    }
+
+    /* Lie Fallow (R24): the bell and the Cellar */
+    {
+      const bell = this.worldMode && this.patch ? this.patch.bell : null;
+      const bb = this.$('bell-btn'), bl = this.$('bell-line');
+      const avail = c.fallowAvailable();
+      bb.classList.toggle('hidden', !(avail || bell));
+      bb.classList.toggle('ringing', !!bell);
+      if (bell) {
+        const F = CC.FALLOW, nextAt = bell.at + bell.rung * F.ringGap;
+        bb.textContent = '🔕 Silence the bell';
+        bl.classList.remove('hidden');
+        bl.textContent = `🔔 ring ${bell.rung} of ${F.rings}${bell.rehearsal ? ' (rehearsal)' : ''} · ` +
+          (bell.rung < F.rings ? `next in ${CC.fmtDur(nextAt - this.now())}` : 'ringing out…') +
+          ` · ${bell.rehearsal ? 'nothing resets this time' : `the world lies fallow at the ${F.rings}th`}`;
+      } else {
+        bb.textContent = avail ? `🔔 Ring the bell — Lie Fallow (+${c.loamPending()} loam)${!c.rehearsed && this.worldMode ? ' · rehearsal' : ''}` : '';
+        bl.classList.add('hidden');
+      }
+      const cSig = (CC.CELLAR || []).map(cd => c.cellarLevel(cd.id)).join(',') + '|' + c.loam + '|' + c.fallows;
+      if (cSig !== this._cellarSig) {
+        this._cellarSig = cSig;
+        this.$('cellar-balance').innerHTML = `<b>${CC.fmt(c.loam)}</b> 🪨 loam` +
+          ` · <span style="opacity:0.75">${c.fallows} Fallow${c.fallows === 1 ? '' : 's'} on record</span>`;
+        (CC.CELLAR || []).forEach((cd, i) => {
+          const el = this.cellarEls[i], lv = c.cellarLevel(cd.id), maxed = c.cellarMaxed(cd);
+          el.querySelector('.s-lv').textContent = lv > 0 ? ` · Lv ${lv}/${cd.cap}` : ` · 0/${cd.cap}`;
+          el.classList.toggle('bought', maxed);
+          el.classList.toggle('cant', !maxed && c.loam < c.cellarCost(cd.id));
+          el.querySelector('.s-cost').textContent = maxed ? '🪨 at its cap' : `${c.cellarCost(cd.id)} 🪨`;
+        });
+      }
     }
 
     const pending = c.pendingSeeds();
@@ -4447,6 +4786,7 @@ CC.UI = class {
         `<div class="stat-sub">seeds ${this.fmtX(c.seedMult())} · ribbons ${this.fmtX(c.ribbonMult())} · rest ${this.fmtX(c.globalMult() / (c.seedMult() * c.ribbonMult()))}</div>` +
         (c.honey > 0 ? `<div>Honey in the jar 🍯 <b>${CC.fmt(c.honey)}</b></div>` : '') +
         (c.bedMult() !== 1 ? `<div>The bed 🌱 <b>${this.fmtX(c.bedMult())}</b></div>` : '') +
+        (c.fallows > 0 || c.loam > 0 ? `<div>Fallow Years 🔔 <b>${c.fallows}</b></div><div>Loam in the cellar 🪨 <b>${CC.fmt(c.loam)}</b></div>` : '') +
         (() => { /* Trials (R22): the ledger and what it paid */
           const done = (CC.TRIALS || []).reduce((a, t) => a + c.trialDone(t.id), 0);
           if (!done) return '';

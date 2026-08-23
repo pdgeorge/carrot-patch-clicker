@@ -651,6 +651,106 @@ CC.UI = class {
     }
   }
 
+  renderOrder(card, o, first) {
+    const q = sel => card.querySelector(sel);
+    const unit = { harvest: '🥕', sprouts: '🌱 planted', visitors: 'guests caught', stalls: 'stall gambles',
+      pages: 'pages written', springs: 'springs', quilt: 'of the quilt', trials: 'trials won' }[o.kind] || '';
+    const t = o.targets || [], v = o.value || 0, tier = o.tier || 0;
+    const left = o.deadline - this.now();
+    q('.order-name').textContent = o.name;
+    card.classList.toggle('authored', !!o.authored);
+    const due = q('.order-due');
+    due.textContent = left > 0 ? `due in ${CC.fmtDur(left)}` : 'the bell is ringing…';
+    due.classList.toggle('soon', left < CC.DUE_SOON);
+    q('.order-line').textContent = o.line || '';
+    const next = tier < t.length ? t[tier] : null;
+    const show = x => o.kind === 'quilt' ? `${Math.round(x * 100)}%` : CC.fmt(x);
+    q('.order-progress').textContent = next ? `${show(v)} / ${show(next)} ${unit}` : `${show(v)} ${unit} — every tier met`;
+    q('.order-tier').textContent = tier ? `tier ${tier} of ${t.length} ${'✓'.repeat(tier)}` : 'no tier yet';
+    const stops = t.length === 3 ? [0, 0.25, 0.5, 1] : t.map((_, i) => i / t.length).concat([1]);
+    let pct = 1;
+    if (tier < t.length) {
+      const lo = tier ? t[tier - 1] : 0, hi = t[tier];
+      pct = stops[tier] + (stops[tier + 1] - stops[tier]) * Math.max(0, Math.min(1, (v - lo) / Math.max(1e-9, hi - lo)));
+    }
+    q('.order-fill').style.width = `${(pct * 100).toFixed(1)}%`;
+    const rw = CC.ORDER_REWARDS || {}, fail = CC.ORDER_FAIL || [];
+    const say = list => (list || []).map(e => e.honey ? `🍯${e.honey}` : e.buff ? `${e.buff.name} ×${e.buff.mult}` :
+      e.visitorRate ? `guests ×${e.visitorRate}` : e.weatherGapMult ? `weather ÷${e.weatherGapMult}` : '').filter(Boolean).join(' + ');
+    q('.order-stakes').textContent = `stakes — ${t.map((_, i) => `${i + 1}: ${say(rw[i + 1])}`).join(' · ')} · missed: ${say(fail)}`;
+    const last = first ? o.last : null, ol = q('.order-last');
+    ol.classList.toggle('won', !!(last && last.tier > 0));
+    ol.classList.toggle('lost', !!(last && !last.tier));
+    ol.textContent = last ? (last.tier > 0 ? `last week: ${last.name} — tier ${last.tier} met` : `last week: ${last.name} — missed`) : '';
+  }
+
+  /* ---------------- Lie Fallow (R24) ---------------- */
+  askBell() {
+    if (this.awaitingWorld()) return;
+    const c = this.core, bell = this.worldMode ? this.patch.bell : null;
+    if (bell) { /* silence it */
+      this.patch.send({ type: 'silence' });
+      return;
+    }
+    if (!c.fallowAvailable()) return;
+    const loam = c.loamPending(), F = CC.FALLOW, rehearsal = !c.rehearsed && this.worldMode;
+    this.$('modal-title').textContent = rehearsal ? '🔔 Ring the bell — a rehearsal' : '🔔 Ring the bell — Lie Fallow';
+    this.$('modal-body').innerHTML =
+      `<b>Lie Fallow</b> is the second prestige. When the bell rings out, <b>every seed is retired into loam</b>: ` +
+      `<b>${CC.fmt(c.seeds)} seeds → ${loam} loam</b>. Bank, plots, upgrades, lifetime (so ribbons), seeds, sprouts and the shed's ` +
+      `ladders return to the ground. The Almanac, counters, the shed's one-shots, honey, the seed log, the Trials' ledger ` +
+      `and the Root Cellar stay. The quilt is framed into the chronicle.` +
+      (this.worldMode ? `<br><br>The bell rings <b>${F.rings} times, ${CC.fmtDur(F.ringGap)} apart</b>; the world lies fallow at the last. ` +
+        `<b>Anyone can silence it</b> until then.` : '') +
+      (rehearsal ? `<br><br><i>This is the world's first bell: a <b>rehearsal</b>. It will ring out and nothing will reset — the next bell is real.</i>` : '');
+    this.$('trial-pick').classList.add('hidden');
+    const yes = this.$('modal-yes');
+    yes.textContent = rehearsal ? 'Ring the rehearsal' : 'Ring the bell';
+    yes.onclick = () => {
+      this.$('modal').classList.add('hidden');
+      if (this.worldMode) { this.patch.send({ type: 'ring' }); return; }
+      const got = c.fallow();
+      if (got) this.ceremony({ type: 'fallow', loam: got, fallows: c.fallows, quilt: '' });
+    };
+    this.$('modal').classList.remove('hidden');
+  }
+  ceremony(ev) {
+    const box = this.$('ceremony');
+    const qc = this.$('ceremony-quilt');
+    if (ev.type === 'fallow') {
+      CC.audio.fanfare();
+      this.$('ceremony-eyebrow').textContent = `THE FALLOW YEAR · ${ev.fallows}`;
+      this.$('ceremony-title').textContent = 'The world lies fallow';
+      this.$('ceremony-body').innerHTML = `The bell rang out. <b>+${ev.loam} loam</b> — every seed went into the ground.<br>` +
+        `Bank, plots, ribbons and ladders return to bare soil. The Almanac remembers. The Cellar is open.` +
+        (ev.quilt ? `<br><br>The quilt is framed into the chronicle:` : '');
+      if (ev.quilt && ev.quilt.length >= 2) {
+        const Q = CC.QUILT, x = qc.getContext('2d');
+        for (let i = 0; i < Q.w * Q.h && 2 * i + 1 < ev.quilt.length; i++) {
+          x.fillStyle = Q.palette[parseInt(ev.quilt.substr(2 * i, 2), 16) || 0] || Q.palette[0];
+          x.fillRect(i % Q.w, Math.floor(i / Q.w), 1, 1);
+        }
+        qc.classList.remove('hidden');
+      } else qc.classList.add('hidden');
+      this.$('ticker-text').textContent = 'The fields rest. The rabbits do not.';
+      this.tickerT = -8;
+    } else {
+      CC.audio.seed();
+      this.$('ceremony-eyebrow').textContent = 'A REHEARSAL';
+      this.$('ceremony-title').textContent = 'The bell rang out — and nothing happened';
+      this.$('ceremony-body').innerHTML = `That was the rehearsal. Had it been real, <b>${ev.loam} loam</b> would be in the Cellar now and the garden bare.` +
+        `<br><br>The bell is armed. The next ringing is the real one.`;
+      qc.classList.add('hidden');
+    }
+    box.classList.remove('hidden');
+  }
+  buyCellar(id) {
+    if (this.awaitingWorld()) return;
+    if (this.worldMode) { this.patch.send({ type: 'cellar', id }); return; }
+    const c = this.core;
+    if (c.buyCellar(id)) { CC.audio.seed(); this.toast(`🪨 ${c.cellarData(id).name} → level ${c.cellarLevel(id)}.`); }
+  }
+
   /* ---------------- Trials (R22) ---------------- */
   trialGoalText(id) { return CC.fog ? '???' : CC.fmt(this.core.trialGoal(id)); }
 
@@ -744,6 +844,30 @@ CC.UI = class {
       sitems.appendChild(el);
       return el;
     });
+
+    /* the Root Cellar (R24): loam buys rules */
+    const citems = this.$('cellar-items');
+    this.cellarEls = (CC.CELLAR || []).map(cd => {
+      const el = document.createElement('div');
+      el.className = 'shed-item';
+      el.innerHTML = `<div class="s-head"><b><span class="s-name"></span><span class="s-lv"></span></b>` +
+        `<span class="s-cost"></span></div><div class="s-effect"></div><div class="s-flavor"></div>`;
+      el.querySelector('.s-name').textContent = cd.name;
+      el.querySelector('.s-effect').textContent = cd.effect;
+      el.querySelector('.s-flavor').textContent = cd.flavor;
+      el.addEventListener('click', () => this.buyCellar(cd.id));
+      citems.appendChild(el);
+      return el;
+    });
+    this.$('shed-tabs').addEventListener('click', e => {
+      const tab = e.target.dataset.tab;
+      if (!tab) return;
+      for (const b of this.$('shed-tabs').children) b.classList.toggle('on', b.dataset.tab === tab);
+      this.$('shed-pane').classList.toggle('hidden', tab !== 'shed');
+      this.$('cellar-pane').classList.toggle('hidden', tab !== 'cellar');
+    });
+    this.$('bell-btn').addEventListener('click', () => this.askBell());
+    this.$('ceremony-close').addEventListener('click', () => this.$('ceremony').classList.add('hidden'));
 
     /* the Almanac (R16): 72 page-slots, filled as the world's deeds latch */
     const abox = this.$('almanac-pages');
@@ -1188,6 +1312,22 @@ CC.UI = class {
         CC.audio.rabbit();
         this.toast(`🧪 ${t.name} — the clock ran out. The spring carries on, rule lifted.`);
       }
+    } else if (ev.type === 'bell') {
+      CC.audio.fanfare();
+      const F = CC.FALLOW || { rings: 4 };
+      this.toast(`🔔 The bell rings — ${ev.ring} of ${ev.of || F.rings}${ev.rehearsal ? ' (a rehearsal)' : ''}` +
+        `${ev.who ? `, rung by ${ev.who}` : ''}. ${ev.ring < (ev.of || F.rings) ? `Next ring in ${CC.fmtDur((ev.next || 0) - this.now())}. Anyone may silence it.` : ''}`);
+      this.$('ticker-text').textContent = ev.rehearsal ? 'A bell, rehearsing. The carrots are unconvinced.' : 'The bell. Everyone heard it. Nobody says so.';
+      this.tickerT = -6;
+    } else if (ev.type === 'silence') {
+      this.toast(`🔕 ${ev.who || 'Someone'} silenced the bell${ev.reason ? ` — ${ev.reason}` : ''}.`);
+    } else if (ev.type === 'rehearsed') {
+      this.ceremony(ev);
+    } else if (ev.type === 'fallow') {
+      this.ceremony(ev);
+    } else if (ev.type === 'cellar') {
+      const cd = this.core.cellarData(ev.id);
+      if (cd) { CC.audio.seed(); this.toast(`🪨 Loam spent: ${cd.name} → level ${ev.lv}. ${cd.effect}.`); }
     } else if (ev.type === 'bedPlant') {
       const p = this.core.plantData(ev.sp);
       if (p && ev.who) this.toast(`🌱 ${ev.who} planted ${p.name} at ${this.plotName(ev.i)}.`);
@@ -1343,7 +1483,7 @@ CC.UI = class {
        the same data table the server reads — one brain, two clocks) */
     if (!this.worldMode && !this.visitor && this.t >= this.nextVisitor) {
       if (this.core.rule('noVisitors')) { /* Quiet Hedge (R22): nobody comes */
-        this.nextVisitor = this.t + CC.VISITOR_GAP[0] + Math.random() * (CC.VISITOR_GAP[1] - CC.VISITOR_GAP[0]);
+        this.nextVisitor = this.t + (CC.VISITOR_GAP[0] + Math.random() * (CC.VISITOR_GAP[1] - CC.VISITOR_GAP[0])) / this.core.gateRate();
       } else {
         let w = CC.VISITORS.reduce((s, v) => s + v.weight, 0) * Math.random();
         const pick = CC.VISITORS.find(v => (w -= v.weight) < 0) || CC.VISITORS[0];
@@ -1492,45 +1632,23 @@ CC.UI = class {
       if (c.bed.sacrificeLeft > 0) this.$('sacrifice-text').textContent = `the log is given up in ${CC.fmtDur(c.bed.sacrificeLeft)} — anyone may cancel`;
     }
 
-    /* Parish Orders (R21): the board the world can miss */
+    /* Parish Orders (R21) — every card on the board (Wider Orders, R24) */
     {
-      const o = this.worldMode && this.patch ? this.patch.order : null;
-      const panel = this.$('order');
-      panel.classList.toggle('hidden', !o);
-      if (o) {
-        const unit = { harvest: '🥕', sprouts: '🌱 planted', visitors: 'guests caught', stalls: 'stall gambles',
-          pages: 'pages written', springs: 'springs' }[o.kind] || '';
-        const t = o.targets || [], v = o.value || 0, tier = o.tier || 0;
-        const left = o.deadline - this.now();
-        this.$('order-name').textContent = o.name;
-        this.$('order-card').classList.toggle('authored', !!o.authored);
-        const due = this.$('order-due');
-        due.textContent = left > 0 ? `due in ${CC.fmtDur(left)}` : 'the bell is ringing…';
-        due.classList.toggle('soon', left < CC.DUE_SOON);
-        this.$('order-line').textContent = o.line || '';
-        const next = tier < t.length ? t[tier] : null;
-        this.$('order-progress').textContent = next
-          ? `${CC.fmt(v)} / ${CC.fmt(next)} ${unit}` : `${CC.fmt(v)} ${unit} — every tier met`;
-        this.$('order-tier').textContent = tier ? `tier ${tier} of ${t.length} ${'✓'.repeat(tier)}` : 'no tier yet';
-        /* piecewise fill: the track's marks sit at 25 / 50 / 100 % for three
-           tiers; any other count spreads its marks evenly */
-        const stops = t.length === 3 ? [0, 0.25, 0.5, 1] : t.map((_, i) => i / t.length).concat([1]);
-        let pct = 1;
-        if (tier < t.length) {
-          const lo = tier ? t[tier - 1] : 0, hi = t[tier];
-          pct = stops[tier] + (stops[tier + 1] - stops[tier]) * Math.max(0, Math.min(1, (v - lo) / Math.max(1e-9, hi - lo)));
-        }
-        this.$('order-fill').style.width = `${(pct * 100).toFixed(1)}%`;
-        const rw = CC.ORDER_REWARDS || {}, fail = CC.ORDER_FAIL || [];
-        const say = list => (list || []).map(e => e.honey ? `🍯${e.honey}` : e.buff ? `${e.buff.name} ×${e.buff.mult}` :
-          e.visitorRate ? `guests ×${e.visitorRate}` : e.weatherGapMult ? `weather ÷${e.weatherGapMult}` : '').filter(Boolean).join(' + ');
-        this.$('order-stakes').textContent =
-          `stakes — ${t.map((_, i) => `${i + 1}: ${say(rw[i + 1])}`).join(' · ')} · missed: ${say(fail)}`;
-        const last = o.last, ol = this.$('order-last');
-        ol.classList.toggle('won', !!(last && last.tier > 0));
-        ol.classList.toggle('lost', !!(last && !last.tier));
-        ol.textContent = last ? (last.tier > 0 ? `last week: ${last.name} — tier ${last.tier} met` : `last week: ${last.name} — missed`) : '';
+      const list = this.worldMode && this.patch ? (this.patch.orders || []) : [];
+      const panel = this.$('order'), box = this.$('order-cards');
+      panel.classList.toggle('hidden', !list.length);
+      while (box.children.length > list.length) box.lastChild.remove();
+      while (box.children.length < list.length) {
+        const card = document.createElement('div');
+        card.className = 'order-card';
+        card.innerHTML = `<div class="order-head"><b class="order-name"></b><span class="order-due"></span></div>` +
+          `<div class="order-line"></div>` +
+          `<div class="order-track"><div class="order-fill"></div><i class="o-mark"></i><i class="o-mark"></i><i class="o-mark"></i></div>` +
+          `<div class="order-foot"><span class="order-progress"></span><span class="order-tier"></span></div>` +
+          `<div class="order-stakes"></div><div class="order-last"></div>`;
+        box.appendChild(card);
       }
+      list.forEach((o, k) => this.renderOrder(box.children[k], o, k === 0));
     }
 
     /* season (R17): the world's shared festival, clock always visible —
@@ -1562,7 +1680,7 @@ CC.UI = class {
     this.$('sprout-line').textContent = (c.sprouts > 0 || shedBought > 0)
       ? `🌱 ${CC.fmt(c.sprouts)} sprout${c.sprouts === 1 ? '' : 's'} to spend` : '';
     const sb = this.$('shed-btn');
-    sb.classList.toggle('hidden', !(c.seeds > 0 || c.sprouts > 0 || shedBought > 0));
+    sb.classList.toggle('hidden', !(c.seeds > 0 || c.sprouts > 0 || shedBought > 0 || c.loam > 0 || c.fallows > 0));
     sb.classList.toggle('affordable', CC.SHED.some(u =>
       !c.shedMaxed(u) && c.shedVisible(u) && c.sprouts >= c.shedCost(u.id)));
     const shedSig = CC.SHED.map(u => {
@@ -1588,6 +1706,39 @@ CC.UI = class {
           : maxed ? (u.repeat ? '🌱 fully grown' : '🌱 planted')
             : `${CC.fmt(c.shedCost(u.id))} 🌱`;
       });
+    }
+
+    /* Lie Fallow (R24): the bell and the Cellar */
+    {
+      const bell = this.worldMode && this.patch ? this.patch.bell : null;
+      const bb = this.$('bell-btn'), bl = this.$('bell-line');
+      const avail = c.fallowAvailable();
+      bb.classList.toggle('hidden', !(avail || bell));
+      bb.classList.toggle('ringing', !!bell);
+      if (bell) {
+        const F = CC.FALLOW, nextAt = bell.at + bell.rung * F.ringGap;
+        bb.textContent = '🔕 Silence the bell';
+        bl.classList.remove('hidden');
+        bl.textContent = `🔔 ring ${bell.rung} of ${F.rings}${bell.rehearsal ? ' (rehearsal)' : ''} · ` +
+          (bell.rung < F.rings ? `next in ${CC.fmtDur(nextAt - this.now())}` : 'ringing out…') +
+          ` · ${bell.rehearsal ? 'nothing resets this time' : `the world lies fallow at the ${F.rings}th`}`;
+      } else {
+        bb.textContent = avail ? `🔔 Ring the bell — Lie Fallow (+${c.loamPending()} loam)${!c.rehearsed && this.worldMode ? ' · rehearsal' : ''}` : '';
+        bl.classList.add('hidden');
+      }
+      const cSig = (CC.CELLAR || []).map(cd => c.cellarLevel(cd.id)).join(',') + '|' + c.loam + '|' + c.fallows;
+      if (cSig !== this._cellarSig) {
+        this._cellarSig = cSig;
+        this.$('cellar-balance').innerHTML = `<b>${CC.fmt(c.loam)}</b> 🪨 loam` +
+          ` · <span style="opacity:0.75">${c.fallows} Fallow${c.fallows === 1 ? '' : 's'} on record</span>`;
+        (CC.CELLAR || []).forEach((cd, i) => {
+          const el = this.cellarEls[i], lv = c.cellarLevel(cd.id), maxed = c.cellarMaxed(cd);
+          el.querySelector('.s-lv').textContent = lv > 0 ? ` · Lv ${lv}/${cd.cap}` : ` · 0/${cd.cap}`;
+          el.classList.toggle('bought', maxed);
+          el.classList.toggle('cant', !maxed && c.loam < c.cellarCost(cd.id));
+          el.querySelector('.s-cost').textContent = maxed ? '🪨 at its cap' : `${c.cellarCost(cd.id)} 🪨`;
+        });
+      }
     }
 
     const pending = c.pendingSeeds();
@@ -1674,6 +1825,7 @@ CC.UI = class {
         `<div class="stat-sub">seeds ${this.fmtX(c.seedMult())} · ribbons ${this.fmtX(c.ribbonMult())} · rest ${this.fmtX(c.globalMult() / (c.seedMult() * c.ribbonMult()))}</div>` +
         (c.honey > 0 ? `<div>Honey in the jar 🍯 <b>${CC.fmt(c.honey)}</b></div>` : '') +
         (c.bedMult() !== 1 ? `<div>The bed 🌱 <b>${this.fmtX(c.bedMult())}</b></div>` : '') +
+        (c.fallows > 0 || c.loam > 0 ? `<div>Fallow Years 🔔 <b>${c.fallows}</b></div><div>Loam in the cellar 🪨 <b>${CC.fmt(c.loam)}</b></div>` : '') +
         (() => { /* Trials (R22): the ledger and what it paid */
           const done = (CC.TRIALS || []).reduce((a, t) => a + c.trialDone(t.id), 0);
           if (!done) return '';
