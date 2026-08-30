@@ -1228,26 +1228,30 @@ shutil.rmtree(pdir, ignore_errors=True)
 # the presence board (sybil-resistant): streaks over consecutive UTC days
 from carrot_patch.tenders import TenderBook  # noqa: E402
 tb = TenderBook(Path(tempfile.mkdtemp(prefix="carrot_tb_")) / "t.db", ROOT / "carrot_patch" / "blocklist.txt")
-tb.bump("Ada", clicks=1, today="2026-08-20")
-tb.bump("Ada", clicks=1, today="2026-08-21")
-tb.bump("Ada", clicks=1, today="2026-08-22")
-tb.bump("Ada", clicks=1, today="2026-08-22")   # same day twice: no double count
-tb.bump("Bob", clicks=1, today="2026-08-22")
-tb.bump("Bob", clicks=1, today="2026-08-24")    # skipped a day: streak resets
-pres = tb.presence(today="2026-08-24")
+# dates RELATIVE to the wall clock: names_active() reads time.time(), so a
+# fixed calendar here started failing the week after it was written
+from datetime import date as _date, timedelta as _td  # noqa: E402
+day = lambda off: (_date.today() + _td(days=off)).isoformat()  # noqa: E731
+tb.bump("Ada", clicks=1, today=day(-4))
+tb.bump("Ada", clicks=1, today=day(-3))
+tb.bump("Ada", clicks=1, today=day(-2))
+tb.bump("Ada", clicks=1, today=day(-2))   # same day twice: no double count
+tb.bump("Bob", clicks=1, today=day(-2))
+tb.bump("Bob", clicks=1, today=day(0))    # skipped a day: streak resets
+pres = tb.presence(today=day(0))
 ada = next(r for r in tb.db.execute("SELECT streak, best_streak, first_seen FROM tenders WHERE name='Ada'"))
 bob = next(r for r in tb.db.execute("SELECT streak, best_streak FROM tenders WHERE name='Bob'"))
-check(ada[0] == 3 and ada[1] == 3 and ada[2] == "2026-08-20", f"three consecutive days make a streak of 3 (Ada {ada})")
+check(ada[0] == 3 and ada[1] == 3 and ada[2] == day(-4), f"three consecutive days make a streak of 3 (Ada {ada})")
 check(bob[0] == 1 and bob[1] == 1, f"a missed day resets the streak (Bob {bob})")
 check(pres["hands_today"] == ["Bob"] and pres["hands_count"] == 1, "hands today lists who tended today, with an exact count")
 check(pres["founders"][0]["name"] == "Ada", "founders are ordered by first appearance")
 check(tb.names_active(7) == 2, "two names active this week")
-pres_later = tb.presence(today="2026-09-30")
+pres_later = tb.presence(today=day(37))
 ada_row = next(x for x in pres_later["streaks"] if x["name"] == "Ada")
 check(ada_row["streak"] == 0 and ada_row["best"] == 3, "a streak that ended last month is a best, not 'days running'")
 for i in range(60):
-    tb.bump(f"sybil{i:02d}", clicks=0, today="2026-09-30")
-pres_many = tb.presence(today="2026-09-30")
+    tb.bump(f"sybil{i:02d}", clicks=0, today=day(37))
+pres_many = tb.presence(today=day(37))
 check(len(pres_many["hands_today"]) == 50 and pres_many["hands_count"] == 60, "the hands list is bounded; the count is exact")
 # a pre-R21 registry: nobody becomes a founder on restart day
 import sqlite3  # noqa: E402
