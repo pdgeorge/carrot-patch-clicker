@@ -1535,7 +1535,7 @@ CC.UI = class {
   /* open the paper modal with focus inside; closing restores it (brief P7) */
   openModal() {
     this._dlgReturn = document.activeElement;
-    this.openModal();
+    this.$('modal').classList.remove('hidden');
     this.$('modal-yes').focus();
   }
 

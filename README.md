@@ -180,6 +180,10 @@ of a building, lifetime harvest, seeds, clicks, other upgrades — see
 content — however it's gated — is a `data.js`-only change. If you
 change **formulas** in `src/core.js`, you must mirror the change in
 `carrot_patch/economy.py` — the parity test will fail until you do.
+- **`node tests/smoke_ui.js`** — boots the built page in headless Chromium
+  (skips cleanly if Chromium is missing) and clicks every modal opener:
+  Go to Seed, the bell, the sacrifice, the shed, the planting menu. The
+  engine suites cannot see a dead click handler; this can.
 
 ## Layout
 
