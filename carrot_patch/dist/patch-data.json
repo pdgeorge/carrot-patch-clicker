@@ -1824,6 +1824,46 @@
      "rehearsed": 1
     }
    ]
+  },
+  {
+   "id": "st0",
+   "name": "The Sweet Trade",
+   "flavor": "The first charm bought with honey. The stall nods.",
+   "unlock": [
+    {
+     "charmsAny": 1
+    }
+   ]
+  },
+  {
+   "id": "st1",
+   "name": "Him",
+   "flavor": "The gnome arrived. The garden feels supervised.",
+   "unlock": [
+    {
+     "charm": "gnome"
+    }
+   ]
+  },
+  {
+   "id": "st2",
+   "name": "The Ninth Life",
+   "flavor": "The cat chose this allotment. It could have chosen anywhere.",
+   "unlock": [
+    {
+     "charm": "cat"
+    }
+   ]
+  },
+  {
+   "id": "cl0",
+   "name": "The Third Shelf",
+   "flavor": "A perk from the cellar's deepest row. The tree has roots.",
+   "unlock": [
+    {
+     "cellarTier": 3
+    }
+   ]
   }
  ],
  "almanacMult": 1.02,
@@ -2580,6 +2620,7 @@
   {
    "id": "quick",
    "name": "Quick Spring",
+   "tier": 1,
    "cap": 5,
    "per": 10,
    "effect": "every spring starts with 10 of each plot per level",
@@ -2588,6 +2629,7 @@
   {
    "id": "pace",
    "name": "Scarecrow Pace",
+   "tier": 1,
    "cap": 5,
    "per": 10,
    "effect": "the Scarecrow acts 10 s sooner per level (60 s → 10 s)",
@@ -2596,6 +2638,7 @@
   {
    "id": "gate",
    "name": "Open Gate",
+   "tier": 1,
    "cap": 8,
    "per": 0.05,
    "effect": "guests arrive 5% more often per level",
@@ -2604,26 +2647,177 @@
   {
    "id": "beds",
    "name": "Deeper Beds",
+   "tier": 2,
    "cap": 2,
    "per": 1,
+   "req": [
+    "quick"
+   ],
    "effect": "the Seed Bed grows a row and a column per level (4×4 → 6×6); heirlooms resprout 25 deeper",
    "flavor": "Dig once, and the bed remembers the shape."
   },
   {
    "id": "orders",
    "name": "Wider Orders",
+   "tier": 2,
    "cap": 2,
    "per": 1,
+   "req": [
+    "gate"
+   ],
    "effect": "one more Parish Order on the board at a time",
    "flavor": "The Parish has more paper than it knows what to do with."
   },
   {
    "id": "memory",
    "name": "Seed Memory",
+   "tier": 2,
    "cap": 6,
    "per": 1,
+   "req": [
+    "quick"
+   ],
    "effect": "every Fallow cycle begins with 10^level seeds already earned (a head start of hours, not a bonus)",
    "flavor": "The ground does not forget what grew in it."
+  },
+  {
+   "id": "coldframe",
+   "name": "Cold Frames",
+   "tier": 3,
+   "cap": 5,
+   "per": 2,
+   "req": [
+    "beds"
+   ],
+   "effect": "every bed plant lives 2 ticks longer per level",
+   "flavor": "A pane of sky between the frost and the leaf."
+  },
+  {
+   "id": "hives",
+   "name": "Warm Hives",
+   "tier": 3,
+   "cap": 4,
+   "per": 6,
+   "req": [
+    "beds"
+   ],
+   "effect": "the Bee Cooperative makes 6 more honey a day per level",
+   "flavor": "Insulation. The bees write thank-you notes."
+  },
+  {
+   "id": "drill",
+   "name": "The Seed Drill",
+   "tier": 3,
+   "cap": 1,
+   "per": 1,
+   "req": [
+    "pace"
+   ],
+   "effect": "the Scarecrow also buys an affordable upgrade on its rounds",
+   "flavor": "It reads the packets now. Nobody taught it that either."
+  },
+  {
+   "id": "press",
+   "name": "The Almanac Press",
+   "tier": 3,
+   "cap": 3,
+   "per": 50,
+   "req": [
+    "orders"
+   ],
+   "effect": "a Parish Order met at tier 3 pays 50 more honey per level",
+   "flavor": "Good news, typeset while it is still true."
+  }
+ ],
+ "charms": [
+  {
+   "id": "clover4",
+   "name": "A Four-Leaf Clover",
+   "cost": 10,
+   "dur": 3600,
+   "effect": "for an hour, every golden rabbit is TRUE gold — no tin",
+   "flavor": "The Parsnip Man hates this one weird leaf."
+  },
+  {
+   "id": "sugar",
+   "name": "Sugar Water",
+   "cost": 5,
+   "cd": 600,
+   "call": true,
+   "effect": "the next guest arrives within the minute",
+   "flavor": "Word gets round the hedge fast."
+  },
+  {
+   "id": "rainjar",
+   "name": "A Jar of Rain",
+   "cost": 15,
+   "cd": 1800,
+   "call": true,
+   "effect": "a Gentle Rain begins right now",
+   "flavor": "Bottled last April. Still fresh."
+  },
+  {
+   "id": "picnic",
+   "name": "A Picnic Blanket",
+   "cost": 20,
+   "dur": 86400,
+   "effect": "guests linger 6 seconds longer, all day",
+   "flavor": "Nobody leaves while there are sandwiches."
+  },
+  {
+   "id": "candle",
+   "name": "A Scented Candle",
+   "cost": 25,
+   "store": 3,
+   "boostMult": 4,
+   "boostHours": 2,
+   "effect": "the next Welcome Back burns ×4 for two hours",
+   "flavor": "Lavender, mostly. A little parsnip."
+  },
+  {
+   "id": "gnome",
+   "name": "A Garden Gnome",
+   "cost": 60,
+   "once": true,
+   "cosmetic": true,
+   "effect": "a gnome stands by the hedge, forever, for everyone",
+   "flavor": "He has seen every spring. He says nothing."
+  },
+  {
+   "id": "bunting",
+   "name": "Bunting",
+   "cost": 40,
+   "once": true,
+   "cosmetic": true,
+   "effect": "flags over the patch, every season, forever",
+   "flavor": "It is always nearly a festival now."
+  },
+  {
+   "id": "tophat",
+   "name": "A Tiny Hat",
+   "cost": 80,
+   "once": true,
+   "cosmetic": true,
+   "effect": "the carrot wears it, forever",
+   "flavor": "Formal. Regrettably permanent."
+  },
+  {
+   "id": "chimes",
+   "name": "Wind Chimes",
+   "cost": 30,
+   "once": true,
+   "cosmetic": true,
+   "effect": "a soft chime whenever a bumper crop lands",
+   "flavor": "The garden learns one note at a time."
+  },
+  {
+   "id": "cat",
+   "name": "The Allotment Cat",
+   "cost": 120,
+   "once": true,
+   "cosmetic": true,
+   "effect": "a cat patrols the hedge, now and then, forever",
+   "flavor": "It was always here. Now it is official."
   }
  ]
 }

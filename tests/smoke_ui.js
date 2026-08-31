@@ -69,11 +69,24 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   console.log('=== smoke: the other overlays ===');
   await ev(`document.getElementById('shed-btn').click()`);
   check(await ev(`!document.getElementById('shed').classList.contains('hidden')`), 'the Potting Shed opens');
+  await ev(`document.querySelector('#shed-tabs [data-tab="stall"]').click()`);
+  check(await ev(`!document.getElementById('stall-pane').classList.contains('hidden')
+    && document.querySelectorAll('#stall-items .shed-item').length >= 10`), 'the Honey Stall tab shows its charms');
+  await ev(`document.querySelector('#shed-tabs [data-tab="cellar"]').click()`);
+  check(await ev(`document.querySelectorAll('#cellar-items .cellar-shelf').length === 3
+    && document.querySelectorAll('#cellar-items .shed-item.locked').length > 0`), 'the Cellar shows three shelves, the deep ones locked');
   await ev(`document.getElementById('shed-close').click()`);
   await ev(`(() => { const b = game.$('bed'), r = b.getBoundingClientRect();
     b.dispatchEvent(new PointerEvent('pointerdown', { clientX: r.left + 20, clientY: r.top + 20, bubbles: true })); })()`);
   await sleep(100);
   check(await ev(`!document.getElementById('bed-menu').classList.contains('hidden')`), 'an empty plot opens the planting menu');
+
+  check(await ev(`['clover4','sugar','rainjar','picnic','candle','gnome','bunting','tophat','chimes','cat',
+    'coldframe','hive','drill','press','tierlock'].every(id => CC.ART.parts(id).length > 0)`),
+    'every R25 symbol is on the sheet and drawable');
+  await ev(`(() => { game.core.honey = 500; ['gnome','bunting','tophat','cat','chimes'].forEach(id => game.core.buyCharm(id)); })()`);
+  await sleep(700);
+  check(await ev(`game.core.charmCount('cat') === 1`), 'the keepsakes buy in the dev garden');
 
   await sleep(500);
   const fatal = exceptions.filter(x => !/favicon/.test(x));

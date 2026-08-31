@@ -129,8 +129,16 @@ Four systems that are decisions and clocks rather than bigger numbers:
   counters, the shed's one-shots, honey, the seed log and the **Root
   Cellar** stay. The bell rings four times, two hours apart — anyone rings
   it, anyone silences it, and the first bell is a rehearsal. Loam buys
-  rules in the Cellar: Quick Spring, Scarecrow Pace, Open Gate, Deeper
-  Beds, Wider Orders, Seed Memory.
+  rules in the Cellar — now a tree of three shelves, each perk lighting
+  the next: Quick Spring, Scarecrow Pace, Open Gate; Deeper Beds, Wider
+  Orders, Seed Memory; Cold Frames, Warm Hives, the Seed Drill, the
+  Almanac Press.
+- **The Honey Stall** — the shed's third tab. Honey buys charms: a
+  four-leaf clover (no tin visitors for an hour), a lump of sugar (calls
+  the next guest), a jar of rain, a picnic blanket, a scented candle —
+  and keepsakes the whole world owns forever: wind chimes, a garden
+  gnome, bunting, a tiny hat for the carrot, the allotment cat. Charms
+  are niceties and cosmetics, never multipliers.
 
 All rate limits and game numbers are documented in the
 [Tunables table in DESIGN.md](DESIGN.md#tunables--limits).

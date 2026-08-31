@@ -94,6 +94,8 @@ CC.Core = class {
     /* Lie Fallow (R24): the second prestige; Loam buys rules, never numbers */
     this.loam = 0;
     this.cellar = {};             /* Root Cellar perk id -> level; survives everything */
+    this.charms = {};             /* Honey Stall id -> count; cosmetics survive everything (R25) */
+    this.charmsBought = 0;        /* every charm ever bought — a world counter */
     this.fallows = 0;
     this.rehearsed = false;       /* the first bell is a rehearsal; this arms the real one */
     this.buffs = [];              /* {name, mult, left} */
@@ -129,14 +131,42 @@ CC.Core = class {
     this.bed.plots = next;
   }
 
+  /* ---------- the Honey Stall (R25) ---------- */
+  charmData(id) { return (CC.CHARMS || []).find(c => c.id === id) || null; }
+  charmCount(id) { return this.charms[id] || 0; }
+  /* a dur charm is "on" while its ×1 buff hangs; a cd charm rests the same way */
+  charmBusy(id) { return this.buffs.some(b => b.charm === id); }
+  buyCharm(id) {
+    const c = this.charmData(id);
+    if (!c || this.honey < c.cost || this.charmBusy(id)) return false;
+    if (c.once && this.charmCount(id)) return false;
+    if (c.store && this.charmCount(id) >= c.store) return false;
+    this.honey -= c.cost;
+    this.charmsBought++;
+    if (c.once || c.store) this.charms[id] = this.charmCount(id) + 1;
+    if (c.dur) this.buffs.push({ name: c.name, mult: 1, left: c.dur, keep: true, charm: id });
+    else if (c.cd) this.buffs.push({ name: c.name, mult: 1, left: c.cd, keep: false, charm: id });
+    if (!this.mirrorBook) this.latchPages();
+    return true;
+  }
+  /* a Scented Candle waits for the next quiet morning (consumed by the server) */
+  useCandle() {
+    if (!this.charmCount('candle')) return false;
+    this.charms.candle--;
+    if (!this.charms.candle) delete this.charms.candle;
+    return true;
+  }
+
   /* ---------- Lie Fallow & the Root Cellar (R24) ---------- */
   cellarData(id) { return (CC.CELLAR || []).find(c => c.id === id) || null; }
+  /* the tree (R25): a perk shows itself when everything it requires holds level 1 */
+  cellarVisible(c) { return !c.req || c.req.every(id => this.cellarLevel(id) >= 1); }
   cellarLevel(id) { return (this.cellar && this.cellar[id]) || 0; }
   cellarCost(id) { return ((CC.FALLOW && CC.FALLOW.cellarStep) || 8) * (this.cellarLevel(id) + 1); } /* triangular: level n costs step·n Loam */
   cellarMaxed(c) { return this.cellarLevel(c.id) >= c.cap; }
   buyCellar(id) {
     const c = this.cellarData(id);
-    if (!c || this.cellarMaxed(c) || this.loam < this.cellarCost(id)) return false;
+    if (!c || !this.cellarVisible(c) || this.cellarMaxed(c) || this.loam < this.cellarCost(id)) return false;
     const w = this.bedW(), h = this.bedH();
     this.loam -= this.cellarCost(id);
     this.cellar[id] = this.cellarLevel(id) + 1;
@@ -203,6 +233,8 @@ CC.Core = class {
   plantData(id) { return (CC.PLANTS || []).find(p => p.id === id) || null; }
   soilData() { return (CC.SOILS || []).find(x => x.id === this.bed.soil) || (CC.SOILS || [])[0] || { every: 1, effect: 1, mutation: 1 }; }
   plotMature(pl) { const p = pl && this.plantData(pl.sp); return !!(p && pl.age >= p.mature); }
+  /* Cold Frames (R25): every plant lives a little longer */
+  plotLife(p) { return p.life + (this.cellarData('coldframe') || { per: 2 }).per * this.cellarLevel('coldframe'); }
   /* steady cps for bed prices: buildings × season, no buffs — a rain at the
      bell must not make seeds dear; floored so an empty world can still plant */
   bedCpsRef() { return Math.max(10, this.baseCps(true) * this.seasonMult()); }
@@ -306,7 +338,7 @@ CC.Core = class {
       const p = this.plantData(pl.sp);
       if (!p) { bed.plots[i] = null; continue; }
       pl.age++;
-      if (pl.age >= p.life) { bed.plots[i] = null; events.push({ type: 'bedDied', i, sp: pl.sp }); }
+      if (pl.age >= this.plotLife(p)) { bed.plots[i] = null; events.push({ type: 'bedDied', i, sp: pl.sp }); }
     }
     for (let i = 0; i < bed.plots.length; i++) {
       if (bed.plots[i]) continue;
@@ -452,6 +484,10 @@ CC.Core = class {
     if (c.cellarAny !== undefined) return (CC.CELLAR || []).some(x => this.cellarLevel(x.id) >= 1);
     if (c.cellarFull !== undefined) return (CC.CELLAR || []).every(x => this.cellarMaxed(x));
     if (c.rehearsed !== undefined) return this.rehearsed;
+    /* the Honey Stall & the third shelf (R25) */
+    if (c.charm !== undefined) return this.charmCount(c.charm) >= (c.n || 1);
+    if (c.charmsAny !== undefined) return this.charmsBought >= c.charmsAny;
+    if (c.cellarTier !== undefined) return (CC.CELLAR || []).some(x => (x.tier || 1) >= c.cellarTier && this.cellarLevel(x.id) >= 1);
     return false;
   }
 
@@ -766,7 +802,8 @@ CC.Core = class {
     for (const b of this.buffs) b.left -= dt;
     /* the Bee Cooperative (p5) produces honey on the clock (R21) */
     if (!this.mirror && CC.HONEY && this.shedLevel('p5') >= 1) {
-      const per = 86400 / CC.HONEY.beePerDay;
+      /* Warm Hives (R25): the cooperative works a longer day */
+      const per = 86400 / (CC.HONEY.beePerDay + (this.cellarData('hives') || { per: 6 }).per * this.cellarLevel('hives'));
       this.beeT += dt;
       while (this.beeT >= per) { this.beeT -= per; this.honey++; }
     }
@@ -828,6 +865,11 @@ CC.Core = class {
           if (c <= this.bank * CC.TRIAL.scarecrowPct && c < best) { best = c; pick = i; }
         }
         if (pick >= 0 && this.buy(pick, 1)) events.push({ type: 'scarecrow', b: pick });
+        /* the Seed Drill (R25): it reads the packets too */
+        if (this.cellarLevel('drill') >= 1) {
+          const u = this.visibleUpgrades().find(u => u.cost <= this.bank * CC.TRIAL.scarecrowPct);
+          if (u && this.buyUpgrade(u.id)) events.push({ type: 'upgrade', id: u.id, scarecrow: true });
+        }
       }
     }
     const rc = this.ribbons().length;
@@ -876,7 +918,8 @@ CC.Core = class {
         seed: this.bed.seed, n: this.bed.n, soilAt: this.bed.soilAt, sacrificeLeft: this.bed.sacrificeLeft,
         sacrificeRest: this.bed.sacrificeRest },
       bedT: this.bedT, sacrifices: this.sacrifices,
-      loam: this.loam, cellar: this.cellar, fallows: this.fallows, rehearsed: this.rehearsed,
+      loam: this.loam, cellar: this.cellar, charms: this.charms, charmsBought: this.charmsBought,
+      fallows: this.fallows, rehearsed: this.rehearsed,
       almanac: this.almanac,
       /* season deliberately NOT saved: the dev garden has no calendar, and a
          ?season= theme test must never persist its bonus into the solo save;
@@ -953,6 +996,13 @@ CC.Core = class {
     this.rehearsed = !!s.rehearsed;
     this.cellar = {};
     for (const cd of (CC.CELLAR || [])) { const lv = Math.floor((s.cellar || {})[cd.id]) || 0; if (lv > 0) this.cellar[cd.id] = Math.min(lv, cd.cap); }
+    /* charms (R25): known ids, counts clamped to their store (or 1 for a once) */
+    this.charms = {};
+    for (const cd of (CC.CHARMS || [])) {
+      const n = Math.floor((s.charms || {})[cd.id]) || 0;
+      if (n > 0) this.charms[cd.id] = Math.min(n, cd.store || 1);
+    }
+    this.charmsBought = Math.max(0, Math.floor(s.charmsBought) || 0);
     const B = { w: this.bedW(), h: this.bedH() }, rb = s.bed || {}, fresh = CC.Core.freshBed(B.w, B.h);
     this.bed = fresh;
     if ((CC.SOILS || []).some(x => x.id === rb.soil)) fresh.soil = rb.soil;
@@ -960,7 +1010,7 @@ CC.Core = class {
     for (let i = 0; i < B.w * B.h; i++) {
       const pl = plots[i];
       const p = pl && typeof pl === 'object' ? this.plantData(pl.sp) : null;
-      if (p) fresh.plots[i] = { sp: p.id, age: Math.max(0, Math.min(Math.floor(+pl.age) || 0, p.life)) };
+      if (p) fresh.plots[i] = { sp: p.id, age: Math.max(0, Math.min(Math.floor(+pl.age) || 0, this.plotLife(p))) };
     }
     for (const p of (CC.PLANTS || [])) { const n = Math.floor((rb.log || {})[p.id]) || 0; if (n > 0) fresh.log[p.id] = Math.min(n, 1e9); }
     fresh.seed = (Math.floor(+rb.seed) >>> 0) || 1;

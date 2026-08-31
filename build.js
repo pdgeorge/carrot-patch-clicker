@@ -80,7 +80,7 @@ const data = JSON.stringify({
   orders: CC.ORDERS, orderRewards: CC.ORDER_REWARDS, orderFail: CC.ORDER_FAIL,
   trial: CC.TRIAL, trials: CC.TRIALS, quilt: CC.QUILT,
   bed: CC.BED, soils: CC.SOILS, plants: CC.PLANTS,
-  fallow: CC.FALLOW, cellar: CC.CELLAR,
+  fallow: CC.FALLOW, cellar: CC.CELLAR, charms: CC.CHARMS,
 }, null, 1);
 
 fs.mkdirSync(OUT, { recursive: true });

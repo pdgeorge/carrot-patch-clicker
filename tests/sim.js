@@ -202,8 +202,8 @@ check(!bad.almanac.fake && bad.almanac.sd0 === true
 
 /* the Almanac (R16): deeds latch forever, once, and compound */
 console.log('\n=== the Almanac ===');
-check(CC.ALMANAC.length === 101, `101 pages in the catalog — 78 + 9 Trial + 8 Seed Bed + 6 Fallow pages (got ${CC.ALMANAC.length})`);
-check(new Set(CC.ALMANAC.map(p => p.id)).size === 101, 'page ids unique');
+check(CC.ALMANAC.length === 105, `105 pages in the catalog — 78 + 9 Trial + 8 Seed Bed + 6 Fallow + 4 Stall pages (got ${CC.ALMANAC.length})`);
+check(new Set(CC.ALMANAC.map(p => p.id)).size === 105, 'page ids unique');
 const al = new CC.Core();
 al.seeds = 100;
 check(al.almanacCount() === 0, 'nothing latches without a tick');
@@ -800,8 +800,8 @@ const ST = F.cellarStep;
 check(fw.cellarCost('quick') === ST && fw.buyCellar('quick') && fw.cellarCost('quick') === 2 * ST && fw.loam === 496 - ST, `level 1 costs ${ST} loam, level 2 costs ${2 * ST}`);
 for (let k = 0; k < 10; k++) fw.buyCellar('quick');
 check(fw.cellarLevel('quick') === 5 && fw.loam === 496 - 15 * ST, `Quick Spring caps at 5 (15 × ${ST} = ${15 * ST} loam)`);
-check(CC.CELLAR.reduce((a, c) => a + ST * c.cap * (c.cap + 1) / 2, 0) > 496 && CC.CELLAR.reduce((a, c) => a + ST * c.cap * (c.cap + 1) / 2, 0) < 2 * 496,
-  `a full cellar costs ${CC.CELLAR.reduce((a, c) => a + ST * c.cap * (c.cap + 1) / 2, 0)} loam — between one and two Fallows`);
+check(CC.CELLAR.reduce((a, c) => a + ST * c.cap * (c.cap + 1) / 2, 0) > 496 && CC.CELLAR.reduce((a, c) => a + ST * c.cap * (c.cap + 1) / 2, 0) < 3 * 496,
+  `the full three-shelf cellar costs ${CC.CELLAR.reduce((a, c) => a + ST * c.cap * (c.cap + 1) / 2, 0)} loam — two to three Fallows (R25)`);
 check(!fw.buyCellar('quick') && !fw.buyCellar('bogus'), 'a capped perk and a bogus id buy nothing');
 fw.totalRun = 1e8; fw.lifetimeBase = 1e8; fw.bank = 1e6; fw.prestige();
 check(fw.owned.every(n => n === 50), 'Quick Spring 5: every spring starts with 50 of each plot');
@@ -836,6 +836,66 @@ junkF.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0, owne
   loam: -3, fallows: 2.5, cellar: { quick: 99, bogus: 1, beds: 1 }, bed: { plots: Array(16).fill(null) } });
 check(junkF.loam === 0 && junkF.fallows === 2 && junkF.cellar.quick === 5 && junkF.cellar.bogus === undefined && junkF.bed.plots.length === 25,
   'forged loam and Cellar levels are clamped; the bed is sized by the Cellar');
+
+/* the Honey Stall & the Cellar tree (R25) */
+console.log('\n=== the Honey Stall & the third shelf (R25) ===');
+const st = new CC.Core();
+st.honey = 100;
+check(!st.buyCharm('bogus') && st.honey === 100, 'a bogus charm buys nothing');
+check(st.buyCharm('clover4') && st.honey === 90 && st.buffs.some(b => b.charm === 'clover4' && b.mult === 1 && b.keep),
+  'the clover hangs as a ×1 keep-buff for its hour');
+check(!st.buyCharm('clover4'), 'and cannot stack while it hangs');
+check(Math.abs(st.cps() - new CC.Core().cps()) < 1e-12 || st.buffMult() === 1, 'a charm never touches production');
+check(st.buyCharm('sugar') && st.buffs.some(b => b.charm === 'sugar' && !b.keep), 'an instant charm rests as a ×1 cooldown buff');
+check(st.buyCharm('candle') && st.buyCharm('candle') && st.buyCharm('candle') && !st.buyCharm('candle') && st.charmCount('candle') === 3,
+  'candles store to three and no more');
+check(st.useCandle() && st.charmCount('candle') === 2, 'a quiet morning burns one');
+st.honey = 500;
+check(st.buyCharm('gnome') && !st.buyCharm('gnome') && st.charmCount('gnome') === 1, 'the gnome arrives once, forever');
+st.latchPages();
+check(st.almanac.st0 === true && st.almanac.st1 === true && !st.almanac.st2, 'The Sweet Trade and Him are written; the cat waits');
+check(st.charmsBought === 6, `six charms on the ledger (got ${st.charmsBought})`);
+/* cosmetics survive both prestiges */
+st.totalRun = 1e7; st.lifetimeBase = 1e7; st.runT = 7200; st.prestige();
+check(st.charmCount('gnome') === 1, 'the gnome outlives a spring');
+st.seeds = 1e21; st.fallow();
+check(st.charmCount('gnome') === 1 && st.charmsBought === 6, 'the gnome outlives the Fallow Year itself');
+/* the tree */
+const tr3 = new CC.Core();
+tr3.loam = 5000;
+const cold = CC.CELLAR.find(c => c.id === 'coldframe');
+check(!tr3.cellarVisible(cold) && !tr3.buyCellar('coldframe'), 'the third shelf is dark until its branch is lit');
+check(tr3.buyCellar('quick') && tr3.cellarVisible(CC.CELLAR.find(c => c.id === 'beds')), 'Quick Spring lights Deeper Beds');
+check(!tr3.cellarVisible(cold) && tr3.buyCellar('beds') && tr3.cellarVisible(cold), '…and Deeper Beds lights Cold Frames');
+check(tr3.buyCellar('coldframe'), 'which can then be bought');
+/* tier-3 effects */
+const sprout = CC.PLANTS.find(p => p.id === 'sprout');
+check(tr3.plotLife(sprout) === sprout.life + 2, 'Cold Frames 1: a sprout lives two ticks longer');
+tr3.bed.plots[0] = { sp: 'sprout', age: sprout.life - 1 };
+tr3.bedTick(); tr3.bedTick();
+check(tr3.bed.plots[0] !== null && (tr3.bedTick(), tr3.bed.plots[0] === null), '…and dies on the extended clock');
+const hv = new CC.Core();
+hv.sprouts = 1e9; hv.sproutsSpent = 1e6;
+for (const id of ['p0', 'p1', 'p2', 'p3', 'p4', 'p5']) hv.buyShed(id);
+hv.cellar.hives = 2;
+hv.tick(86400 / (CC.HONEY.beePerDay + 12) + 0.5);
+check(hv.honey === 1, 'Warm Hives 2: the first drop lands on the faster clock');
+const dr = new CC.Core();
+dr.perks.scarecrow = 1; dr.cellar.drill = 1; dr.earn(2e5);
+dr.tick(CC.TRIAL.scarecrowEvery + 0.01);
+check(Object.keys(dr.bought).length >= 1, 'the Seed Drill buys a packet on the Scarecrow\'s round');
+/* save / load */
+const sv5 = new CC.Core();
+sv5.honey = 400; sv5.buyCharm('gnome'); sv5.buyCharm('candle'); sv5.buyCharm('picnic');
+const sv6 = new CC.Core();
+sv6.deserialize({ ...JSON.parse(JSON.stringify(sv5.serialize())), last: Date.now() + 5000 });
+check(sv6.charmCount('gnome') === 1 && sv6.charmCount('candle') === 1 && sv6.charmsBought === 3
+  && sv6.buffs.some(b => b.charm === 'picnic'), 'charms, the ledger and a hanging blanket survive a save');
+const junkC = new CC.Core();
+junkC.deserialize({ v: 1, bank: 0, totalAllTime: 0, totalRun: 0, clicks: 0, owned: [], bought: {}, seeds: 0, sprouts: 0, shed: {},
+  charms: { gnome: 99, candle: 50, bogus: 3 }, charmsBought: -5, cellar: { coldframe: 99 } });
+check(junkC.charmCount('gnome') === 1 && junkC.charmCount('candle') === 3 && junkC.charmCount('bogus') === 0
+  && junkC.charmsBought === 0 && junkC.cellarLevel('coldframe') === 5, 'forged charms clamp to their stores');
 
 console.log(fails ? `\n${fails} FAILURE(S)` : '\nALL CHECKS PASSED');
 process.exit(fails ? 1 : 0);

@@ -183,9 +183,10 @@ class Patch:
 
     def touch(self, conn: dict) -> None:
         """An intent arrived. A quiet garden stirs for whoever came back."""
-        hours = self.orders.touch(self.eco, time.time())
-        if hours is not None:
-            self.emit({"type": "quiet", "hours": round(hours, 1), "who": conn.get("name") or ""})
+        woke = self.orders.touch(self.eco, time.time())
+        if woke is not None:
+            self.emit({"type": "quiet", "hours": round(woke["hours"], 1), "boost": woke["boost"],
+                       "bh": woke["boostHours"], "candle": woke["candle"], "who": conn.get("name") or ""})
 
     def snapshot_msg(self, now: float) -> dict:
         vttl = max(0.0, self.visitor["until"] - now) if self.visitor else 0
@@ -304,6 +305,9 @@ class Patch:
         if ev["type"] == "bell":
             return (f"🔔 The bell rings ({ev.get('ring', 1)} of {ev.get('of', 4)})"
                     f"{' — a rehearsal' if ev.get('rehearsal') else ''}. Anyone may silence it.")
+        if ev["type"] == "charm":
+            c = next((x for x in d.get("charms", []) if x["id"] == ev["id"]), None)
+            return f"🍯 {ev.get('who') or 'A tender'} bought {c['name']} at the stall. {c['flavor']}" if c else None
         if ev["type"] == "bedSprout":
             p = next((x for x in d.get("plants", []) if x["id"] == ev["sp"]), None)
             return f"🌱 Something new sprouted in the bed: {p['name']}." if p else None
@@ -379,10 +383,14 @@ class Patch:
                 self.next_visitor = now + self.visitor_wait(*gap)  # Quiet Hedge (R22): nobody comes
             if not self.visitor and now >= self.next_visitor:
                 vs = self.eco.d.get("visitors") or [{"id": "rabbit", "ttl": 12}]
+                # A Four-Leaf Clover (R25): while it hangs, no tin — every gold is true
+                if self.eco.charm_busy("clover4"):
+                    vs = [x for x in vs if x["id"] != "tin"] or vs
                 v = random.choices(vs, weights=[x.get("weight", 1) for x in vs])[0]
-                # Long Ears (R22 perk): guests linger a few seconds more
-                ttl = float(v.get("ttl", 12)) + self.eco.perks.get("longEars", 0) * (
+                # Long Ears (R22) and A Picnic Blanket (R25): guests linger a few seconds more
+                ttl = (float(v.get("ttl", 12)) + self.eco.perks.get("longEars", 0) * (
                     self.eco.d.get("trial") or {}).get("longEarsSec", 3)
+                    + (6 if self.eco.charm_busy("picnic") else 0))
                 self.visitor = {"kind": v["id"], "until": now + ttl}
                 self._pending.append({"type": "visitor", "kind": v["id"], "ttl": ttl})
                 if v["id"] in ("rabbit", "tin"):  # stale tabs see gold — tin fools them too
@@ -600,6 +608,29 @@ class Patch:
                 self.emit({"type": "silence", "who": conn.get("name") or ""})
             elif r:
                 self.emit({"type": "silenceVote", "who": conn.get("name") or "", "votes": r["votes"], "needed": r["needed"]})
+
+        elif kind == "charm":
+            # the Honey Stall (R25): honey buys a charm; the engine takes the
+            # honey and hangs the buff, the server performs the instant part
+            cid = str(msg.get("id", ""))[:16]
+            cd = eco.charm_data(cid)
+            if cd and eco.buy_charm(cid):
+                if cid == "sugar" and not self.visitor:
+                    self.next_visitor = min(self.next_visitor, now + random.uniform(5, 60))
+                elif cid == "rainjar":
+                    ws = [w for w in (eco.d.get("weather") or []) if w["id"] == "rain"]
+                    if ws:
+                        w = ws[0]
+                        eco.buffs.append({"name": w["name"], "mult": w["mult"], "left": float(w["dur"])
+                                          * eco.bed_weather()})
+                        eco.weathers += 1
+                        eco.mint_honey("rain")
+                        self.emit({"type": "weather", "id": w["id"]})
+                self.emit({"type": "charm", "id": cid, "who": conn.get("name") or "",
+                           "cosmetic": bool(cd.get("cosmetic"))})
+                if cd.get("cosmetic"):
+                    self.chronicle.log({"type": "charm", "id": cid, "who": conn.get("name") or ""})
+                self.save_soon()
 
         elif kind == "cellar":
             # the Root Cellar (R24): loam buys a rule

@@ -114,6 +114,8 @@ class Economy:
         # Lie Fallow (R24): the second prestige; Loam buys rules, never numbers
         self.loam: int = 0
         self.cellar: dict[str, int] = {}
+        self.charms: dict[str, int] = {}   # Honey Stall id -> count; cosmetics survive everything (R25)
+        self.charms_bought: int = 0
         self.fallows: int = 0
         self.rehearsed: bool = False
         self.buffs: list[dict] = []  # {name, mult, left}
@@ -215,7 +217,52 @@ class Economy:
             return all(self.cellar_maxed(x) for x in self.d.get("cellar", []))
         if "rehearsed" in c:
             return self.rehearsed
+        # the Honey Stall & the third shelf (R25)
+        if "charm" in c:
+            return self.charm_count(c["charm"]) >= c.get("n", 1)
+        if "charmsAny" in c:
+            return self.charms_bought >= c["charmsAny"]
+        if "cellarTier" in c:
+            return any((x.get("tier", 1)) >= c["cellarTier"] and self.cellar_level(x["id"]) >= 1
+                       for x in self.d.get("cellar", []))
         return False
+
+    # ---------- the Honey Stall (R25) — mirror of core.js ----------
+    def charm_data(self, cid) -> dict | None:
+        return next((c for c in self.d.get("charms", []) if c["id"] == cid), None)
+
+    def charm_count(self, cid) -> int:
+        return self.charms.get(cid, 0)
+
+    def charm_busy(self, cid) -> bool:
+        return any(b.get("charm") == cid for b in self.buffs)
+
+    def buy_charm(self, cid) -> bool:
+        c = self.charm_data(cid)
+        if not c or self.honey < c["cost"] or self.charm_busy(cid):
+            return False
+        if c.get("once") and self.charm_count(cid):
+            return False
+        if c.get("store") and self.charm_count(cid) >= c["store"]:
+            return False
+        self.honey -= c["cost"]
+        self.charms_bought += 1
+        if c.get("once") or c.get("store"):
+            self.charms[cid] = self.charm_count(cid) + 1
+        if c.get("dur"):
+            self.buffs.append({"name": c["name"], "mult": 1, "left": float(c["dur"]), "keep": True, "charm": cid})
+        elif c.get("cd"):
+            self.buffs.append({"name": c["name"], "mult": 1, "left": float(c["cd"]), "keep": False, "charm": cid})
+        self._latch_pages()
+        return True
+
+    def use_candle(self) -> bool:
+        if not self.charm_count("candle"):
+            return False
+        self.charms["candle"] -= 1
+        if not self.charms["candle"]:
+            del self.charms["candle"]
+        return True
 
     # ---------- Lie Fallow & the Root Cellar (R24) — mirror of core.js ----------
     def bed_w(self) -> int:
@@ -237,6 +284,10 @@ class Economy:
     def cellar_data(self, cid) -> dict | None:
         return next((c for c in self.d.get("cellar", []) if c["id"] == cid), None)
 
+    def cellar_visible(self, c: dict) -> bool:
+        """The tree (R25): a perk shows itself when its requirements hold level 1."""
+        return all(self.cellar_level(r) >= 1 for r in c.get("req", []))
+
     def cellar_level(self, cid) -> int:
         return self.cellar.get(cid, 0)
 
@@ -248,7 +299,7 @@ class Economy:
 
     def buy_cellar(self, cid) -> bool:
         c = self.cellar_data(cid)
-        if not c or self.cellar_maxed(c) or self.loam < self.cellar_cost(cid):
+        if not c or not self.cellar_visible(c) or self.cellar_maxed(c) or self.loam < self.cellar_cost(cid):
             return False
         w, h = self.bed_w(), self.bed_h()
         self.loam -= self.cellar_cost(cid)
@@ -338,6 +389,10 @@ class Economy:
     def plot_mature(self, pl) -> bool:
         p = self.plant_data(pl["sp"]) if pl else None
         return bool(p) and pl["age"] >= p["mature"]
+
+    def plot_life(self, p: dict) -> int:
+        """Cold Frames (R25): every plant lives a little longer."""
+        return p["life"] + (self.cellar_data("coldframe") or {"per": 2})["per"] * self.cellar_level("coldframe")
 
     def bed_cps_ref(self) -> float:
         return max(10.0, self.base_cps(True) * self.season_mult())
@@ -472,7 +527,7 @@ class Economy:
                 bed["plots"][i] = None
                 continue
             pl["age"] += 1
-            if pl["age"] >= p["life"]:
+            if pl["age"] >= self.plot_life(p):
                 bed["plots"][i] = None
                 events.append({"type": "bedDied", "i": i, "sp": pl["sp"]})
         for i in range(len(bed["plots"])):
@@ -898,7 +953,8 @@ class Economy:
         # the Bee Cooperative (p5) produces honey on the clock (R21)
         hd = self.d.get("honey")
         if hd and self.shed_level("p5") >= 1:
-            per = 86400 / hd["beePerDay"]
+            # Warm Hives (R25): the cooperative works a longer day
+            per = 86400 / (hd["beePerDay"] + (self.cellar_data("hives") or {"per": 6})["per"] * self.cellar_level("hives"))
             self.bee_t += dt
             while self.bee_t >= per:
                 self.bee_t -= per
@@ -966,6 +1022,13 @@ class Economy:
                         best, pick = c, i
                 if pick >= 0 and self.buy(pick, 1):
                     events.append({"type": "scarecrow", "b": pick})
+                # the Seed Drill (R25): it reads the packets too
+                if self.cellar_level("drill") >= 1:
+                    u = next((u for u in sorted((u for u in self.all_upgrades() if self.upgrade_visible(u)),
+                                                key=lambda u: u["cost"])
+                              if u["cost"] <= self.bank * td.get("scarecrowPct", 0.01)), None)
+                    if u and self.buy_upgrade(u["id"]):
+                        events.append({"type": "upgrade", "id": u["id"], "scarecrow": True})
 
         # structured events, same shapes as core.js tick() — presentation
         # happens client-side (F1); main.py composes legacy prose for
@@ -1013,7 +1076,8 @@ class Economy:
                     "soilAt": self.bed["soilAt"], "sacrificeLeft": self.bed["sacrificeLeft"],
                     "sacrificeRest": self.bed.get("sacrificeRest", 0.0)},
             "bedT": self.bed_t, "sacrifices": self.sacrifices,
-            "loam": self.loam, "cellar": self.cellar, "fallows": self.fallows, "rehearsed": self.rehearsed,
+            "loam": self.loam, "cellar": self.cellar, "charms": self.charms, "charmsBought": self.charms_bought,
+            "fallows": self.fallows, "rehearsed": self.rehearsed,
             "season": self.season, "seasonStart": self.season_start,
             "saved": time.time(),
         }
@@ -1127,6 +1191,14 @@ class Economy:
             lv = _cnt(raw_cel.get(cd["id"], 0))
             if lv > 0:
                 self.cellar[cd["id"]] = min(lv, cd["cap"])
+        # charms (R25): known ids, counts clamped to their store (or 1 for a once)
+        self.charms = {}
+        raw_ch = s.get("charms") if isinstance(s.get("charms"), dict) else {}
+        for cd in self.d.get("charms", []):
+            n = _cnt(raw_ch.get(cd["id"], 0))
+            if n > 0:
+                self.charms[cd["id"]] = min(n, cd.get("store") or 1)
+        self.charms_bought = _cnt(s.get("charmsBought", 0))
         bdd = {"w": self.bed_w(), "h": self.bed_h(), "tick": (self.d.get("bed") or {}).get("tick", 300)}
         rb = s.get("bed") if isinstance(s.get("bed"), dict) else {}
         fresh = fresh_bed(self.d, bdd["w"], bdd["h"])
@@ -1138,7 +1210,7 @@ class Economy:
             pl = plots[i] if i < len(plots) else None
             p = self.plant_data(pl.get("sp")) if isinstance(pl, dict) else None
             if p:
-                fresh["plots"][i] = {"sp": p["id"], "age": min(_cnt(pl.get("age", 0)), int(p["life"]))}
+                fresh["plots"][i] = {"sp": p["id"], "age": min(_cnt(pl.get("age", 0)), int(self.plot_life(p)))}
         raw_log = rb.get("log") if isinstance(rb.get("log"), dict) else {}
         for p in self.d.get("plants", []):
             n = _cnt(raw_log.get(p["id"], 0))
@@ -1204,7 +1276,8 @@ class Economy:
             "trial": self.trial, "trialsDone": self.trials_done, "trialBest": self.trial_best,
             "runBest": self.run_best, "runT": self.run_t, "perks": self.perks, "haltT": self.halt_t,
             "bed": self.bed, "bedT": self.bed_t, "sacrifices": self.sacrifices,
-            "loam": self.loam, "cellar": self.cellar, "fallows": self.fallows, "rehearsed": self.rehearsed,
+            "loam": self.loam, "cellar": self.cellar, "charms": self.charms, "charmsBought": self.charms_bought,
+            "fallows": self.fallows, "rehearsed": self.rehearsed,
             "almanac": self.almanac,
             "season": self.season,
             "seasonEnds": (self.season_start + self.d.get("seasonDays", 14) * 86400.0

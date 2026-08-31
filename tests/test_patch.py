@@ -712,7 +712,7 @@ c.shed = { p0: 1, p5: 1, p9: 1, l0: 1045, l1: 6, h0: 105 }; c.bought = { c0: tru
 c.bed.plots[3] = { sp: 'thyme', age: 2 }; c.bed.log.sprout = 3; c.perks.startTier = 1;
 const out = { pending: c.loamPending(), avail: c.fallowAvailable(), gain: c.fallow() };
 for (const id of ['quick', 'quick', 'beds', 'pace', 'gate', 'memory', 'memory', 'orders']) c.buyCellar(id);
-out.loam = c.loam; out.cellar = c.cellar; out.bedW = c.bedW(); out.plots = c.bed.plots.length; out.thyme = c.bed.plots[3];
+out.loam = c.loam; out.cellar = { ...c.cellar }; out.bedW = c.bedW(); out.plots = c.bed.plots.length; out.thyme = c.bed.plots[3];
 out.every = c.scarecrowEvery(); out.gate = c.gateRate(); out.tilth = c.tilthMult();
 c.totalRun = 4e8; c.lifetimeBase = 1e8; c.bank = 1; out.gained = c.prestige(); out.sprouts = c.sprouts; out.owned = c.owned; out.bought = Object.keys(c.bought).sort();
 c.seeds = 1e21; out.gain2 = c.fallow(); out.seeds = c.seeds; out.tat = c.totalAllTime; out.pendingSeeds = c.pendingSeeds();
@@ -742,6 +742,60 @@ check(near(p24.cps(), js24["cps"]) and p24.shed == js24["shed"], "cps and the su
 p24b = Economy(load_data()); p24b.deserialize(js24["snap"])
 check(p24b.loam == p24.loam and p24b.cellar == p24.cellar and p24b.fallows == 3 and len(p24b.bed["plots"]) == 25,
       "a JS save's loam, Cellar and 5×5 bed load into Python")
+
+# ---------- 1k. the Honey Stall & the Cellar tree (R25): both engines agree ----------
+print("\n=== R25 Stall & tree parity ===")
+JS_R25 = r"""
+const fs = require('fs'), path = require('path'), vm = require('vm');
+for (const f of ['data.js', 'core.js']) {
+  vm.runInThisContext(fs.readFileSync(path.join(process.argv[1], 'src', f), 'utf8'));
+}
+const c = new CC.Core();
+c.honey = 300;
+const out = { buys: ['clover4', 'clover4', 'sugar', 'candle', 'candle', 'candle', 'candle', 'gnome', 'bogus'].map(id => c.buyCharm(id)) };
+out.honey = c.honey; out.charms = { ...c.charms }; out.bought = c.charmsBought;
+out.buffs = c.buffs.map(b => [b.charm, b.mult, b.left, !!b.keep]);
+out.candleUse = [c.useCandle(), c.useCandle(), c.useCandle(), c.useCandle()];
+c.loam = 5000;
+out.tree = ['coldframe', 'quick', 'beds', 'coldframe', 'hives', 'drill', 'pace', 'drill'].map(id => c.buyCellar(id));
+out.loam = c.loam; out.cellar = { ...c.cellar };
+const sp = CC.PLANTS.find(p => p.id === 'sprout');
+out.life = c.plotLife(sp);
+out.visible = CC.CELLAR.map(cd => [cd.id, c.cellarVisible(cd)]);
+c.sprouts = 1e9; c.sproutsSpent = 1e6;
+for (const id of ['p0', 'p1', 'p2', 'p3', 'p4', 'p5']) c.buyShed(id);
+c.cellar.hives = 2;
+c.tick(86400 / (CC.HONEY.beePerDay + 12) + 0.5);
+out.beeHoney = c.honey;
+out.snap = c.serialize();
+console.log(JSON.stringify(out));
+"""
+js25 = json.loads(subprocess.run(
+    ["node", "-e", JS_R25, str(ROOT)], capture_output=True, text=True, check=True).stdout)
+p25 = Economy(load_data())
+p25.honey = 300
+buys = [p25.buy_charm(i) for i in ["clover4", "clover4", "sugar", "candle", "candle", "candle", "candle", "gnome", "bogus"]]
+check(buys == js25["buys"] and p25.honey == js25["honey"] and p25.charms == js25["charms"] and p25.charms_bought == js25["bought"],
+      f"charm purchases agree (honey {p25.honey}, ledger {p25.charms_bought})")
+check([[b.get("charm"), b["mult"], b["left"], bool(b.get("keep"))] for b in p25.buffs] == js25["buffs"],
+      "the hanging charms agree")
+check([p25.use_candle() for _ in range(4)] == js25["candleUse"], "candles burn identically")
+p25.loam = 5000
+tree = [p25.buy_cellar(i) for i in ["coldframe", "quick", "beds", "coldframe", "hives", "drill", "pace", "drill"]]
+check(tree == js25["tree"] and p25.loam == js25["loam"] and p25.cellar == js25["cellar"],
+      f"the tree refuses and admits identically ({p25.cellar})")
+sp25 = next(p for p in p25.d["plants"] if p["id"] == "sprout")
+check(p25.plot_life(sp25) == js25["life"], "Cold Frames extend a life identically")
+check([[cd["id"], p25.cellar_visible(cd)] for cd in p25.d["cellar"]] == js25["visible"], "the lit branches match")
+p25.sprouts = 1e9; p25.sprouts_spent = 1e6
+for sid in ["p0", "p1", "p2", "p3", "p4", "p5"]:
+    p25.buy_shed(sid)
+p25.cellar["hives"] = 2
+p25.tick(86400 / (p25.d["honey"]["beePerDay"] + 12) + 0.5)
+check(p25.honey == js25["beeHoney"], "Warm Hives hum at the same pitch")
+p25b = Economy(load_data()); p25b.deserialize(js25["snap"])
+check(p25b.charms == p25.charms and p25b.charms_bought == p25.charms_bought and p25b.cellar == p25.cellar,
+      "a JS save's charms and tree load into Python")
 
 # ---------- 2. live protocol over a real websocket ----------
 print("\n=== protocol (in-process server) ===")
@@ -1112,7 +1166,8 @@ q = load_data()["quiet"]
 book2.touch(eco, 1e9)
 n0 = len(eco.buffs)
 check(book2.touch(eco, 1e9 + 60) is None and len(eco.buffs) == n0, "a minute's gap is not quiet")
-hrs = book2.touch(eco, 1e9 + 60 + q["afterHours"] * 3600 + 1)
+woke_q = book2.touch(eco, 1e9 + 60 + q["afterHours"] * 3600 + 1)
+hrs = woke_q and woke_q["hours"]
 check(hrs is not None and hrs > q["afterHours"] and eco.buffs[-1]["name"] == "Welcome Back"
       and eco.buffs[-1]["mult"] == q["boost"] and eco.buffs[-1]["left"] == q["boostHours"] * 3600,
       f"{q['afterHours']}h of quiet: whoever returns wakes a Welcome Back ×{q['boost']} for everyone")
@@ -1152,6 +1207,25 @@ check(abs(o_ho["targets"][0] - steady_ho * (o_ho["deadline"] - t0)) < 1e-6 * o_h
 chron.log({"type": "trial", "id": "frost", "won": True, "n": 1, "t": 4321.0})
 last_ev = chron.recent[-1]
 check(last_ev["t"] > 1e9 and last_ev["dur"] == 4321.0, "a trial record keeps the epoch and moves its elapsed time to dur")
+
+# the Honey Stall (R25): a candle warms the next quiet; the Press pays on tier 3
+cnd = Economy(load_data()); cnd.honey = 100
+book_q = OrderBook(load_data(), pdir / "w13_parish.json", chron)
+book_q.touch(cnd, 2e9)
+check(cnd.buy_charm("candle") and book_q.touch(cnd, 2e9 + 7 * 3600) is not None
+      and cnd.buffs[-1]["name"] == "Welcome Back" and cnd.buffs[-1]["mult"] == 4 and cnd.buffs[-1]["left"] == 7200.0
+      and cnd.charm_count("candle") == 0,
+      "a stored candle burns on the next quiet: ×4 for two hours, then it is gone")
+check(book_q.touch(cnd, 2e9 + 14 * 3600) is not None and cnd.buffs[-1]["mult"] == 2,
+      "with no candle the welcome is the plain ×2")
+prs = Economy(load_data()); prs.earn(1e7); prs.buy(0, 20); prs.cellar["press"] = 2
+b_p = OrderBook(load_data(), pdir / "w14_parish.json", chron)
+o_p = b_p.post(prs, t0)
+prs.earn(o_p["targets"][2] + 1)
+h0 = prs.honey
+out_p = b_p.maybe_resolve(prs, o_p["deadline"])
+check(out_p["tier"] == 3 and prs.honey - h0 == 200 + 100 and any("the Press" in a for a in out_p["applied"]),
+      f"the Almanac Press adds 100 honey to a tier-3 order (applied: {out_p['applied'][-1]})")
 
 # Wider Orders (R24): a second slot means a second card, never the same kind twice
 wide = Economy(load_data()); wide.earn(1e7); wide.buy(0, 20); wide.cellar["orders"] = 2
@@ -1423,6 +1497,39 @@ with TestClient(app) as client:
                 break
         check(snap and "bed" in snap["state"] and snap["state"]["bed"]["soil"] == "clay" and "bedT" in snap["state"],
               "the snapshot carries the bed")
+
+    # the Honey Stall (R25) over the wire
+    with client.websocket_connect("/ws") as ws:
+        ws.receive_json()
+        patch.eco.honey = 200
+        ws.send_json({"type": "charm", "id": "clover4"})
+        time.sleep(0.05)
+        check(patch.eco.honey == 190 and patch.eco.charm_busy("clover4"), "a clover is bought over the wire and hangs")
+        patch.visitor = None; patch.next_visitor = time.monotonic() + 9999
+        ws.send_json({"type": "charm", "id": "sugar"})
+        time.sleep(0.05)
+        check(patch.eco.honey == 185 and patch.next_visitor - time.monotonic() < 61, "sugar water calls the next guest within the minute")
+        w0 = patch.eco.weathers
+        ws.send_json({"type": "charm", "id": "rainjar"})
+        time.sleep(0.05)
+        check(patch.eco.weathers == w0 + 1 and any(b["name"] == "Gentle Rain" for b in patch.eco.buffs),
+              "a jar of rain starts a rain right now")
+        ws.send_json({"type": "charm", "id": "rainjar"})
+        time.sleep(0.05)
+        check(patch.eco.weathers == w0 + 1, "…and rests before the next jar")
+        patch._pending.clear()
+        ws.send_json({"type": "charm", "id": "gnome"})
+        time.sleep(0.05)
+        check(patch.eco.charm_count("gnome") == 1 and any(m.get("type") == "event" and m["ev"]["type"] == "charm"
+                                                           and m["ev"]["cosmetic"] for m in patch._pending),
+              "the gnome arrives, announced as a cosmetic")
+        check(any(e["type"] == "charm" and e["id"] == "gnome" for e in patch.chronicle.read(0)), "…and enters the chronicle")
+        for junk in ({"id": "bogus"}, {"id": 5}, {}, {"id": "gnome"}):
+            ws.send_json({"type": "charm", **junk})
+        time.sleep(1.1)
+        # 185 − 15 (jar) + 1 (its rain mints like any rain) − 60 (gnome) = 111
+        check(patch.eco.charm_count("gnome") == 1 and patch.eco.honey == 111, "junk and re-buys change nothing")
+        patch.eco.buffs = [b for b in patch.eco.buffs if not b.get("charm")]
 
     # Lie Fallow (R24) over the wire: the bell, the Cellar
     with client.websocket_connect("/ws") as ws:
