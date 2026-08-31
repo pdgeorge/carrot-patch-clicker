@@ -1505,15 +1505,31 @@ with TestClient(app) as client:
         ws.send_json({"type": "charm", "id": "clover4"})
         time.sleep(0.05)
         check(patch.eco.honey == 190 and patch.eco.charm_busy("clover4"), "a clover is bought over the wire and hangs")
+        snap = patch.eco.snapshot()
+        check(any(b.get("charm") == "clover4" and b.get("keep") for b in snap["buffs"])
+              and "charms" in snap and "charmsBought" in snap,
+              "the wire snapshot carries the charm tags, the shelf and the ledger (R25 review)")
+        # a guest already here: sugar is REFUSED before the honey is taken
+        patch.visitor = {"id": "rabbit", "until": time.monotonic() + 30}
+        ws.send_json({"type": "charm", "id": "sugar"})
+        time.sleep(0.05)
+        check(patch.eco.honey == 190 and not patch.eco.charm_busy("sugar"),
+              "sugar water is refused while a guest is here — honey untouched, no rest hung")
         patch.visitor = None; patch.next_visitor = time.monotonic() + 9999
         ws.send_json({"type": "charm", "id": "sugar"})
         time.sleep(0.05)
         check(patch.eco.honey == 185 and patch.next_visitor - time.monotonic() < 61, "sugar water calls the next guest within the minute")
         w0 = patch.eco.weathers
+        # a rain already falls: the jar refreshes it, never a second one
+        patch.eco.buffs.append({"name": "Gentle Rain", "mult": 2, "left": 10.0})
+        cw0 = sum(1 for e in patch.chronicle.read(0) if e["type"] == "weather")
         ws.send_json({"type": "charm", "id": "rainjar"})
         time.sleep(0.05)
-        check(patch.eco.weathers == w0 + 1 and any(b["name"] == "Gentle Rain" for b in patch.eco.buffs),
-              "a jar of rain starts a rain right now")
+        rains = [b for b in patch.eco.buffs if b["name"] == "Gentle Rain" and not b.get("charm")]
+        check(patch.eco.weathers == w0 + 1 and len(rains) == 1 and rains[0]["left"] > 10,
+              "a jar of rain REFRESHES a falling rain — one sky, one rain")
+        check(sum(1 for e in patch.chronicle.read(0) if e["type"] == "weather") == cw0 + 1,
+              "…and the day-book counts it like any rain")
         ws.send_json({"type": "charm", "id": "rainjar"})
         time.sleep(0.05)
         check(patch.eco.weathers == w0 + 1, "…and rests before the next jar")

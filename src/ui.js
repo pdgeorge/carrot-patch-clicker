@@ -544,11 +544,19 @@ CC.UI = class {
     if (this.awaitingWorld()) return;
     if (this.worldMode) { this.patch.send({ type: 'charm', id }); return; }
     const c = this.core;
+    if (id === 'sugar' && ((this.visitor && !this.visitor.gone) || c.rule('noVisitors'))) return;
     if (c.buyCharm(id)) {
       const cd = c.charmData(id);
       CC.audio.upgrade();
       this.toast(`${cd.name} — ${cd.effect}.`, { icon: this.charmIcon(id) });
-      if (id === 'rainjar') { c.buffs.push({ name: 'Gentle Rain', mult: 2, left: 90 }); c.weathers++; c.mintHoney('rain'); }
+      if (id === 'rainjar') {
+        const w = (CC.WEATHER || []).find(x => x.id === 'rain') || { name: 'Gentle Rain', mult: 2, dur: 90 };
+        const live = c.buffs.find(b => b.name === w.name && !b.charm);
+        const dur = w.dur * c.bedWeather();
+        if (live) live.left = Math.max(live.left, dur);
+        else c.buffs.push({ name: w.name, mult: w.mult, left: dur });
+        c.weathers++; c.mintHoney('rain');
+      }
       if (id === 'sugar') this.nextVisitor = Math.min(this.nextVisitor, this.t + 5 + Math.random() * 55);
     }
   }
@@ -753,7 +761,7 @@ CC.UI = class {
     if (!p) { this.tooltip(null); return; }
     const mature = c.plotMature(pl);
     this.tooltip({ kind: 'plant', p, pl, text: `${p.name} — ${this.plotName(i)}\n${p.flavor}\n${this.plantEffectText(p)}\n` +
-      (mature ? `mature · ${p.life - pl.age} ticks of life left · click to pick` : `${p.mature - pl.age} ticks to maturity`) }, this.$('bed'));
+      (mature ? `mature · ${c.plotLife(p) - pl.age} ticks of life left · click to pick` : `${p.mature - pl.age} ticks to maturity`) }, this.$('bed'));
   }
   /* a plant as five strokes: stem, leaves, a head coloured by what it does */
   drawBed() {
@@ -791,7 +799,7 @@ CC.UI = class {
       if (!p) continue;
       const mature = pl.age >= p.mature;
       const g = Math.min(1, (pl.age + 0.35) / p.mature);           /* growth 0..1 */
-      const old = p.life < 900 && pl.age > p.life - 2;                /* about to die */
+      const old = p.life < 900 && pl.age > this.core.plotLife(p) - 2;  /* about to die */
       const hue = p.mult && p.mult < 1 ? '#7d8a5a' : p.rabbit ? '#5fa65a' : p.weather ? '#6e8fd6' : p.honey ? '#e7b23a'
         : p.wild ? '#9a9a70' : p.tier >= 5 ? '#f0c060' : p.tier >= 4 ? '#c58ad0' : pal.body[0];
       const stage = old ? 'pl-dead' : pl.age === 0 ? 'pl-seed' : mature ? (p.weather ? 'pl-umbel' : 'pl-ready') : g < 0.5 ? 'pl-sprout' : 'pl-grow';
@@ -1088,8 +1096,21 @@ CC.UI = class {
     try {
       const raw = this.store.getItem('carrot-clicker-save');
       if (!raw) return;
-      const { offline } = this.core.deserialize(JSON.parse(raw));
+      const saved = JSON.parse(raw);
+      const quietGap = saved.last ? (Date.now() - saved.last) / 1000 : 0;
+      const { offline } = this.core.deserialize(saved);
       if (offline > 1) this.toast(`While you were away, the garden grew: +${CC.fmt(offline)} 🥕`);
+      /* the Quiet reaches the solo garden through the stall (R25): a garden
+         quiet past CC.QUIET.afterHours wakes with a Welcome Back — warmer
+         when a Scented Candle waited (the world's quiet lives in the parish) */
+      const q = CC.QUIET || { afterHours: 6, boostHours: 1, boost: 2 };
+      if (quietGap >= q.afterHours * 3600) {
+        const cd = this.core.charmData && this.core.charmData('candle');
+        const lit = !!cd && this.core.useCandle();
+        this.core.buffs.push({ name: 'Welcome Back', mult: lit ? cd.boostMult : q.boost,
+          left: (lit ? cd.boostHours : q.boostHours) * 3600, keep: true });
+        this.toast(`🌙 The garden lay quiet for ${Math.round(quietGap / 3600)}h — Welcome Back ×${lit ? cd.boostMult : q.boost}.${lit ? ' The candle was lit.' : ''}`);
+      }
     } catch (e) { /* corrupted save: start fresh */ }
   }
 
@@ -2165,7 +2186,7 @@ CC.UI = class {
       if (want && this.ambient.length < (want === 'firefly' ? 12 : 5) && Math.random() < dt * 0.4) {
         this.ambient.push({ kind: want, x: Math.random() * this.W, y: 30 + Math.random() * (this.soilY - 70), vx: (Math.random() - 0.5) * 30, vy: (Math.random() - 0.5) * 14, life: 8 + Math.random() * 10, ph: Math.random() * 6 });
       }
-      for (const a of this.ambient) { a.x += a.vx * dt; a.y += a.vy * dt + Math.sin(this.t * 3 + a.ph) * 10 * dt; a.life -= dt; if (a.x < 0 || a.x > this.W) a.vx *= -1; if (a.y < 20 || a.y > this.soilY - 20) a.vy *= -1; }
+      for (const a of this.ambient) { a.x += a.vx * dt; a.y += a.vy * dt + Math.sin(this.t * 3 + a.ph) * 10 * dt; a.life -= dt; if ((a.x < 0 && a.vx < 0) || (a.x > this.W && a.vx > 0)) a.vx *= -1; if ((a.y < 20 && a.vy < 0) || (a.y > this.soilY - 20 && a.vy > 0)) a.vy *= -1; }
       this.ambient = this.ambient.filter(a => a.life > 0);
       if (!this._birdT || this.t - this._birdT > 90) { this._birdT = this.t; if (!night && Math.random() < 0.7) this.ambient.push({ kind: 'bird', x: -10, y: 30 + Math.random() * 40, vx: 60, vy: 0, life: 6, ph: 0 }); }
       /* The Allotment Cat (R25): a patrol along the hedge, now and then */
@@ -2431,20 +2452,23 @@ CC.UI = class {
       /* the Honey Stall (R25) */
       const cosSig = ['gnome', 'bunting', 'tophat', 'cat'].map(id => c.charmCount(id) ? 1 : 0).join('');
       if (cosSig !== this._cosSig) { this._cosSig = cosSig; if (this._pal) this.paintBackdrop(this._pal); }
-      const stSig = (CC.CHARMS || []).map(cd => c.charmCount(cd.id) + (c.charmBusy(cd.id) ? 'b' : '')).join(',') + '|' + c.honey;
+      const guestHere = !!(this.visitor && !this.visitor.gone) || !!c.rule('noVisitors');
+      const stSig = (CC.CHARMS || []).map(cd => c.charmCount(cd.id) + (c.charmBusy(cd.id)
+        ? 'b' + Math.ceil((c.buffs.find(b => b.charm === cd.id) || { left: 0 }).left) : '')).join(',') + '|' + c.honey + '|' + guestHere;
       if (stSig !== this._stallSig) {
         this._stallSig = stSig;
         this.$('stall-balance').innerHTML = `<b>${CC.fmt(c.honey)}</b> ${CC.icon('honey')} honey in the jar`;
         (CC.CHARMS || []).forEach((cd, i) => {
           const el = this.stallEls[i], n = c.charmCount(cd.id), busy = c.charmBusy(cd.id);
           const owned = cd.once && n >= 1, full = cd.store && n >= cd.store;
+          const undeliverable = cd.id === 'sugar' && guestHere;
           el.classList.toggle('bought', !!owned);
-          el.classList.toggle('cant', !owned && (busy || full || c.honey < cd.cost));
+          el.classList.toggle('cant', !owned && (busy || full || undeliverable || c.honey < cd.cost));
           el.querySelector('.s-lv').textContent = cd.store && n > 0 ? ` · ×${n} stored` : '';
           const buff = busy && this.core.buffs.find(b => b.charm === cd.id);
           el.querySelector('.s-cost').innerHTML = owned ? 'ours, forever'
             : busy ? (cd.dur ? `working — ${CC.fmtDur(buff ? buff.left : 0)}` : `rests ${CC.fmtDur(buff ? buff.left : 0)}`)
-              : full ? 'the shelf is full' : `${cd.cost} ${CC.icon('honey')}`;
+              : full ? 'the shelf is full' : undeliverable ? 'a guest is already here' : `${cd.cost} ${CC.icon('honey')}`;
         });
       }
     }

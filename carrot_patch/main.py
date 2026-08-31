@@ -614,18 +614,31 @@ class Patch:
             # honey and hangs the buff, the server performs the instant part
             cid = str(msg.get("id", ""))[:16]
             cd = eco.charm_data(cid)
+            # a call-charm that cannot deliver is refused BEFORE the honey is
+            # taken (R25 review): sugar with a guest already here, or under a
+            # Quiet Hedge, would be a paid no-op
+            if cid == "sugar" and (self.visitor or eco.rule("noVisitors")):
+                cd = None
             if cd and eco.buy_charm(cid):
-                if cid == "sugar" and not self.visitor:
+                if cid == "sugar":
                     self.next_visitor = min(self.next_visitor, now + random.uniform(5, 60))
                 elif cid == "rainjar":
                     ws = [w for w in (eco.d.get("weather") or []) if w["id"] == "rain"]
                     if ws:
                         w = ws[0]
-                        eco.buffs.append({"name": w["name"], "mult": w["mult"], "left": float(w["dur"])
-                                          * eco.bed_weather()})
+                        # refresh, never stack (the OrderBook convention): the
+                        # sky cannot rain twice at once, nor can a jar
+                        live = next((b for b in eco.buffs
+                                     if b["name"] == w["name"] and not b.get("charm")), None)
+                        dur = float(w["dur"]) * eco.bed_weather()
+                        if live:
+                            live["left"] = max(float(live["left"]), dur)
+                        else:
+                            eco.buffs.append({"name": w["name"], "mult": w["mult"], "left": dur})
                         eco.weathers += 1
                         eco.mint_honey("rain")
                         self.emit({"type": "weather", "id": w["id"]})
+                        self.chronicle.log({"type": "weather", "id": w["id"]})
                 self.emit({"type": "charm", "id": cid, "who": conn.get("name") or "",
                            "cosmetic": bool(cd.get("cosmetic"))})
                 if cd.get("cosmetic"):

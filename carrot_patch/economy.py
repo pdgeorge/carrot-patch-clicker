@@ -252,8 +252,9 @@ class Economy:
         if c.get("dur"):
             self.buffs.append({"name": c["name"], "mult": 1, "left": float(c["dur"]), "keep": True, "charm": cid})
         elif c.get("cd"):
-            self.buffs.append({"name": c["name"], "mult": 1, "left": float(c["cd"]), "keep": False, "charm": cid})
-        self._latch_pages()
+            # keep: the rest is a wall-clock cadence — a spring must not forgive it
+            self.buffs.append({"name": c["name"], "mult": 1, "left": float(c["cd"]), "keep": True, "charm": cid})
+        # no instant latch: the tick's _latch_pages(events) announces charm pages
         return True
 
     def use_candle(self) -> bool:
@@ -391,7 +392,10 @@ class Economy:
         return bool(p) and pl["age"] >= p["mature"]
 
     def plot_life(self, p: dict) -> int:
-        """Cold Frames (R25): every plant lives a little longer."""
+        """Cold Frames (R25): every plant lives a little longer — but a weed
+        under glass is still a weed."""
+        if p.get("wild"):
+            return p["life"]
         return p["life"] + (self.cellar_data("coldframe") or {"per": 2})["per"] * self.cellar_level("coldframe")
 
     def bed_cps_ref(self) -> float:
@@ -1282,7 +1286,10 @@ class Economy:
             "season": self.season,
             "seasonEnds": (self.season_start + self.d.get("seasonDays", 14) * 86400.0
                            if self.season_start else 0),
-            "buffs": [{"name": b["name"], "mult": b["mult"], "left": b["left"]} for b in self.buffs],
+            # keep/charm ride the wire: the stall's busy state and the chip
+            # styling key on them (R25 review)
+            "buffs": [{k: b[k] for k in ("name", "mult", "left", "keep", "charm") if k in b}
+                      for b in self.buffs],
         }
 
 

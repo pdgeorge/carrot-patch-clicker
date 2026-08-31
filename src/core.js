@@ -145,8 +145,10 @@ CC.Core = class {
     this.charmsBought++;
     if (c.once || c.store) this.charms[id] = this.charmCount(id) + 1;
     if (c.dur) this.buffs.push({ name: c.name, mult: 1, left: c.dur, keep: true, charm: id });
-    else if (c.cd) this.buffs.push({ name: c.name, mult: 1, left: c.cd, keep: false, charm: id });
-    if (!this.mirrorBook) this.latchPages();
+    /* the rest is a wall-clock cadence — a spring must not forgive it, so keep */
+    else if (c.cd) this.buffs.push({ name: c.name, mult: 1, left: c.cd, keep: true, charm: id });
+    /* no instant latch: the next tick's latchPages(events) announces the
+       charm pages like any other (R25 review — silent pages had no toast) */
     return true;
   }
   /* a Scented Candle waits for the next quiet morning (consumed by the server) */
@@ -234,7 +236,8 @@ CC.Core = class {
   soilData() { return (CC.SOILS || []).find(x => x.id === this.bed.soil) || (CC.SOILS || [])[0] || { every: 1, effect: 1, mutation: 1 }; }
   plotMature(pl) { const p = pl && this.plantData(pl.sp); return !!(p && pl.age >= p.mature); }
   /* Cold Frames (R25): every plant lives a little longer */
-  plotLife(p) { return p.life + (this.cellarData('coldframe') || { per: 2 }).per * this.cellarLevel('coldframe'); }
+  /* a weed under glass is still a weed: Cold Frames never stretch the wild */
+  plotLife(p) { return p.wild ? p.life : p.life + (this.cellarData('coldframe') || { per: 2 }).per * this.cellarLevel('coldframe'); }
   /* steady cps for bed prices: buildings × season, no buffs — a rain at the
      bell must not make seeds dear; floored so an empty world can still plant */
   bedCpsRef() { return Math.max(10, this.baseCps(true) * this.seasonMult()); }

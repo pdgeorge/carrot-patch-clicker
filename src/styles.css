@@ -501,10 +501,10 @@
 #shed-close { width: 36px; padding: 0; }
 #shed-pane, #cellar-pane, #stall-pane { padding: 14px 22px 0; }
 #shed-box h2 { margin: 0 0 4px; font-family: var(--serif); color: var(--ink-leaf); text-align: center; letter-spacing: 0.12em; font-size: 16px; }
-#shed-sub, #cellar-sub { margin: 0 0 10px; font-family: var(--serif); font-size: 13px; font-style: italic; color: var(--ink-dim); text-align: center; }
+#shed-sub, #cellar-sub, #stall-sub { margin: 0 0 10px; font-family: var(--serif); font-size: 13px; font-style: italic; color: var(--ink-dim); text-align: center; }
 #shed-balance, #cellar-balance, #stall-balance { text-align: center; font-size: 14px; color: var(--ink-leaf); margin-bottom: 12px; font-variant-numeric: tabular-nums; }
 #shed-balance b, #cellar-balance b, #stall-balance b { font-size: 18px; }
-#shed-items, #cellar-items, #shed-done-items { display: flex; flex-direction: column; gap: 8px; }
+#shed-items, #cellar-items, #shed-done-items, #stall-items { display: flex; flex-direction: column; gap: 8px; }
 .shed-item { background: var(--paper-hi); border: 1px solid var(--paper-edge); outline: 1px dashed rgba(120, 85, 40, 0.45); outline-offset: -5px; border-radius: 3px; padding: 10px 13px; cursor: pointer; line-height: 1.45; text-align: left; font: inherit; color: var(--ink); width: 100%; box-sizing: border-box; }
 .shed-item .s-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
 .shed-item .s-head b { font-family: var(--serif); font-size: 14px; color: var(--ink-carrot); }

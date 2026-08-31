@@ -84,9 +84,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   check(await ev(`['clover4','sugar','rainjar','picnic','candle','gnome','bunting','tophat','chimes','cat',
     'coldframe','hive','drill','press','tierlock'].every(id => CC.ART.parts(id).length > 0)`),
     'every R25 symbol is on the sheet and drawable');
-  await ev(`(() => { game.core.honey = 500; ['gnome','bunting','tophat','cat','chimes'].forEach(id => game.core.buyCharm(id)); })()`);
+  await ev(`(() => { game.core.honey = 500; ['gnome','bunting','tophat','chimes'].forEach(id => game.core.buyCharm(id)); })()`);
+  /* the cat buys through the CARD, not the engine — a dead stall click must fail here */
+  await ev(`document.getElementById('shed-btn').click();
+    document.querySelector('#shed-tabs [data-tab="stall"]').click();`);
+  await sleep(200);
+  await ev(`document.querySelectorAll('#stall-items .shed-item')[CC.CHARMS.findIndex(c => c.id === 'cat')].click()`);
+  await ev(`document.getElementById('shed-close').click()`);
   await sleep(700);
-  check(await ev(`game.core.charmCount('cat') === 1`), 'the keepsakes buy in the dev garden');
+  check(await ev(`game.core.charmCount('cat') === 1`), 'the keepsakes buy in the dev garden — the cat through its stall card');
 
   await sleep(500);
   const fatal = exceptions.filter(x => !/favicon/.test(x));

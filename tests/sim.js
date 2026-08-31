@@ -846,18 +846,21 @@ check(st.buyCharm('clover4') && st.honey === 90 && st.buffs.some(b => b.charm ==
   'the clover hangs as a ×1 keep-buff for its hour');
 check(!st.buyCharm('clover4'), 'and cannot stack while it hangs');
 check(Math.abs(st.cps() - new CC.Core().cps()) < 1e-12 || st.buffMult() === 1, 'a charm never touches production');
-check(st.buyCharm('sugar') && st.buffs.some(b => b.charm === 'sugar' && !b.keep), 'an instant charm rests as a ×1 cooldown buff');
+check(st.buyCharm('sugar') && st.buffs.some(b => b.charm === 'sugar' && b.keep), 'an instant charm rests as a ×1 keep-buff — a spring must not forgive it');
 check(st.buyCharm('candle') && st.buyCharm('candle') && st.buyCharm('candle') && !st.buyCharm('candle') && st.charmCount('candle') === 3,
   'candles store to three and no more');
 check(st.useCandle() && st.charmCount('candle') === 2, 'a quiet morning burns one');
 st.honey = 500;
 check(st.buyCharm('gnome') && !st.buyCharm('gnome') && st.charmCount('gnome') === 1, 'the gnome arrives once, forever');
-st.latchPages();
-check(st.almanac.st0 === true && st.almanac.st1 === true && !st.almanac.st2, 'The Sweet Trade and Him are written; the cat waits');
+check(!st.almanac.st0 && !st.almanac.st1, 'charm pages wait for the tick — no silent latch');
+const stev = st.tick(0.01).filter(e => e.type === 'almanac');
+check(stev.length === 2 && st.almanac.st0 === true && st.almanac.st1 === true && !st.almanac.st2,
+  'The Sweet Trade and Him are ANNOUNCED on the tick; the cat waits');
 check(st.charmsBought === 6, `six charms on the ledger (got ${st.charmsBought})`);
-/* cosmetics survive both prestiges */
+/* cosmetics AND the rests survive both prestiges */
 st.totalRun = 1e7; st.lifetimeBase = 1e7; st.runT = 7200; st.prestige();
 check(st.charmCount('gnome') === 1, 'the gnome outlives a spring');
+check(st.charmBusy('sugar') && !st.buyCharm('sugar'), 'the sugar rest ticks straight through the spring');
 st.seeds = 1e21; st.fallow();
 check(st.charmCount('gnome') === 1 && st.charmsBought === 6, 'the gnome outlives the Fallow Year itself');
 /* the tree */
@@ -871,6 +874,8 @@ check(tr3.buyCellar('coldframe'), 'which can then be bought');
 /* tier-3 effects */
 const sprout = CC.PLANTS.find(p => p.id === 'sprout');
 check(tr3.plotLife(sprout) === sprout.life + 2, 'Cold Frames 1: a sprout lives two ticks longer');
+const nettle = CC.PLANTS.find(p => p.wild);
+check(nettle && tr3.plotLife(nettle) === nettle.life, 'a weed under glass is still a weed');
 tr3.bed.plots[0] = { sp: 'sprout', age: sprout.life - 1 };
 tr3.bedTick(); tr3.bedTick();
 check(tr3.bed.plots[0] !== null && (tr3.bedTick(), tr3.bed.plots[0] === null), '…and dies on the extended clock');

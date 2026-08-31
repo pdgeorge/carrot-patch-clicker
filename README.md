@@ -134,7 +134,7 @@ Four systems that are decisions and clocks rather than bigger numbers:
   Orders, Seed Memory; Cold Frames, Warm Hives, the Seed Drill, the
   Almanac Press.
 - **The Honey Stall** — the shed's third tab. Honey buys charms: a
-  four-leaf clover (no tin visitors for an hour), a lump of sugar (calls
+  four-leaf clover (no tin visitors for an hour), sugar water (calls
   the next guest), a jar of rain, a picnic blanket, a scented candle —
   and keepsakes the whole world owns forever: wind chimes, a garden
   gnome, bunting, a tiny hat for the carrot, the allotment cat. Charms
