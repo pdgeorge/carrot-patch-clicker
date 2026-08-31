@@ -27,6 +27,7 @@ CC.audio = {
   fanfare() { [523, 659, 784, 1047].forEach((f, i) => this.blip(f, 0.35, 'triangle', 0.11, null, i * 0.11)); },
   rabbit() { this.blip(880, 0.1, 'sine', 0.14, 1320); this.blip(1320, 0.15, 'sine', 0.11, 1760, 0.1); },
   seed() { [392, 523, 659, 880, 1175].forEach((f, i) => this.blip(f, 0.4, 'triangle', 0.1, null, i * 0.14)); },
+  chime() { [1568, 1976, 2637].forEach((f, i) => this.blip(f, 0.9, 'sine', 0.05, null, i * 0.18)); },
 };
 
 /* Season theme packs (R18): every season owns a day/night pair. CSS lives
@@ -480,7 +481,8 @@ CC.UI = class {
     if (e.type === 'order_resolved') return e.won ? `📜 ${e.name} met — tier ${e.tier}` : `📜 ${e.name} missed`;
     if (e.type === 'ribbon') { const r = CC.RIBBONS[e.i]; return `🎀 ${r ? r.name : 'a ribbon'}`; }
     if (e.type === 'almanac') { const pg = CC.ALMANAC.find(p => p.id === e.id); return `📖 ${pg ? pg.name : 'a page'} was written`; }
-    if (e.type === 'quiet') return `🌙 the garden stirred after ${e.hours}h of quiet`;
+    if (e.type === 'quiet') return `🌙 the garden stirred after ${e.hours}h of quiet${e.candle ? ' — the candle was lit' : ''}`;
+    if (e.type === 'charm') { const cd = this.core.charmData && this.core.charmData(e.id); return `🍯 ${e.who || 'a tender'} bought ${cd ? cd.name : 'a keepsake'} at the stall`; }
     if (e.type === 'market_open') return '🏪 Market Hour';
     if (e.type === 'trial') {
       const t = (CC.TRIALS || []).find(x => x.id === e.id), nm = t ? t.name : 'a Trial';
@@ -533,6 +535,30 @@ CC.UI = class {
     const done = () => this.toast('📋 Today’s Patch copied — paste it anywhere.');
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => this.toast(text));
     else this.toast(text);
+  }
+
+  /* ---------------- the Honey Stall (R25) ---------------- */
+  charmIcon(id) { return ({ clover4: 'clover4', sugar: 'sugar', rainjar: 'rainjar', picnic: 'picnic', candle: 'candle',
+    gnome: 'gnome', bunting: 'bunting', tophat: 'tophat', chimes: 'chimes', cat: 'cat' })[id] || 'honey'; }
+  buyCharmUI(id) {
+    if (this.awaitingWorld()) return;
+    if (this.worldMode) { this.patch.send({ type: 'charm', id }); return; }
+    const c = this.core;
+    if (id === 'sugar' && ((this.visitor && !this.visitor.gone) || c.rule('noVisitors'))) return;
+    if (c.buyCharm(id)) {
+      const cd = c.charmData(id);
+      CC.audio.upgrade();
+      this.toast(`${cd.name} — ${cd.effect}.`, { icon: this.charmIcon(id) });
+      if (id === 'rainjar') {
+        const w = (CC.WEATHER || []).find(x => x.id === 'rain') || { name: 'Gentle Rain', mult: 2, dur: 90 };
+        const live = c.buffs.find(b => b.name === w.name && !b.charm);
+        const dur = w.dur * c.bedWeather();
+        if (live) live.left = Math.max(live.left, dur);
+        else c.buffs.push({ name: w.name, mult: w.mult, left: dur });
+        c.weathers++; c.mintHoney('rain');
+      }
+      if (id === 'sugar') this.nextVisitor = Math.min(this.nextVisitor, this.t + 5 + Math.random() * 55);
+    }
   }
 
   /* ---------------- the Quilt (R22) ---------------- */
@@ -735,7 +761,7 @@ CC.UI = class {
     if (!p) { this.tooltip(null); return; }
     const mature = c.plotMature(pl);
     this.tooltip({ kind: 'plant', p, pl, text: `${p.name} — ${this.plotName(i)}\n${p.flavor}\n${this.plantEffectText(p)}\n` +
-      (mature ? `mature · ${p.life - pl.age} ticks of life left · click to pick` : `${p.mature - pl.age} ticks to maturity`) }, this.$('bed'));
+      (mature ? `mature · ${c.plotLife(p) - pl.age} ticks of life left · click to pick` : `${p.mature - pl.age} ticks to maturity`) }, this.$('bed'));
   }
   /* a plant as five strokes: stem, leaves, a head coloured by what it does */
   drawBed() {
@@ -773,7 +799,7 @@ CC.UI = class {
       if (!p) continue;
       const mature = pl.age >= p.mature;
       const g = Math.min(1, (pl.age + 0.35) / p.mature);           /* growth 0..1 */
-      const old = p.life < 900 && pl.age > p.life - 2;                /* about to die */
+      const old = p.life < 900 && pl.age > this.core.plotLife(p) - 2;  /* about to die */
       const hue = p.mult && p.mult < 1 ? '#7d8a5a' : p.rabbit ? '#5fa65a' : p.weather ? '#6e8fd6' : p.honey ? '#e7b23a'
         : p.wild ? '#9a9a70' : p.tier >= 5 ? '#f0c060' : p.tier >= 4 ? '#c58ad0' : pal.body[0];
       const stage = old ? 'pl-dead' : pl.age === 0 ? 'pl-seed' : mature ? (p.weather ? 'pl-umbel' : 'pl-ready') : g < 0.5 ? 'pl-sprout' : 'pl-grow';
@@ -1070,8 +1096,21 @@ CC.UI = class {
     try {
       const raw = this.store.getItem('carrot-clicker-save');
       if (!raw) return;
-      const { offline } = this.core.deserialize(JSON.parse(raw));
+      const saved = JSON.parse(raw);
+      const quietGap = saved.last ? (Date.now() - saved.last) / 1000 : 0;
+      const { offline } = this.core.deserialize(saved);
       if (offline > 1) this.toast(`While you were away, the garden grew: +${CC.fmt(offline)} 🥕`);
+      /* the Quiet reaches the solo garden through the stall (R25): a garden
+         quiet past CC.QUIET.afterHours wakes with a Welcome Back — warmer
+         when a Scented Candle waited (the world's quiet lives in the parish) */
+      const q = CC.QUIET || { afterHours: 6, boostHours: 1, boost: 2 };
+      if (quietGap >= q.afterHours * 3600) {
+        const cd = this.core.charmData && this.core.charmData('candle');
+        const lit = !!cd && this.core.useCandle();
+        this.core.buffs.push({ name: 'Welcome Back', mult: lit ? cd.boostMult : q.boost,
+          left: (lit ? cd.boostHours : q.boostHours) * 3600, keep: true });
+        this.toast(`🌙 The garden lay quiet for ${Math.round(quietGap / 3600)}h — Welcome Back ×${lit ? cd.boostMult : q.boost}.${lit ? ' The candle was lit.' : ''}`);
+      }
     } catch (e) { /* corrupted save: start fresh */ }
   }
 
@@ -1123,9 +1162,18 @@ CC.UI = class {
       return el;
     });
 
-    /* the Root Cellar (R24): loam buys rules */
+    /* the Root Cellar (R24/R25): a tree, three shelves down */
     const citems = this.$('cellar-items');
+    const shelves = {};
     this.cellarEls = (CC.CELLAR || []).map(cd => {
+      const tier = cd.tier || 1;
+      if (!shelves[tier]) {
+        const h = document.createElement('div');
+        h.className = 'cellar-shelf';
+        h.textContent = ['', 'THE DOOR', 'THE SECOND SHELF', 'THE THIRD SHELF'][tier] || `SHELF ${tier}`;
+        citems.appendChild(h);
+        shelves[tier] = true;
+      }
       const el = document.createElement('button');
       el.type = 'button';
       el.className = 'shed-item';
@@ -1138,12 +1186,29 @@ CC.UI = class {
       citems.appendChild(el);
       return el;
     });
+
+    /* the Honey Stall (R25): charms and keepsakes */
+    const stitems = this.$('stall-items');
+    this.stallEls = (CC.CHARMS || []).map(cd => {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'shed-item';
+      el.innerHTML = `<div class="s-head"><b>${CC.icon(this.charmIcon(cd.id))} <span class="s-name"></span><span class="s-lv"></span></b>` +
+        `<span class="s-cost"></span></div><div class="s-effect"></div><div class="s-flavor"></div>`;
+      el.querySelector('.s-name').textContent = cd.name;
+      el.querySelector('.s-effect').textContent = cd.effect;
+      el.querySelector('.s-flavor').textContent = cd.flavor;
+      el.addEventListener('click', () => this.buyCharmUI(cd.id));
+      stitems.appendChild(el);
+      return el;
+    });
     this.$('shed-tabs').addEventListener('click', e => {
       const tab = e.target.dataset.tab;
       if (!tab) return;
       for (const b of this.$('shed-tabs').children) b.classList.toggle('on', b.dataset.tab === tab);
       this.$('shed-pane').classList.toggle('hidden', tab !== 'shed');
       this.$('cellar-pane').classList.toggle('hidden', tab !== 'cellar');
+      this.$('stall-pane').classList.toggle('hidden', tab !== 'stall');
     });
     this.$('bell-btn').addEventListener('click', () => this.askBell());
     this.$('ceremony-close').addEventListener('click', () => this.$('ceremony').classList.add('hidden'));
@@ -1535,7 +1600,7 @@ CC.UI = class {
   /* open the paper modal with focus inside; closing restores it (brief P7) */
   openModal() {
     this._dlgReturn = document.activeElement;
-    this.openModal();
+    this.$('modal').classList.remove('hidden');
     this.$('modal-yes').focus();
   }
 
@@ -1626,6 +1691,24 @@ CC.UI = class {
     /* season props as ink lines (brief P12) */
     const ink = 'rgba(40,26,12,0.75)', paper = '#f6ead2';
     x.lineWidth = 1.5; x.strokeStyle = ink; x.lineCap = 'round';
+    /* stall keepsakes (R25): the world's, forever */
+    if (this.core.charmCount && this.core.charmCount('bunting') && this.core.season !== 'fair') {
+      x.beginPath(); x.moveTo(4, 12); x.quadraticCurveTo(160, 26, 316, 12); x.stroke();
+      for (let k = 0; k < 9; k++) {
+        const bx = 20 + k * 33, by = 15 + Math.sin(k * 1.1) * 2.5;
+        x.fillStyle = k % 3 === 0 ? '#c8452c' : k % 3 === 1 ? paper : '#e7b23a';
+        x.beginPath(); x.moveTo(bx, by); x.lineTo(bx + 9, by); x.lineTo(bx + 4.5, by + 9); x.closePath(); x.fill(); x.stroke();
+      }
+    }
+    if (this.core.charmCount && this.core.charmCount('gnome')) {
+      const gp = CC.ART.palette(pal, !!pal.stars);
+      if (!CC.ART.draw(x, 'gnome', c.width - 56, soilY - 32, 28, gp)) {
+        /* no symbol yet: a small ink gnome — cone hat, round body */
+        x.fillStyle = '#c8452c'; x.beginPath(); x.moveTo(c.width - 42, soilY - 30); x.lineTo(c.width - 36, soilY - 30); x.lineTo(c.width - 39, soilY - 40); x.closePath(); x.fill(); x.stroke();
+        x.fillStyle = '#4a6fa5'; x.beginPath(); x.arc(c.width - 39, soilY - 22, 7, 0, Math.PI * 2); x.fill(); x.stroke();
+        x.fillStyle = paper; x.beginPath(); x.arc(c.width - 39, soilY - 28, 3.4, 0, Math.PI * 2); x.fill();
+      }
+    }
     if (this.core.season === 'fair') {
       /* bunting and a striped tent */
       for (let k = 0; k < 10; k++) {
@@ -1686,9 +1769,16 @@ CC.UI = class {
     } else if (ev.type === 'bumper') {
       const b = CC.BUILDINGS[ev.b];
       if (!b) return;
+      if (this.core.charmCount && this.core.charmCount('chimes')) CC.audio.chime();
       CC.audio.upgrade();
       this.celebrate('cheer');
       this.toast(`🌾 Bumper crop! ${ev.at}× ${b.name} — +1% to everything.`);
+    } else if (ev.type === 'charm') {
+      const cd = this.core.charmData && this.core.charmData(ev.id);
+      if (!cd) return;
+      if (ev.cosmetic) { CC.audio.fanfare(); this.celebrate('cheer'); } else CC.audio.upgrade();
+      this.toast(`${ev.who ? ev.who : 'Someone'} bought ${cd.name} at the stall${ev.cosmetic ? ' — for everyone, forever.' : '.'}`,
+        { icon: this.charmIcon(ev.id) });
     } else if (ev.type === 'upgrade') {
       const u = this.core.allUpgrades().find(u => u.id === ev.id);
       CC.audio.upgrade();
@@ -1826,7 +1916,8 @@ CC.UI = class {
     } else if (ev.type === 'quiet') {
       const q = CC.QUIET || { boost: 2, boostHours: 1 };
       CC.audio.upgrade();
-      this.toast(`🌙 The garden lay quiet for ${ev.hours}h. ${ev.who || 'A tender'} came back — Welcome Back ×${q.boost} for ${q.boostHours}h, everyone.`);
+      const boost = ev.boost || q.boost, bh = ev.bh || q.boostHours;
+      this.toast(`🌙 The garden lay quiet for ${ev.hours}h. ${ev.who || 'A tender'} came back — Welcome Back ×${boost} for ${bh}h, everyone.${ev.candle ? ' The candle was lit.' : ''}`);
     }
   }
 
@@ -2001,9 +2092,12 @@ CC.UI = class {
       if (this.core.rule('noVisitors')) { /* Quiet Hedge (R22): nobody comes */
         this.nextVisitor = this.t + (CC.VISITOR_GAP[0] + Math.random() * (CC.VISITOR_GAP[1] - CC.VISITOR_GAP[0])) / this.core.gateRate();
       } else {
-        let w = CC.VISITORS.reduce((s, v) => s + v.weight, 0) * Math.random();
-        const pick = CC.VISITORS.find(v => (w -= v.weight) < 0) || CC.VISITORS[0];
-        this.spawnVisitor(pick.id, pick.ttl + (this.core.perks.longEars || 0) * CC.TRIAL.longEarsSec);
+        /* A Four-Leaf Clover / A Picnic Blanket (R25) shape the dev table too */
+        const vs = this.core.charmBusy && this.core.charmBusy('clover4') ? CC.VISITORS.filter(v => v.id !== 'tin') : CC.VISITORS;
+        let w = vs.reduce((s, v) => s + v.weight, 0) * Math.random();
+        const pick = vs.find(v => (w -= v.weight) < 0) || vs[0];
+        this.spawnVisitor(pick.id, pick.ttl + (this.core.perks.longEars || 0) * CC.TRIAL.longEarsSec
+          + (this.core.charmBusy && this.core.charmBusy('picnic') ? 6 : 0));
       }
     }
     if (this.visitor && !this.visitor.gone) {
@@ -2048,7 +2142,11 @@ CC.UI = class {
           Math.random() * (CC.WEATHER_GAP[1] - CC.WEATHER_GAP[0]);
         let w = CC.WEATHER.reduce((s, x) => s + x.weight, 0) * Math.random();
         const pick = CC.WEATHER.find(x => (w -= x.weight) < 0) || CC.WEATHER[0];
-        this.core.buffs.push({ name: pick.name, mult: pick.mult, left: pick.dur });
+        /* one sky, one rain, both ways: a natural roll refreshes a jar's rain */
+        const liveW = this.core.buffs.find(b => b.name === pick.name && !b.charm);
+        const durW = pick.dur * this.core.bedWeather();
+        if (liveW) liveW.left = Math.max(liveW.left, durW);
+        else this.core.buffs.push({ name: pick.name, mult: pick.mult, left: durW });
         this.core.weathers++;
         this.core.mintHoney('rain'); /* R21: weather is a deed of the sky, in both gardens */
         this.patchEvent({ type: 'weather', id: pick.id });
@@ -2092,9 +2190,15 @@ CC.UI = class {
       if (want && this.ambient.length < (want === 'firefly' ? 12 : 5) && Math.random() < dt * 0.4) {
         this.ambient.push({ kind: want, x: Math.random() * this.W, y: 30 + Math.random() * (this.soilY - 70), vx: (Math.random() - 0.5) * 30, vy: (Math.random() - 0.5) * 14, life: 8 + Math.random() * 10, ph: Math.random() * 6 });
       }
-      for (const a of this.ambient) { a.x += a.vx * dt; a.y += a.vy * dt + Math.sin(this.t * 3 + a.ph) * 10 * dt; a.life -= dt; if (a.x < 0 || a.x > this.W) a.vx *= -1; if (a.y < 20 || a.y > this.soilY - 20) a.vy *= -1; }
+      for (const a of this.ambient) { const walker = a.kind === 'bird' || a.kind === 'cat'; a.x += a.vx * dt; a.y += a.vy * dt + Math.sin(this.t * 3 + a.ph) * 10 * dt; a.life -= dt; if (!walker && ((a.x < 0 && a.vx < 0) || (a.x > this.W && a.vx > 0))) a.vx *= -1; if (!walker && ((a.y < 20 && a.vy < 0) || (a.y > this.soilY - 20 && a.vy > 0))) a.vy *= -1; }
       this.ambient = this.ambient.filter(a => a.life > 0);
       if (!this._birdT || this.t - this._birdT > 90) { this._birdT = this.t; if (!night && Math.random() < 0.7) this.ambient.push({ kind: 'bird', x: -10, y: 30 + Math.random() * 40, vx: 60, vy: 0, life: 6, ph: 0 }); }
+      /* The Allotment Cat (R25): a patrol along the hedge, now and then */
+      if (this.core.charmCount && this.core.charmCount('cat') && (!this._catT || this.t - this._catT > 240) && !this.ambient.some(a => a.kind === 'cat')) {
+        this._catT = this.t;
+        const ltr = Math.random() < 0.5;
+        this.ambient.push({ kind: 'cat', x: ltr ? -16 : this.W + 16, y: this.soilY - 6, vx: ltr ? 22 : -22, vy: 0, life: (this.W + 40) / 22, ph: Math.random() * 6 });
+      }
     } else this.ambient = [];
     if (this.tickerT > 9) { this.tickerT = 0; this.setTicker(); }
 
@@ -2137,13 +2241,15 @@ CC.UI = class {
     /* every buff, not just the first: a Bumper Week and a passing rain
        stack, and both deserve a clock (R21) */
     this.setText(this.$('buff-line'), c.buffs.map(b =>
-      `${b.name} ×${b.mult} — ${b.left >= 60 ? CC.fmtDur(b.left) : Math.ceil(b.left) + 's'}`).join(' · '));
+      `${b.name}${b.mult === 1 ? '' : ' ×' + b.mult} — ${b.left >= 60 ? CC.fmtDur(b.left) : Math.ceil(b.left) + 's'}`).join(' · '));
     for (const b of c.buffs) {
       const w = CC.WEATHER.find(x => x.name === b.name);
       const frenzy = b.mult >= 7, bad = b.mult < 1;
-      const dur = w ? w.dur : b.keep ? 86400 : 30;
-      chips.push({ icon: w ? 'sun' : bad ? 'moon' : frenzy ? 'bolt' : 'wheat', cls: bad ? 'quiet' : frenzy ? 'hot' : w ? 'cool' : 'hot',
-        name: `${b.name} ×${b.mult}`, time: b.left >= 60 ? CC.fmtDur(b.left) : Math.ceil(b.left) + 's', p: Math.min(1, b.left / dur) });
+      const cd = b.charm && c.charmData ? c.charmData(b.charm) : null;
+      const dur = cd ? (cd.dur || cd.cd || 30) : w ? w.dur : b.keep ? 86400 : 30;
+      chips.push({ icon: cd ? this.charmIcon(b.charm) : w ? 'sun' : bad ? 'moon' : frenzy ? 'bolt' : 'wheat',
+        cls: cd ? 'honey' : bad ? 'quiet' : frenzy ? 'hot' : w ? 'cool' : 'hot',
+        name: `${b.name}${b.mult === 1 ? '' : ' ×' + b.mult}`, time: b.left >= 60 ? CC.fmtDur(b.left) : Math.ceil(b.left) + 's', p: Math.min(1, b.left / dur) });
     }
 
     /* the Gate (R21): the honey jar and the Market Hour clock */
@@ -2330,18 +2436,43 @@ CC.UI = class {
         bl.classList.add('hidden');
       }
       if (bbHtml !== this._bbHtml) { this._bbHtml = bbHtml; bb.innerHTML = bbHtml; }
-      const cSig = (CC.CELLAR || []).map(cd => c.cellarLevel(cd.id)).join(',') + '|' + c.loam + '|' + c.fallows;
+      const cSig = (CC.CELLAR || []).map(cd => c.cellarLevel(cd.id) + (c.cellarVisible(cd) ? 'v' : '')).join(',') + '|' + c.loam + '|' + c.fallows;
       if (cSig !== this._cellarSig) {
         this._cellarSig = cSig;
         this.$('cellar-balance').innerHTML = `<b>${CC.fmt(c.loam)}</b> ${CC.icon('loam')} loam` +
           ` · <span class="stat-sub">${c.fallows} Fallow${c.fallows === 1 ? '' : 's'} on record</span>`;
         (CC.CELLAR || []).forEach((cd, i) => {
-          const el = this.cellarEls[i], lv = c.cellarLevel(cd.id), maxed = c.cellarMaxed(cd);
+          const el = this.cellarEls[i], lv = c.cellarLevel(cd.id), maxed = c.cellarMaxed(cd), lit = c.cellarVisible(cd);
+          el.classList.toggle('locked', !lit);
           el.querySelector('.s-lv').textContent = lv > 0 ? ` · Lv ${lv}/${cd.cap}` : ` · 0/${cd.cap}`;
           el.classList.toggle('bought', maxed);
-          el.classList.toggle('cant', !maxed && c.loam < c.cellarCost(cd.id));
-          el.querySelector('.s-cost').innerHTML = maxed ? 'at its cap' : `${c.cellarCost(cd.id)} ${CC.icon('loam')}`;
+          el.classList.toggle('cant', !maxed && (!lit || c.loam < c.cellarCost(cd.id)));
+          el.querySelector('.s-cost').innerHTML = !lit
+            ? `${CC.icon('tierlock')} needs ${(cd.req || []).map(r => (c.cellarData(r) || { name: r }).name).join(' + ')}`
+            : maxed ? 'at its cap' : `${c.cellarCost(cd.id)} ${CC.icon('loam')}`;
           el.querySelector('.s-cap').style.setProperty('--p', lv / cd.cap);
+        });
+      }
+      /* the Honey Stall (R25) */
+      const cosSig = ['gnome', 'bunting', 'tophat', 'cat'].map(id => c.charmCount(id) ? 1 : 0).join('');
+      if (cosSig !== this._cosSig) { this._cosSig = cosSig; if (this._pal) this.paintBackdrop(this._pal); }
+      const guestHere = !!(this.visitor && !this.visitor.gone), hedgeQuiet = !!c.rule('noVisitors');
+      const stSig = (CC.CHARMS || []).map(cd => c.charmCount(cd.id) + (c.charmBusy(cd.id)
+        ? 'b' + Math.ceil((c.buffs.find(b => b.charm === cd.id) || { left: 0 }).left) : '')).join(',') + '|' + c.honey + '|' + guestHere + hedgeQuiet;
+      if (stSig !== this._stallSig) {
+        this._stallSig = stSig;
+        this.$('stall-balance').innerHTML = `<b>${CC.fmt(c.honey)}</b> ${CC.icon('honey')} honey in the jar`;
+        (CC.CHARMS || []).forEach((cd, i) => {
+          const el = this.stallEls[i], n = c.charmCount(cd.id), busy = c.charmBusy(cd.id);
+          const owned = cd.once && n >= 1, full = cd.store && n >= cd.store;
+          const undeliverable = cd.id === 'sugar' && (guestHere || hedgeQuiet);
+          el.classList.toggle('bought', !!owned);
+          el.classList.toggle('cant', !owned && (busy || full || undeliverable || c.honey < cd.cost));
+          el.querySelector('.s-lv').textContent = cd.store && n > 0 ? ` · ×${n} stored` : '';
+          const buff = busy && this.core.buffs.find(b => b.charm === cd.id);
+          el.querySelector('.s-cost').innerHTML = owned ? 'ours, forever'
+            : busy ? (cd.dur ? `working — ${CC.fmtDur(buff ? buff.left : 0)}` : `rests ${CC.fmtDur(buff ? buff.left : 0)}`)
+              : full ? 'the shelf is full' : undeliverable ? (hedgeQuiet ? 'no guest can come — the hedge is Quiet' : 'a guest is already here') : `${cd.cost} ${CC.icon('honey')}`;
         });
       }
     }
@@ -2592,6 +2723,17 @@ CC.UI = class {
           return typeof DOMMatrix !== 'undefined' ? new DOMMatrix().translate(dx, 0) : null;
         },
       });
+      /* A Tiny Hat (R25): perched on the fronds, swaying with them */
+      if (c.charmCount && c.charmCount('tophat')) {
+        const hatY = this.soilY - [66, 84, 100, 116, 130][stage] * (0.8 + size * 0.2);
+        const hx = cx + Math.sin(this.t * 1.7) * swayAmp * 0.4 + lean;
+        x.save(); x.translate(hx, hatY); x.rotate(-0.14);
+        if (!CC.ART.draw(x, 'tophat', -14, -20, 28, artPal)) {
+          x.fillStyle = '#2a2218'; x.fillRect(-13, -4, 26, 4); x.fillRect(-8, -20, 16, 16);
+          x.fillStyle = '#c8452c'; x.fillRect(-8, -8, 16, 4);
+        }
+        x.restore();
+      }
       x.restore();
     } else {
     x.save();
@@ -2658,6 +2800,16 @@ CC.UI = class {
     for (const a of (this.ambient || [])) {
       if (a.kind === 'firefly') { x.fillStyle = `rgba(255,240,150,${0.4 + Math.sin(this.t * 4 + a.ph) * 0.4})`; x.beginPath(); x.arc(a.x, a.y, 1.8, 0, Math.PI * 2); x.fill(); }
       else if (a.kind === 'bird') { x.strokeStyle = 'rgba(40,26,12,0.6)'; x.lineWidth = 1.5; const f = Math.sin(this.t * 10) * 3; x.beginPath(); x.moveTo(a.x - 6, a.y + f); x.lineTo(a.x, a.y); x.lineTo(a.x + 6, a.y + f); x.stroke(); }
+      else if (a.kind === 'cat') {
+        x.save(); x.translate(a.x, a.y + Math.abs(Math.sin(this.t * 6 + a.ph)) * 1.5);
+        if (a.vx < 0) x.scale(-1, 1);
+        if (!CC.ART.draw(x, 'cat', -13, -20, 26, CC.ART.palette(this._pal, !!(this._pal && this._pal.stars)))) {
+          x.fillStyle = '#3a3230'; x.beginPath(); x.ellipse(0, -6, 10, 5, 0, 0, Math.PI * 2); x.arc(9, -10, 4.5, 0, Math.PI * 2); x.fill();
+          x.beginPath(); x.moveTo(6, -13); x.lineTo(7.5, -17); x.lineTo(9, -13); x.moveTo(9, -13); x.lineTo(10.5, -17); x.lineTo(12, -13); x.fill();
+          x.strokeStyle = '#3a3230'; x.lineWidth = 2; x.beginPath(); x.moveTo(-9, -8); x.quadraticCurveTo(-15, -12 + Math.sin(this.t * 3) * 3, -14, -18); x.stroke();
+        }
+        x.restore();
+      }
       else {
         const bee = a.kind === 'bee', wr = 2 + Math.abs(Math.sin(this.t * 18 + a.ph)) * 2.5; /* a flap from 2 to 4.5 — never a negative radius */
         x.fillStyle = bee ? '#e7b23a' : (a.ph % 2 > 1 ? '#f2b33d' : '#e89cb0'); x.strokeStyle = 'rgba(40,26,12,0.6)'; x.lineWidth = 1;

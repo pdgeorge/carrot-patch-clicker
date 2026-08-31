@@ -212,6 +212,7 @@
 .chip.frost { color: #bfe3ff; border-color: #9fd3ff; }
 .chip.bell { border-color: var(--lantern); color: var(--lantern); }
 .chip.market { border-color: var(--on-ink); color: var(--on-ink); }
+.chip.honey { border-color: var(--honey); color: var(--honey); }
 .chip.quiet { opacity: 0.9; }
 .chips button.chip { cursor: pointer; }
 .chips button.chip.on { border-color: var(--on-ink); color: var(--on-ink); }
@@ -498,12 +499,12 @@
 #shed-tabs button { flex: 1; font: inherit; font-weight: 800; font-size: 12px; padding: 6px; min-height: 36px; cursor: pointer; border-radius: 3px; border: 1px solid var(--paper-edge); background: var(--paper); color: var(--ink-dim); }
 #shed-tabs button.on { background: var(--paper-hi); color: var(--ink); border-color: var(--ink-leaf); }
 #shed-close { width: 36px; padding: 0; }
-#shed-pane, #cellar-pane { padding: 14px 22px 0; }
+#shed-pane, #cellar-pane, #stall-pane { padding: 14px 22px 0; }
 #shed-box h2 { margin: 0 0 4px; font-family: var(--serif); color: var(--ink-leaf); text-align: center; letter-spacing: 0.12em; font-size: 16px; }
-#shed-sub, #cellar-sub { margin: 0 0 10px; font-family: var(--serif); font-size: 13px; font-style: italic; color: var(--ink-dim); text-align: center; }
-#shed-balance, #cellar-balance { text-align: center; font-size: 14px; color: var(--ink-leaf); margin-bottom: 12px; font-variant-numeric: tabular-nums; }
-#shed-balance b, #cellar-balance b { font-size: 18px; }
-#shed-items, #cellar-items, #shed-done-items { display: flex; flex-direction: column; gap: 8px; }
+#shed-sub, #cellar-sub, #stall-sub { margin: 0 0 10px; font-family: var(--serif); font-size: 13px; font-style: italic; color: var(--ink-dim); text-align: center; }
+#shed-balance, #cellar-balance, #stall-balance { text-align: center; font-size: 14px; color: var(--ink-leaf); margin-bottom: 12px; font-variant-numeric: tabular-nums; }
+#shed-balance b, #cellar-balance b, #stall-balance b { font-size: 18px; }
+#shed-items, #cellar-items, #shed-done-items, #stall-items { display: flex; flex-direction: column; gap: 8px; }
 .shed-item { background: var(--paper-hi); border: 1px solid var(--paper-edge); outline: 1px dashed rgba(120, 85, 40, 0.45); outline-offset: -5px; border-radius: 3px; padding: 10px 13px; cursor: pointer; line-height: 1.45; text-align: left; font: inherit; color: var(--ink); width: 100%; box-sizing: border-box; }
 .shed-item .s-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
 .shed-item .s-head b { font-family: var(--serif); font-size: 14px; color: var(--ink-carrot); }
@@ -520,6 +521,17 @@
 #shed-done summary { cursor: pointer; font-family: var(--serif); font-size: 12px; letter-spacing: 0.1em; color: var(--ink-dim); padding: 6px 0; }
 #shed-done-items { margin-top: 8px; }
 #cellar-pane.stone { background: linear-gradient(180deg, rgba(140, 140, 134, 0.18), rgba(60, 58, 54, 0.25)); border-top: 1px solid var(--stone); padding-bottom: 14px; }
+
+/* the Root Cellar tree (R25): three shelves, each lit by the one above */
+.cellar-shelf { font-family: var(--display); font-size: 12px; letter-spacing: 0.14em; color: var(--ink-dim); margin: 14px 2px 6px; padding-bottom: 3px; border-bottom: 1px dashed var(--stone); }
+.cellar-shelf:first-child { margin-top: 2px; }
+.shed-item.locked { border-style: dashed; opacity: 0.62; background: transparent; }
+.shed-item.locked .s-effect, .shed-item.locked .s-flavor { color: var(--ink-dim); }
+.shed-item.locked .s-cost { font-style: italic; }
+
+/* the Honey Stall (R25) */
+#stall-pane { background: linear-gradient(180deg, rgba(231, 178, 58, 0.12), rgba(231, 178, 58, 0.03)); border-top: 1px solid var(--honey); padding-bottom: 14px; }
+#stall-pane .shed-item .s-head .ic { width: 17px; height: 17px; vertical-align: -3px; }
 #cellar-pane h2 { color: var(--ink); }
 #cellar-balance { color: var(--ink); }
 #cellar-items .shed-item { background: var(--paper); }

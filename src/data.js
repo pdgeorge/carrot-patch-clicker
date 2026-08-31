@@ -357,6 +357,11 @@ CC.ALMANAC = [];
   page('fy3', 'The Cellar Door', 'Loam spent on a rule, not a number.', { cellarAny: 1 });
   page('fy4', 'A Full Cellar', 'Every perk at its cap. The rules are all rewritten.', { cellarFull: 1 });
   page('fy5', 'Rehearsal', 'The bell rang four times and nothing happened. Next time, it will.', { rehearsed: 1 });
+  /* the Honey Stall & the third shelf (R25) */
+  page('st0', 'The Sweet Trade', 'The first charm bought with honey. The stall nods.', { charmsAny: 1 });
+  page('st1', 'Him', 'The gnome arrived. The garden feels supervised.', { charm: 'gnome' });
+  page('st2', 'The Ninth Life', 'The cat chose this allotment. It could have chosen anywhere.', { charm: 'cat' });
+  page('cl0', 'The Third Shelf', 'A perk from the cellar\'s deepest row. The tree has roots.', { cellarTier: 3 });
 })();
 
 /* Trials (R22): a spring replayed under ONE rule. The goal is "get back to
@@ -475,27 +480,80 @@ CC.PLANTS = [
    anyone may silence it; the first Fallow is rehearsed first. */
 CC.FALLOW = { minLoam: 400, rings: 4, ringGap: 7200, ringRest: 600, tilthPerFallow: 0.05, tilthCap: 25, cellarStep: 8 };
 /* the Root Cellar: Loam buys RULE CHANGES — automation, caps, head starts —
-   at triangular prices (level n costs cellarStep·n Loam; a full cellar ≈ one
-   Fallow and a half). Never a production multiplier. */
+   at triangular prices (level n costs cellarStep·n Loam). Never a production
+   multiplier. R25: the cellar is a TREE — three shelves down; a perk shows
+   itself only when everything it `req`uires holds at least level 1. */
 CC.CELLAR = [
-  { id: 'quick', name: 'Quick Spring', cap: 5, per: 10,
+  /* tier 1 — the door */
+  { id: 'quick', name: 'Quick Spring', tier: 1, cap: 5, per: 10,
     effect: 'every spring starts with 10 of each plot per level',
     flavor: 'The first morning of the year is already half done.' },
-  { id: 'pace', name: 'Scarecrow Pace', cap: 5, per: 10,
+  { id: 'pace', name: 'Scarecrow Pace', tier: 1, cap: 5, per: 10,
     effect: 'the Scarecrow acts 10 s sooner per level (60 s → 10 s)',
     flavor: 'It learned to hurry. Nobody taught it.' },
-  { id: 'gate', name: 'Open Gate', cap: 8, per: 0.05,
+  { id: 'gate', name: 'Open Gate', tier: 1, cap: 8, per: 0.05,
     effect: 'guests arrive 5% more often per level',
     flavor: 'The latch is off. The rabbits noticed first.' },
-  { id: 'beds', name: 'Deeper Beds', cap: 2, per: 1,
+  /* tier 2 — the second shelf */
+  { id: 'beds', name: 'Deeper Beds', tier: 2, cap: 2, per: 1, req: ['quick'],
     effect: 'the Seed Bed grows a row and a column per level (4×4 → 6×6); heirlooms resprout 25 deeper',
     flavor: 'Dig once, and the bed remembers the shape.' },
-  { id: 'orders', name: 'Wider Orders', cap: 2, per: 1,
+  { id: 'orders', name: 'Wider Orders', tier: 2, cap: 2, per: 1, req: ['gate'],
     effect: 'one more Parish Order on the board at a time',
     flavor: 'The Parish has more paper than it knows what to do with.' },
-  { id: 'memory', name: 'Seed Memory', cap: 6, per: 1,
+  { id: 'memory', name: 'Seed Memory', tier: 2, cap: 6, per: 1, req: ['quick'],
     effect: 'every Fallow cycle begins with 10^level seeds already earned (a head start of hours, not a bonus)',
     flavor: 'The ground does not forget what grew in it.' },
+  /* tier 3 — the third shelf (R25) */
+  { id: 'coldframe', name: 'Cold Frames', tier: 3, cap: 5, per: 2, req: ['beds'],
+    effect: 'every bed plant lives 2 ticks longer per level',
+    flavor: 'A pane of sky between the frost and the leaf.' },
+  { id: 'hives', name: 'Warm Hives', tier: 3, cap: 4, per: 6, req: ['beds'],
+    effect: 'the Bee Cooperative makes 6 more honey a day per level',
+    flavor: 'Insulation. The bees write thank-you notes.' },
+  { id: 'drill', name: 'The Seed Drill', tier: 3, cap: 1, per: 1, req: ['pace'],
+    effect: 'the Scarecrow also buys an affordable upgrade on its rounds',
+    flavor: 'It reads the packets now. Nobody taught it that either.' },
+  { id: 'press', name: 'The Almanac Press', tier: 3, cap: 3, per: 50, req: ['orders'],
+    effect: 'a Parish Order met at tier 3 pays 50 more honey per level',
+    flavor: 'Good news, typeset while it is still true.' },
+];
+
+/* the Honey Stall (R25): honey buys CHARMS — small time-boxed favours and
+   permanent cosmetics the whole world can see. Never production. A `dur`
+   charm hangs as a ×1 buff while it works; a `cd` charm rests a while
+   after its moment; a `once` charm is bought for the world, forever. */
+CC.CHARMS = [
+  { id: 'clover4', name: 'A Four-Leaf Clover', cost: 10, dur: 3600,
+    effect: 'for an hour, every golden rabbit is TRUE gold — no tin',
+    flavor: 'The Parsnip Man hates this one weird leaf.' },
+  { id: 'sugar', name: 'Sugar Water', cost: 5, cd: 600, call: true,
+    effect: 'the next guest arrives within the minute',
+    flavor: 'Word gets round the hedge fast.' },
+  { id: 'rainjar', name: 'A Jar of Rain', cost: 15, cd: 1800, call: true,
+    effect: 'a Gentle Rain begins right now',
+    flavor: 'Bottled last April. Still fresh.' },
+  { id: 'picnic', name: 'A Picnic Blanket', cost: 20, dur: 86400,
+    effect: 'guests linger 6 seconds longer, all day',
+    flavor: 'Nobody leaves while there are sandwiches.' },
+  { id: 'candle', name: 'A Scented Candle', cost: 25, store: 3, boostMult: 4, boostHours: 2,
+    effect: 'the next Welcome Back burns ×4 for two hours',
+    flavor: 'Lavender, mostly. A little parsnip.' },
+  { id: 'gnome', name: 'A Garden Gnome', cost: 60, once: true, cosmetic: true,
+    effect: 'a gnome stands by the hedge, forever, for everyone',
+    flavor: 'He has seen every spring. He says nothing.' },
+  { id: 'bunting', name: 'Bunting', cost: 40, once: true, cosmetic: true,
+    effect: 'flags over the patch, every season, forever',
+    flavor: 'It is always nearly a festival now.' },
+  { id: 'tophat', name: 'A Tiny Hat', cost: 80, once: true, cosmetic: true,
+    effect: 'the carrot wears it, forever',
+    flavor: 'Formal. Regrettably permanent.' },
+  { id: 'chimes', name: 'Wind Chimes', cost: 30, once: true, cosmetic: true,
+    effect: 'a soft chime whenever a bumper crop lands',
+    flavor: 'The garden learns one note at a time.' },
+  { id: 'cat', name: 'The Allotment Cat', cost: 120, once: true, cosmetic: true,
+    effect: 'a cat patrols the hedge, now and then, forever',
+    flavor: 'It was always here. Now it is official.' },
 ];
 
 /* Ribbons: permanent multipliers at lifetime-harvest milestones (your trophy shelf). */

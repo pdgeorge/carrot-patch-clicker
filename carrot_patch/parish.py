@@ -28,7 +28,7 @@ from .economy import Economy, market_hour_at
 
 DAY = 86400.0
 NOTABLE = {"prestige", "season", "order_posted", "order_resolved", "order_skipped", "ribbon",
-           "almanac", "quiet", "fallow", "trial", "bedFound", "sacrifice", "bell", "silence", "rehearsed"}
+           "almanac", "quiet", "fallow", "trial", "bedFound", "sacrifice", "bell", "silence", "rehearsed", "charm"}
 KINDS = {"harvest", "visitors", "stalls", "pages", "springs", "sprouts", "quilt", "trials"}
 
 
@@ -431,6 +431,12 @@ class OrderBook:
         rewards = (self.d.get("orderRewards") or {}).get(str(tier)) if tier else None
         effects = rewards if tier else (self.d.get("orderFail") or [])
         applied = self.apply(eco, effects or [], now)
+        # the Almanac Press (R25): a tier-3 order pays extra honey per level
+        press = self.d.get("cellar") and next((c for c in self.d["cellar"] if c["id"] == "press"), None)
+        if tier >= 3 and press and eco.cellar_level("press") >= 1:
+            bonus = press["per"] * eco.cellar_level("press")
+            eco.honey += bonus
+            applied.append(f"+{bonus} honey (the Press)")
         outcome = {"id": o["id"], "name": o["name"], "tier": tier, "value": self.value(eco, o),
                    "targets": o["targets"], "applied": applied, "at": now}
         self.history.append(outcome)
@@ -585,9 +591,14 @@ class OrderBook:
         gap = now - self.last_intent if self.last_intent else 0.0
         self.last_intent = now
         if gap >= q["afterHours"] * 3600:
-            eco.buffs.append({"name": "Welcome Back", "mult": q["boost"],
-                              "left": q["boostHours"] * 3600.0, "keep": True})
-            self.chronicle.log({"type": "quiet", "hours": round(gap / 3600, 1)})
+            # A Scented Candle (R25): a stored candle makes this one warmer
+            candle = self.d.get("charms") and next((c for c in self.d["charms"] if c["id"] == "candle"), None)
+            lit = bool(candle) and eco.use_candle()
+            mult = candle["boostMult"] if lit else q["boost"]
+            hours = candle["boostHours"] if lit else q["boostHours"]
+            eco.buffs.append({"name": "Welcome Back", "mult": mult,
+                              "left": hours * 3600.0, "keep": True})
+            self.chronicle.log({"type": "quiet", "hours": round(gap / 3600, 1), "candle": lit})
             self.save()
-            return gap / 3600
+            return {"hours": gap / 3600, "boost": mult, "boostHours": hours, "candle": lit}
         return None

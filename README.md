@@ -129,8 +129,16 @@ Four systems that are decisions and clocks rather than bigger numbers:
   counters, the shed's one-shots, honey, the seed log and the **Root
   Cellar** stay. The bell rings four times, two hours apart — anyone rings
   it, anyone silences it, and the first bell is a rehearsal. Loam buys
-  rules in the Cellar: Quick Spring, Scarecrow Pace, Open Gate, Deeper
-  Beds, Wider Orders, Seed Memory.
+  rules in the Cellar — now a tree of three shelves, each perk lighting
+  the next: Quick Spring, Scarecrow Pace, Open Gate; Deeper Beds, Wider
+  Orders, Seed Memory; Cold Frames, Warm Hives, the Seed Drill, the
+  Almanac Press.
+- **The Honey Stall** — the shed's third tab. Honey buys charms: a
+  four-leaf clover (no tin visitors for an hour), sugar water (calls
+  the next guest), a jar of rain, a picnic blanket, a scented candle —
+  and keepsakes the whole world owns forever: wind chimes, a garden
+  gnome, bunting, a tiny hat for the carrot, the allotment cat. Charms
+  are niceties and cosmetics, never multipliers.
 
 All rate limits and game numbers are documented in the
 [Tunables table in DESIGN.md](DESIGN.md#tunables--limits).
@@ -180,6 +188,10 @@ of a building, lifetime harvest, seeds, clicks, other upgrades — see
 content — however it's gated — is a `data.js`-only change. If you
 change **formulas** in `src/core.js`, you must mirror the change in
 `carrot_patch/economy.py` — the parity test will fail until you do.
+- **`node tests/smoke_ui.js`** — boots the built page in headless Chromium
+  (skips cleanly if Chromium is missing) and clicks every modal opener:
+  Go to Seed, the bell, the sacrifice, the shed, the planting menu. The
+  engine suites cannot see a dead click handler; this can.
 
 ## Layout
 

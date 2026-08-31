@@ -187,6 +187,9 @@ CC.Patch = class {
       c.cellar = s.cellar || {};
       c.fallows = s.fallows || 0;
       c.rehearsed = !!s.rehearsed;
+      /* the Honey Stall (R25): what the world bought, every mirror shows */
+      c.charms = { ...(s.charms || {}) };
+      c.charmsBought = s.charmsBought || 0;
       this.orders = msg.orders || (msg.order ? [msg.order] : []);
       this.bell = msg.bell || null;
       this.bellRest = msg.bellRest || 0;
