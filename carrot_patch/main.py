@@ -402,9 +402,16 @@ class Patch:
                 ws = self.eco.d.get("weather") or []
                 if ws:
                     w = random.choices(ws, weights=[x.get("weight", 1) for x in ws])[0]
-                    # the Seed Bed (R23): bluebells make the rain last
-                    self.eco.buffs.append(
-                        {"name": w["name"], "mult": w["mult"], "left": float(w["dur"]) * self.eco.bed_weather()})
+                    # the Seed Bed (R23): bluebells make the rain last; one
+                    # sky, one rain, both ways — a natural roll refreshes a
+                    # jar's rain rather than stacking on it (R25 review)
+                    dur = float(w["dur"]) * self.eco.bed_weather()
+                    live = next((b for b in self.eco.buffs
+                                 if b["name"] == w["name"] and not b.get("charm")), None)
+                    if live:
+                        live["left"] = max(float(live["left"]), dur)
+                    else:
+                        self.eco.buffs.append({"name": w["name"], "mult": w["mult"], "left": dur})
                     self.eco.weathers += 1
                     self.eco.mint_honey("rain")  # R21: weather is a deed of the sky
                     self.emit({"type": "weather", "id": w["id"]})

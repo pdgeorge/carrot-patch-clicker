@@ -2142,7 +2142,11 @@ CC.UI = class {
           Math.random() * (CC.WEATHER_GAP[1] - CC.WEATHER_GAP[0]);
         let w = CC.WEATHER.reduce((s, x) => s + x.weight, 0) * Math.random();
         const pick = CC.WEATHER.find(x => (w -= x.weight) < 0) || CC.WEATHER[0];
-        this.core.buffs.push({ name: pick.name, mult: pick.mult, left: pick.dur });
+        /* one sky, one rain, both ways: a natural roll refreshes a jar's rain */
+        const liveW = this.core.buffs.find(b => b.name === pick.name && !b.charm);
+        const durW = pick.dur * this.core.bedWeather();
+        if (liveW) liveW.left = Math.max(liveW.left, durW);
+        else this.core.buffs.push({ name: pick.name, mult: pick.mult, left: durW });
         this.core.weathers++;
         this.core.mintHoney('rain'); /* R21: weather is a deed of the sky, in both gardens */
         this.patchEvent({ type: 'weather', id: pick.id });
@@ -2186,7 +2190,7 @@ CC.UI = class {
       if (want && this.ambient.length < (want === 'firefly' ? 12 : 5) && Math.random() < dt * 0.4) {
         this.ambient.push({ kind: want, x: Math.random() * this.W, y: 30 + Math.random() * (this.soilY - 70), vx: (Math.random() - 0.5) * 30, vy: (Math.random() - 0.5) * 14, life: 8 + Math.random() * 10, ph: Math.random() * 6 });
       }
-      for (const a of this.ambient) { a.x += a.vx * dt; a.y += a.vy * dt + Math.sin(this.t * 3 + a.ph) * 10 * dt; a.life -= dt; if ((a.x < 0 && a.vx < 0) || (a.x > this.W && a.vx > 0)) a.vx *= -1; if ((a.y < 20 && a.vy < 0) || (a.y > this.soilY - 20 && a.vy > 0)) a.vy *= -1; }
+      for (const a of this.ambient) { const walker = a.kind === 'bird' || a.kind === 'cat'; a.x += a.vx * dt; a.y += a.vy * dt + Math.sin(this.t * 3 + a.ph) * 10 * dt; a.life -= dt; if (!walker && ((a.x < 0 && a.vx < 0) || (a.x > this.W && a.vx > 0))) a.vx *= -1; if (!walker && ((a.y < 20 && a.vy < 0) || (a.y > this.soilY - 20 && a.vy > 0))) a.vy *= -1; }
       this.ambient = this.ambient.filter(a => a.life > 0);
       if (!this._birdT || this.t - this._birdT > 90) { this._birdT = this.t; if (!night && Math.random() < 0.7) this.ambient.push({ kind: 'bird', x: -10, y: 30 + Math.random() * 40, vx: 60, vy: 0, life: 6, ph: 0 }); }
       /* The Allotment Cat (R25): a patrol along the hedge, now and then */
@@ -2452,23 +2456,23 @@ CC.UI = class {
       /* the Honey Stall (R25) */
       const cosSig = ['gnome', 'bunting', 'tophat', 'cat'].map(id => c.charmCount(id) ? 1 : 0).join('');
       if (cosSig !== this._cosSig) { this._cosSig = cosSig; if (this._pal) this.paintBackdrop(this._pal); }
-      const guestHere = !!(this.visitor && !this.visitor.gone) || !!c.rule('noVisitors');
+      const guestHere = !!(this.visitor && !this.visitor.gone), hedgeQuiet = !!c.rule('noVisitors');
       const stSig = (CC.CHARMS || []).map(cd => c.charmCount(cd.id) + (c.charmBusy(cd.id)
-        ? 'b' + Math.ceil((c.buffs.find(b => b.charm === cd.id) || { left: 0 }).left) : '')).join(',') + '|' + c.honey + '|' + guestHere;
+        ? 'b' + Math.ceil((c.buffs.find(b => b.charm === cd.id) || { left: 0 }).left) : '')).join(',') + '|' + c.honey + '|' + guestHere + hedgeQuiet;
       if (stSig !== this._stallSig) {
         this._stallSig = stSig;
         this.$('stall-balance').innerHTML = `<b>${CC.fmt(c.honey)}</b> ${CC.icon('honey')} honey in the jar`;
         (CC.CHARMS || []).forEach((cd, i) => {
           const el = this.stallEls[i], n = c.charmCount(cd.id), busy = c.charmBusy(cd.id);
           const owned = cd.once && n >= 1, full = cd.store && n >= cd.store;
-          const undeliverable = cd.id === 'sugar' && guestHere;
+          const undeliverable = cd.id === 'sugar' && (guestHere || hedgeQuiet);
           el.classList.toggle('bought', !!owned);
           el.classList.toggle('cant', !owned && (busy || full || undeliverable || c.honey < cd.cost));
           el.querySelector('.s-lv').textContent = cd.store && n > 0 ? ` · ×${n} stored` : '';
           const buff = busy && this.core.buffs.find(b => b.charm === cd.id);
           el.querySelector('.s-cost').innerHTML = owned ? 'ours, forever'
             : busy ? (cd.dur ? `working — ${CC.fmtDur(buff ? buff.left : 0)}` : `rests ${CC.fmtDur(buff ? buff.left : 0)}`)
-              : full ? 'the shelf is full' : undeliverable ? 'a guest is already here' : `${cd.cost} ${CC.icon('honey')}`;
+              : full ? 'the shelf is full' : undeliverable ? (hedgeQuiet ? 'no guest can come — the hedge is Quiet' : 'a guest is already here') : `${cd.cost} ${CC.icon('honey')}`;
         });
       }
     }
